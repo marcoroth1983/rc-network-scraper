@@ -57,6 +57,25 @@ def _extract_listings(html: str, base_url: str) -> list[dict]:
     return results
 
 
+async def fetch_page(url: str, client: httpx.AsyncClient) -> list[dict]:
+    """Fetch a single overview page and return its listings.
+
+    Returns an empty list on HTTP errors or network failures.
+    Uses the caller's httpx.AsyncClient (caller manages lifecycle).
+    """
+    logger.info("Fetching overview page: %s", url)
+    try:
+        response = await client.get(url)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning("HTTP %s for %s — returning empty", exc.response.status_code, url)
+        return []
+    except httpx.RequestError as exc:
+        logger.warning("Request error for %s: %s — returning empty", url, exc)
+        return []
+    return _extract_listings(response.text, url)
+
+
 async def fetch_listings(
     start_url: str,
     max_pages: int,

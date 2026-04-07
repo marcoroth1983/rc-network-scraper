@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
-from app.scraper.crawler import _extract_listings
+import pytest
+
+from app.scraper.crawler import _build_page_url, _extract_listings, fetch_listings, fetch_page
+from tests.conftest import load_fixture
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE_URL = "https://www.rc-network.de/forums/biete-flugmodelle.132/"
@@ -76,3 +79,34 @@ class TestExtractListings:
         results = _extract_listings(html, BASE_URL)
         assert len(results) == 1
         assert results[0]["external_id"] == "456"
+
+
+def test_fetch_page_skips_sticky_items_in_fixture():
+    """_extract_listings (used by fetch_page) must skip sticky structItems."""
+    html = load_fixture("overview_page.html")
+    results = _extract_listings(html, "https://www.rc-network.de/forums/biete-flugmodelle.132/")
+    # All results must have a numeric external_id — sticky items never have one
+    for item in results:
+        assert item["external_id"].isdigit(), f"Non-numeric external_id: {item['external_id']}"
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_returns_empty_on_http_error():
+    """fetch_page returns empty list on HTTP 404."""
+    import httpx
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "404", request=MagicMock(), response=MagicMock(status_code=404)
+    )
+
+    async with httpx.AsyncClient() as real_client:
+        # Override get to return our mock response
+        real_client.get = AsyncMock(return_value=mock_response)
+        results = await fetch_page(
+            "https://www.rc-network.de/forums/biete-flugmodelle.132/page-999/",
+            real_client,
+        )
+
+    assert results == []
