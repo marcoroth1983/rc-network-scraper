@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rcscout
+      POSTGRES_PASSWORD: rcscout_dev
+      POSTGRES_DB: rcscout
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcscout"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rcscout:rcscout_dev@db:5432/rcscout
+      SCRAPE_DELAY: 1.0
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "4200:4200"
+    environment:
+      - API_PROXY_TARGET=http://backend:8000
+    command: sh -c "npm install && npm run dev -- --host --port 4200"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
