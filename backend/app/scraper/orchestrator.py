@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -139,7 +140,7 @@ async def _upsert_listing(
 
 async def _phase1_new_listings(
     session: AsyncSession,
-    update_progress: callable,
+    update_progress: Callable[[str], None],
     delay: float,
 ) -> dict:
     """Phase 1: crawl overview pages and upsert new/changed listings.
@@ -233,3 +234,121 @@ async def run_scrape(session: AsyncSession, max_pages: int = 10, fresh_threshold
     """Deprecated shim — superseded by scrape_runner.run_scrape_job. Removed in Task 7."""
     logger.warning("run_scrape shim called — consider using run_scrape_job directly")
     return {"pages_crawled": 0, "listings_found": 0, "new": 0, "updated": 0, "skipped": 0}
+
+
+_RECHECK_SQL = text("""
+    SELECT id, url, external_id
+    FROM listings
+    WHERE is_sold = FALSE
+    ORDER BY scraped_at ASC
+    LIMIT :limit
+""")
+
+
+async def _phase2_sold_recheck(
+    session: AsyncSession,
+    update_progress: Callable[[str], None],
+    delay: float,
+    batch_size: int = 50,
+) -> dict:
+    """Phase 2: re-fetch oldest non-sold listings to detect sold status.
+
+    Processes up to batch_size listings ordered by scraped_at ASC (oldest first).
+    Always updates scraped_at so items cycle to end of the recheck queue on next run.
+
+    Returns: {rechecked, sold_found}
+    """
+    result = await session.execute(_RECHECK_SQL, {"limit": batch_size})
+    listings = result.fetchall()  # [(id, url, external_id), ...]
+
+    now = datetime.now(timezone.utc)
+    rechecked = 0
+    sold_found = 0
+
+    if not listings:
+        return {"rechecked": 0, "sold_found": 0}
+
+    headers = {"User-Agent": _USER_AGENT}
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+        for idx, (listing_id, url, external_id) in enumerate(listings):
+            update_progress(f"Sold-Check {idx + 1}/{len(listings)}: {external_id}")
+            logger.info(
+                "Phase 2: rechecking %s (%d/%d)", external_id, idx + 1, len(listings)
+            )
+
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                parsed = parse_detail(response.text, page_url=url)
+                is_sold = parsed.get("is_sold", False)
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+                logger.warning(
+                    "Phase 2: failed to fetch %s: %s — bumping scraped_at only",
+                    external_id, exc,
+                )
+                await session.execute(
+                    text("UPDATE listings SET scraped_at = :now WHERE id = :id"),
+                    {"now": now, "id": listing_id},
+                )
+                await session.commit()
+                continue
+
+            await session.execute(
+                text("UPDATE listings SET is_sold = :is_sold, scraped_at = :now WHERE id = :id"),
+                {"is_sold": is_sold, "now": now, "id": listing_id},
+            )
+            await session.commit()
+
+            rechecked += 1
+            if is_sold:
+                sold_found += 1
+                logger.info("Phase 2: %s marked as SOLD", external_id)
+
+            if idx < len(listings) - 1:
+                await asyncio.sleep(delay)
+
+    return {"rechecked": rechecked, "sold_found": sold_found}
+
+
+async def _phase3_cleanup(session: AsyncSession) -> dict:
+    """Phase 3: delete stale and sold listings per retention policy.
+
+    Retention rules:
+    - Sold listings with scraped_at older than 2 months: delete
+    - Non-sold listings with posted_at older than 8 weeks: delete
+      (listings with NULL posted_at are excluded and kept indefinitely)
+
+    Returns: {deleted_sold, deleted_stale}
+    """
+    now = datetime.now(timezone.utc)
+    two_months_ago = now - timedelta(days=60)
+    eight_weeks_ago = now - timedelta(weeks=8)
+
+    sold_result = await session.execute(
+        text("""
+            DELETE FROM listings
+            WHERE is_sold = TRUE AND scraped_at < :cutoff
+            RETURNING id
+        """),
+        {"cutoff": two_months_ago},
+    )
+    deleted_sold = len(sold_result.fetchall())
+
+    stale_result = await session.execute(
+        text("""
+            DELETE FROM listings
+            WHERE is_sold = FALSE
+              AND posted_at < :cutoff
+              AND posted_at IS NOT NULL
+            RETURNING id
+        """),
+        {"cutoff": eight_weeks_ago},
+    )
+    deleted_stale = len(stale_result.fetchall())
+
+    await session.commit()
+
+    logger.info(
+        "Phase 3: deleted %d sold + %d stale listings", deleted_sold, deleted_stale
+    )
+    return {"deleted_sold": deleted_sold, "deleted_stale": deleted_stale}

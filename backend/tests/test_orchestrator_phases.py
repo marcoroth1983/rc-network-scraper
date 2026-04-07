@@ -90,3 +90,148 @@ async def test_phase1_respects_max_pages_cap(db_session: AsyncSession):
 
     assert len(fetch_calls) == MAX_PAGES
     assert result["pages_crawled"] == MAX_PAGES
+
+
+from app.scraper.orchestrator import _phase2_sold_recheck, _phase3_cleanup
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_marks_sold_listing(db_session: AsyncSession):
+    """Phase 2 sets is_sold=True when parser detects sold status."""
+    # Insert a non-sold listing
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+        VALUES ('sold-test', 'https://rc-network.de/t/999/', 'Selling item', '', '[]', '[]', 'user',
+                '2026-01-01 00:00:00+00', FALSE)
+    """))
+    await db_session.commit()
+
+    with patch("app.scraper.orchestrator.parse_detail") as mock_parse, \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls:
+
+        mock_parse.return_value = {"is_sold": True}
+
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html>verkauft</html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        result = await _phase2_sold_recheck(
+            db_session,
+            update_progress=lambda p: None,
+            delay=0.0,
+        )
+
+    assert result["rechecked"] == 1
+    assert result["sold_found"] == 1
+
+    # Verify DB was updated
+    row = await db_session.execute(
+        text("SELECT is_sold FROM listings WHERE external_id = 'sold-test'")
+    )
+    assert row.fetchone()[0] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_rotates_scraped_at(db_session: AsyncSession):
+    """Phase 2 updates scraped_at so listings cycle to end of recheck queue."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+        VALUES ('rotate-test', 'https://rc-network.de/t/888/', 'Item', '', '[]', '[]', 'user',
+                '2026-01-01 00:00:00+00', FALSE)
+    """))
+    await db_session.commit()
+
+    with patch("app.scraper.orchestrator.parse_detail") as mock_parse, \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls:
+
+        mock_parse.return_value = {"is_sold": False}
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html></html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        await _phase2_sold_recheck(db_session, lambda p: None, delay=0.0)
+
+    row = await db_session.execute(
+        text("SELECT scraped_at FROM listings WHERE external_id = 'rotate-test'")
+    )
+    scraped_at = row.fetchone()[0]
+    # scraped_at must be recent (within last 5 seconds)
+    from datetime import datetime, timezone, timedelta
+    assert scraped_at > datetime.now(timezone.utc) - timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_deletes_old_sold_listings(db_session: AsyncSession):
+    """Phase 3 deletes sold listings older than 2 months."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold)
+        VALUES
+            -- Old sold: should be deleted
+            ('old-sold', 'https://rc-network.de/t/1/', 'Old sold', '', '[]', '[]', 'u',
+             '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', TRUE),
+            -- Recent sold: should NOT be deleted (only 1 day old)
+            ('new-sold', 'https://rc-network.de/t/2/', 'New sold', '', '[]', '[]', 'u',
+             NOW(), NOW(), TRUE),
+            -- Old not-sold with recent posted_at: should NOT be deleted (not sold, not stale)
+            ('old-active', 'https://rc-network.de/t/3/', 'Old active', '', '[]', '[]', 'u',
+             NOW(), NOW(), FALSE)
+    """))
+    await db_session.commit()
+
+    result = await _phase3_cleanup(db_session)
+
+    assert result["deleted_sold"] == 1
+
+    remaining = await db_session.execute(
+        text("SELECT external_id FROM listings ORDER BY external_id")
+    )
+    ids = {r[0] for r in remaining.fetchall()}
+    assert "old-sold" not in ids
+    assert "new-sold" in ids
+    assert "old-active" in ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_deletes_stale_listings(db_session: AsyncSession):
+    """Phase 3 deletes non-sold listings with posted_at older than 8 weeks."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold)
+        VALUES
+            -- Old: should be deleted
+            ('stale', 'https://rc-network.de/t/10/', 'Stale', '', '[]', '[]', 'u',
+             '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', FALSE),
+            -- Recent: should NOT be deleted
+            ('fresh', 'https://rc-network.de/t/11/', 'Fresh', '', '[]', '[]', 'u',
+             NOW(), NOW(), FALSE),
+            -- NULL posted_at: should NOT be deleted
+            ('nodate', 'https://rc-network.de/t/12/', 'No date', '', '[]', '[]', 'u',
+             '2025-01-01 00:00:00+00', NULL, FALSE)
+    """))
+    await db_session.commit()
+
+    result = await _phase3_cleanup(db_session)
+
+    assert result["deleted_stale"] == 1
+    remaining = await db_session.execute(
+        text("SELECT external_id FROM listings ORDER BY external_id")
+    )
+    ids = {r[0] for r in remaining.fetchall()}
+    assert "stale" not in ids
+    assert "fresh" in ids
+    assert "nodate" in ids
