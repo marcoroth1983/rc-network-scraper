@@ -1,9 +1,10 @@
 import type {
   ListingsQueryParams,
   ListingDetail,
+  ListingSummary,
   PaginatedResponse,
   PlzResponse,
-  ScrapeSummary,
+  ScrapeStatus,
 } from '../types/api';
 import { ApiError } from '../types/api';
 
@@ -27,6 +28,7 @@ export async function getListings(params: ListingsQueryParams): Promise<Paginate
   if (params.per_page != null) qs.set('per_page', String(params.per_page));
   if (params.search) qs.set('search', params.search);
   if (params.sort) qs.set('sort', params.sort);
+  if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
   if (params.plz) qs.set('plz', params.plz);
   if (params.max_distance != null) qs.set('max_distance', String(params.max_distance));
 
@@ -44,12 +46,29 @@ export async function resolvePlz(plz: string): Promise<PlzResponse> {
   return handleResponse<PlzResponse>(res);
 }
 
-export async function triggerScrape(maxPages = 10): Promise<ScrapeSummary> {
-  const res = await fetch(`/api/scrape?max_pages=${maxPages}`, { method: 'POST' });
-  return handleResponse<ScrapeSummary>(res);
+export async function startScrape(): Promise<{ status: 'started' | 'already_running' }> {
+  const res = await fetch('/api/scrape', { method: 'POST' });
+  return handleResponse<{ status: 'started' | 'already_running' }>(res);
+}
+
+export async function getScrapeStatus(): Promise<ScrapeStatus> {
+  const res = await fetch('/api/scrape/status');
+  return handleResponse<ScrapeStatus>(res);
 }
 
 export async function toggleSold(id: number, isSold: boolean): Promise<void> {
   const res = await fetch(`/api/listings/${id}/sold?is_sold=${isSold}`, { method: 'PATCH' });
   return handleResponse<void>(res);
+}
+
+export async function toggleFavorite(id: number, isFavorite: boolean): Promise<void> {
+  const res = await fetch(`/api/listings/${id}/favorite?is_favorite=${isFavorite}`, {
+    method: 'PATCH',
+  });
+  return handleResponse<void>(res);
+}
+
+export async function getFavorites(): Promise<ListingSummary[]> {
+  const res = await fetch('/api/favorites');
+  return handleResponse<ListingSummary[]>(res);
 }

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -19,6 +19,7 @@ class Listing(Base):
     url: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     price: Mapped[str | None] = mapped_column(String, nullable=True)
+    price_numeric: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     condition: Mapped[str | None] = mapped_column(String, nullable=True)
     shipping: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -40,6 +41,16 @@ class PlzGeodata(Base):
     __tablename__ = "plz_geodata"
 
     plz: Mapped[str] = mapped_column(String(5), primary_key=True)
+    city: Mapped[str] = mapped_column(String, nullable=False)
+    lat: Mapped[float] = mapped_column(Float, nullable=False)
+    lon: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class IntlGeodata(Base):
+    __tablename__ = "intl_geodata"
+
+    country: Mapped[str] = mapped_column(String(2), primary_key=True)
+    plz: Mapped[str] = mapped_column(String(10), primary_key=True)
     city: Mapped[str] = mapped_column(String, nullable=False)
     lat: Mapped[float] = mapped_column(Float, nullable=False)
     lon: Mapped[float] = mapped_column(Float, nullable=False)

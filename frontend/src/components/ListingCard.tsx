@@ -1,14 +1,8 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import type { ListingSummary } from '../types/api';
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '–';
-  return new Date(iso).toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
+import { toggleFavorite } from '../api/client';
+import { formatPrice, formatDate } from '../utils/format';
 
 // Pin icon matching the mockup SVG
 function PinIcon() {
@@ -29,11 +23,33 @@ function PinIcon() {
 
 interface Props {
   listing: ListingSummary;
+  onFavoriteChange?: (id: number, isFavorite: boolean) => void;
 }
 
-export default function ListingCard({ listing }: Props) {
+export default function ListingCard({ listing, onFavoriteChange }: Props) {
+  const routerLocation = useLocation();
   const location = listing.city ?? listing.plz ?? null;
   const hasDistance = listing.distance_km != null;
+
+  const [favorite, setFavorite] = useState(listing.is_favorite);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  async function handleFavorite(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (favoriteLoading) return;
+    const next = !favorite;
+    setFavorite(next); // optimistic update
+    setFavoriteLoading(true);
+    try {
+      await toggleFavorite(listing.id, next);
+      onFavoriteChange?.(listing.id, next);
+    } catch {
+      setFavorite(!next); // revert on error
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }
 
   return (
     <article className={`bg-white rounded-card shadow-card card-transition overflow-hidden relative${listing.is_sold ? ' opacity-60' : ''}`}>
@@ -54,12 +70,31 @@ export default function ListingCard({ listing }: Props) {
             loading="lazy"
           />
         )}
+
+        {/* Star button — z-20 to sit above the stretched link overlay */}
+        <button
+          onClick={handleFavorite}
+          aria-label={favorite ? 'Von Merkliste entfernen' : 'Merken'}
+          className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow hover:bg-white transition"
+        >
+          <svg
+            className={`w-4 h-4 transition-colors ${favorite ? 'text-yellow-400' : 'text-gray-400'}`}
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            fill={favorite ? 'currentColor' : 'none'}
+            aria-hidden="true"
+          >
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </button>
       </div>
 
       <div className="p-4 flex flex-col gap-0">
         {/* Title — stretched link covers the whole card */}
         <Link
           to={`/listings/${listing.id}`}
+          state={{ from: routerLocation.search }}
           className="font-semibold text-gray-900 text-sm leading-snug mb-2 line-clamp-2 hover:text-brand transition-colors after:absolute after:inset-0"
         >
           {listing.title}
@@ -71,7 +106,7 @@ export default function ListingCard({ listing }: Props) {
             data-testid="price"
             className="text-xl font-bold text-gray-900"
           >
-            {listing.price ?? '–'}
+            {formatPrice(listing.price_numeric, listing.price)}
           </span>
           <span
             data-testid="condition"
@@ -115,10 +150,6 @@ export default function ListingCard({ listing }: Props) {
           </span>
         </div>
 
-        {/* Author footer */}
-        <div className="text-xs text-gray-400 flex items-center mt-2 pt-1 border-t border-gray-100">
-          <span data-testid="author">{listing.author}</span>
-        </div>
       </div>
     </article>
   );

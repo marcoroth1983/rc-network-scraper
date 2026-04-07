@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
 import ScrapeButton from './components/ScrapeButton';
+import FavoritesModal from './components/FavoritesModal';
+import PlzBar from './components/PlzBar';
 
 // Plane/arrow icon matching the mockup's header logo
 function PlaneIcon() {
@@ -39,18 +41,19 @@ function Header({ onScrape }: { onScrape: () => void }) {
 
 export default function App() {
   const [scrapeKey, setScrapeKey] = useState(0);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
 
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-surface text-gray-900 antialiased">
-        <Header onScrape={() => setScrapeKey((k) => k + 1)} />
-        <main className="max-w-6xl mx-auto px-4 py-6">
-          <Routes>
-            <Route path="/" element={<ListingsPage scrapeKey={scrapeKey} />} />
-            <Route path="/listings/:id" element={<DetailPage />} />
-          </Routes>
-        </main>
-      </div>
-    </BrowserRouter>
+    <div className="min-h-screen bg-surface text-gray-900 antialiased">
+      <Header onScrape={() => setScrapeKey((k) => k + 1)} />
+      <PlzBar onOpenFavorites={() => setFavoritesOpen(true)} />
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        <Routes>
+          <Route path="/" element={<ListingsPage scrapeKey={scrapeKey} />} />
+          <Route path="/listings/:id" element={<DetailPage />} />
+        </Routes>
+      </main>
+      <FavoritesModal open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
+    </div>
   );
 }

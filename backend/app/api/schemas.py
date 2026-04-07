@@ -1,6 +1,7 @@
 """Pydantic response models for the API."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +14,7 @@ class ListingSummary(BaseModel):
     url: str
     title: str
     price: str | None
+    price_numeric: float | None = None
     condition: str | None
     plz: str | None
     city: str | None
@@ -24,6 +26,7 @@ class ListingSummary(BaseModel):
     distance_km: float | None = None  # populated only when ?plz is provided
     images: list[str] = []
     is_sold: bool = False
+    is_favorite: bool = False
 
 
 class ListingDetail(BaseModel):
@@ -34,6 +37,7 @@ class ListingDetail(BaseModel):
     url: str
     title: str
     price: str | None
+    price_numeric: float | None = None
     condition: str | None
     shipping: str | None
     description: str
@@ -48,6 +52,7 @@ class ListingDetail(BaseModel):
     longitude: float | None
     scraped_at: datetime
     is_sold: bool
+    is_favorite: bool = False
 
 
 class PlzResponse(BaseModel):
@@ -60,11 +65,23 @@ class PlzResponse(BaseModel):
 
 
 class ScrapeSummary(BaseModel):
-    pages_crawled: int
-    listings_found: int
-    new: int
-    updated: int
-    skipped: int
+    pages_crawled: int = 0
+    new: int = 0
+    updated: int = 0
+    rechecked: int = 0
+    sold_found: int = 0
+    deleted_sold: int = 0
+    deleted_stale: int = 0
+
+
+class ScrapeStatus(BaseModel):
+    status: Literal["idle", "running", "done", "error"]
+    started_at: str | None = None
+    finished_at: str | None = None
+    phase: Literal["phase1", "phase2", "phase3"] | None = None
+    progress: str | None = None
+    summary: ScrapeSummary | None = None
+    error: str | None = None
 
 
 class PaginatedResponse(BaseModel):

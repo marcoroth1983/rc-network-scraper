@@ -4,6 +4,7 @@ export interface ListingSummary {
   url: string;
   title: string;
   price: string | null;
+  price_numeric: number | null;
   condition: string | null;
   plz: string | null;
   city: string | null;
@@ -15,6 +16,7 @@ export interface ListingSummary {
   distance_km: number | null;
   images: string[];
   is_sold: boolean;
+  is_favorite: boolean;
 }
 
 export interface ListingDetail {
@@ -23,6 +25,7 @@ export interface ListingDetail {
   url: string;
   title: string;
   price: string | null;
+  price_numeric: number | null;
   condition: string | null;
   shipping: string | null;
   description: string;
@@ -35,7 +38,9 @@ export interface ListingDetail {
   latitude: number | null;
   longitude: number | null;
   scraped_at: string;
+  tags: string[];
   is_sold: boolean;
+  is_favorite: boolean;
 }
 
 export interface PaginatedResponse {
@@ -54,10 +59,25 @@ export interface PlzResponse {
 
 export interface ScrapeSummary {
   pages_crawled: number;
-  listings_found: number;
   new: number;
   updated: number;
-  skipped: number;
+  rechecked: number;
+  sold_found: number;
+  deleted_sold: number;
+  deleted_stale: number;
+}
+
+export type ScrapeJobStatus = 'idle' | 'running' | 'done' | 'error';
+export type ScrapePhase = 'phase1' | 'phase2' | 'phase3' | null;
+
+export interface ScrapeStatus {
+  status: ScrapeJobStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  phase: ScrapePhase;
+  progress: string | null;
+  summary: ScrapeSummary | null;
+  error: string | null;
 }
 
 export interface ListingsQueryParams {
@@ -65,6 +85,7 @@ export interface ListingsQueryParams {
   per_page?: number;
   search?: string | null;
   sort?: 'date' | 'price' | 'distance';
+  sort_dir?: 'asc' | 'desc';
   plz?: string | null;
   max_distance?: number | null;
 }

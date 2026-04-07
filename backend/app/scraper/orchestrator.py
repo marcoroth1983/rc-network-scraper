@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
@@ -16,41 +17,85 @@ from app.scraper.parser import parse_detail
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_price_numeric(price: str | None) -> float | None:
+    """Parse a raw price string to a float.
+
+    Handles formats like:
+    - "1300,-€" → 1300.0
+    - "275,00 Euro" → 275.0
+    - "1 300,00 €" → 1300.0  (space as thousands separator)
+    - "700€" → 700.0
+    - "120" → 120.0
+    - "VB" or None → None
+    """
+    if not price:
+        return None
+    cleaned = price.replace('\u00a0', ' ')  # non-breaking space
+    for token in ['Euro', 'EUR', '€', 'VB', 'vb', 'Vb', ',-']:
+        cleaned = cleaned.replace(token, '')
+    cleaned = cleaned.strip()
+    if not cleaned:
+        return None
+    cleaned = cleaned.replace(' ', '')
+    if ',' in cleaned and '.' in cleaned:
+        # Both separators: assume dot=thousands, comma=decimal (e.g. "1.300,00")
+        cleaned = cleaned.replace('.', '').replace(',', '.')
+    elif ',' in cleaned:
+        # Only comma: assume comma=decimal (e.g. "275,00")
+        cleaned = cleaned.replace(',', '.')
+    elif '.' in cleaned:
+        # Only dot: if all parts after dots are exactly 3 digits → thousands separator
+        # e.g. "10.000" → 10000, but "10.5" → 10.5
+        parts = cleaned.split('.')
+        if all(len(p) == 3 for p in parts[1:]):
+            cleaned = cleaned.replace('.', '')
+    cleaned = re.sub(r'[^0-9.]', '', cleaned)
+    if cleaned.count('.') > 1:
+        return None
+    try:
+        val = float(cleaned)
+        return val if val > 0 else None
+    except ValueError:
+        return None
+
+
 _USER_AGENT = "rc-markt-scout/0.1 (personal hobby project)"
 _START_URL = "https://www.rc-network.de/forums/biete-flugmodelle.132/"
 
 _UPSERT_SQL = text("""
     INSERT INTO listings (
-        external_id, url, title, price, condition, shipping,
+        external_id, url, title, price, price_numeric, condition, shipping,
         description, images, tags, author, posted_at, posted_at_raw,
         plz, city, latitude, longitude, scraped_at, is_sold
     ) VALUES (
-        :external_id, :url, :title, :price, :condition, :shipping,
+        :external_id, :url, :title, :price, :price_numeric, :condition, :shipping,
         :description, :images, :tags, :author, :posted_at, :posted_at_raw,
         :plz, :city, :latitude, :longitude, :scraped_at, :is_sold
     )
     ON CONFLICT (external_id) DO UPDATE SET
-        url          = EXCLUDED.url,
-        title        = EXCLUDED.title,
-        price        = EXCLUDED.price,
-        condition    = EXCLUDED.condition,
-        shipping     = EXCLUDED.shipping,
-        description  = EXCLUDED.description,
-        images       = EXCLUDED.images,
-        tags         = EXCLUDED.tags,
-        author       = EXCLUDED.author,
-        posted_at    = EXCLUDED.posted_at,
+        url           = EXCLUDED.url,
+        title         = EXCLUDED.title,
+        price         = EXCLUDED.price,
+        price_numeric = EXCLUDED.price_numeric,
+        condition     = EXCLUDED.condition,
+        shipping      = EXCLUDED.shipping,
+        description   = EXCLUDED.description,
+        images        = EXCLUDED.images,
+        tags          = EXCLUDED.tags,
+        author        = EXCLUDED.author,
+        posted_at     = EXCLUDED.posted_at,
         posted_at_raw = EXCLUDED.posted_at_raw,
-        plz          = EXCLUDED.plz,
-        city         = EXCLUDED.city,
-        latitude     = EXCLUDED.latitude,
-        longitude    = EXCLUDED.longitude,
-        scraped_at   = EXCLUDED.scraped_at,
-        is_sold      = EXCLUDED.is_sold OR listings.is_sold
+        plz           = EXCLUDED.plz,
+        city          = EXCLUDED.city,
+        latitude      = EXCLUDED.latitude,
+        longitude     = EXCLUDED.longitude,
+        scraped_at    = EXCLUDED.scraped_at,
+        is_sold       = EXCLUDED.is_sold OR listings.is_sold
     RETURNING (xmax = 0) AS is_insert
 """)
 
-MAX_PAGES = 25  # hard safety cap for phase1 stop-early crawl
+MAX_PAGES = 40  # hard safety cap for phase1 stop-early crawl
 
 _EXISTING_IDS_SQL = text("""
     SELECT external_id FROM listings WHERE external_id = ANY(:ids)
@@ -70,6 +115,60 @@ _CITY_GEO_LOOKUP_SQL = text("""
     LIMIT 1
 """)
 
+_INTL_GEO_LOOKUP_SQL = text("""
+    SELECT lat, lon
+    FROM intl_geodata
+    WHERE country = :country AND plz = :plz
+    LIMIT 1
+""")
+
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+_NOMINATIM_HEADERS = {"User-Agent": "rc-markt-scout/0.1 (personal hobby project)"}
+
+# Match country prefix in PLZ field: "AT 6890", "CH-8600", "DE01067"
+_COUNTRY_PREFIX_RE = re.compile(r'^(AT|CH|DE|LI|NL|BE|FR|LU)\s*[-]?\s*(\d+)', re.IGNORECASE)
+# Extract PLZ from city string: "72581 Reutlingen, BW" or "Aue, 08280"
+_PLZ_AT_START_RE = re.compile(r'^(\d{4,5})\b')
+_PLZ_AT_END_RE = re.compile(r'\b(\d{4,5})\s*[,.]?\s*$')
+
+
+def _parse_raw_plz(raw: str | None) -> tuple[str | None, str | None]:
+    """Parse raw PLZ string → (digits_only, country_2letter | None)."""
+    if not raw:
+        return None, None
+    m = _COUNTRY_PREFIX_RE.match(raw.strip())
+    if m:
+        return m.group(2), m.group(1).upper()
+    digits = re.sub(r'[^0-9]', '', raw.strip())
+    return (digits or None), None
+
+
+def _extract_plz_from_city(city: str) -> str | None:
+    """Try to find a 4-5 digit PLZ inside a city string."""
+    m = _PLZ_AT_START_RE.match(city.strip())
+    if m:
+        return m.group(1)
+    m = _PLZ_AT_END_RE.search(city.strip())
+    if m:
+        return m.group(1)
+    return None
+
+
+async def _nominatim_geocode(query: str) -> tuple[float, float] | None:
+    """Call Nominatim OSM geocoder. Rate-limit: caller must ensure ≥1s between calls."""
+    try:
+        async with httpx.AsyncClient(headers=_NOMINATIM_HEADERS, timeout=10.0) as client:
+            resp = await client.get(
+                _NOMINATIM_URL,
+                params={"q": query, "format": "json", "limit": 1},
+            )
+            data = resp.json()
+            if data:
+                return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception as exc:
+        logger.warning("Nominatim geocode failed for %r: %s", query, exc)
+    return None
+
 
 async def _fetch_existing_ids(
     session: AsyncSession,
@@ -87,17 +186,71 @@ async def _geo_lookup(
     plz: str | None,
     city: str | None = None,
 ) -> tuple[float | None, float | None, str | None]:
-    """Look up lat/lon by PLZ; fall back to city name. Returns (lat, lon, resolved_plz)."""
-    if plz:
-        result = await session.execute(_GEO_LOOKUP_SQL, {"plz": plz})
+    """Resolve coordinates from PLZ and/or city. Multi-step fallback chain:
+    1. German PLZ lookup (5 digits)
+    2. International PLZ lookup (AT/CH, 4 digits)
+    3. PLZ extracted from city string
+    4. City name lookup (German geodata)
+    5. Nominatim OSM geocoder (rate-limited fallback)
+    """
+    norm_plz, country_hint = _parse_raw_plz(plz)
+
+    # Step 1: German PLZ (5 digits)
+    if norm_plz and len(norm_plz) == 5:
+        result = await session.execute(_GEO_LOOKUP_SQL, {"plz": norm_plz})
         row = result.fetchone()
         if row:
-            return float(row[0]), float(row[1]), plz
+            return float(row[0]), float(row[1]), norm_plz
+
+    # Step 2: International PLZ (4 digits → AT/CH)
+    if norm_plz and len(norm_plz) == 4:
+        candidates = [country_hint] if country_hint in ("AT", "CH") else ["AT", "CH"]
+        for country in candidates:
+            result = await session.execute(_INTL_GEO_LOOKUP_SQL, {"country": country, "plz": norm_plz})
+            row = result.fetchone()
+            if row:
+                return float(row[0]), float(row[1]), norm_plz
+
+    # Step 3: PLZ embedded in city field (e.g. "72581 Reutlingen, BW")
     if city:
-        result = await session.execute(_CITY_GEO_LOOKUP_SQL, {"city": city})
-        row = result.fetchone()
-        if row:
-            return float(row[1]), float(row[2]), str(row[0])
+        extracted = _extract_plz_from_city(city)
+        if extracted and extracted != norm_plz:
+            if len(extracted) == 5:
+                result = await session.execute(_GEO_LOOKUP_SQL, {"plz": extracted})
+                row = result.fetchone()
+                if row:
+                    return float(row[0]), float(row[1]), extracted
+            elif len(extracted) == 4:
+                for country in ["AT", "CH"]:
+                    result = await session.execute(_INTL_GEO_LOOKUP_SQL, {"country": country, "plz": extracted})
+                    row = result.fetchone()
+                    if row:
+                        return float(row[0]), float(row[1]), extracted
+
+    # Step 4: City name lookup (German geodata, strip PLZ prefix and country suffix)
+    if city:
+        clean = re.sub(r'^\d{4,5}\s*', '', city).strip()
+        clean = re.sub(
+            r',?\s*(Deutschland|Germany|Österreich|Austria|Schweiz|Switzerland)\b.*$',
+            '', clean, flags=re.IGNORECASE,
+        ).strip()
+        clean = re.sub(r'\s{2,}', ' ', clean).strip(' ,')
+        if clean:
+            result = await session.execute(_CITY_GEO_LOOKUP_SQL, {"city": clean})
+            row = result.fetchone()
+            if row:
+                return float(row[1]), float(row[2]), str(row[0])
+
+    # Step 5: Nominatim fallback — only when a city name is available.
+    # Bare PLZ numbers without country context would resolve to any country (e.g. "2450" → Australia).
+    query = city.strip() if city else None
+    if query:
+        await asyncio.sleep(1.0)  # respect Nominatim 1 req/sec ToS
+        coords = await _nominatim_geocode(query)
+        if coords:
+            logger.info("Nominatim resolved %r / %r → %.4f, %.4f", plz, city, coords[0], coords[1])
+            return coords[0], coords[1], plz
+
     return None, None, plz
 
 
@@ -118,6 +271,7 @@ async def _upsert_listing(
             "url": url,
             "title": parsed.get("title") or "",
             "price": parsed.get("price"),
+            "price_numeric": _parse_price_numeric(parsed.get("price")),
             "condition": parsed.get("condition"),
             "shipping": parsed.get("shipping"),
             "description": parsed.get("description") or "",
@@ -217,8 +371,19 @@ async def _phase1_new_listings(
 
                 if is_new:
                     new_count += 1
+                    logger.info(
+                        "Phase 1: NEW   [%s] %s | %s",
+                        external_id,
+                        parsed.get("title", "—")[:60],
+                        parsed.get("price", "—"),
+                    )
                 else:
                     updated_count += 1
+                    logger.info(
+                        "Phase 1: UPD   [%s] %s",
+                        external_id,
+                        parsed.get("title", "—")[:60],
+                    )
 
                 if idx < len(new_on_page) - 1:
                     await asyncio.sleep(delay)
@@ -321,7 +486,7 @@ async def _phase3_cleanup(session: AsyncSession) -> dict:
     Returns: {deleted_sold, deleted_stale}
     """
     now = datetime.now(timezone.utc)
-    two_months_ago = now - timedelta(days=60)
+    two_months_ago = now - timedelta(days=60)   # ~2 months (intentionally slightly longer than 8-week stale cutoff)
     eight_weeks_ago = now - timedelta(weeks=8)
 
     sold_result = await session.execute(

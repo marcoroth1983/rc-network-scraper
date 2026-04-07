@@ -32,6 +32,11 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE"
         ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_numeric NUMERIC(10,2)"
+        ))
+        # price_numeric is populated on each upsert via _parse_price_numeric() in orchestrator.py.
+        # Existing rows will receive the correct value on their next scrape cycle.
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

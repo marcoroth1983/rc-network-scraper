@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ListingCard from '../ListingCard';
 import type { ListingSummary } from '../../types/api';
+import * as client from '../../api/client';
+
+vi.mock('../../api/client');
 
 const base: ListingSummary = {
   id: 130,
@@ -10,6 +13,7 @@ const base: ListingSummary = {
   url: 'https://www.rc-network.de/threads/test',
   title: 'F-18 LX Modells',
   price: '280',
+  price_numeric: null,
   condition: 'Gut',
   plz: null,
   city: 'Würzburg',
@@ -21,6 +25,7 @@ const base: ListingSummary = {
   distance_km: null,
   images: [],
   is_sold: false,
+  is_favorite: false,
 };
 
 function renderCard(props: Partial<ListingSummary> = {}) {
@@ -44,12 +49,12 @@ describe('ListingCard', () => {
   });
 
   it('shows "–" when price is null', () => {
-    renderCard({ price: null });
+    renderCard({ price: null, price_numeric: null });
     expect(screen.getByTestId('price')).toHaveTextContent('–');
   });
 
-  it('shows raw price string as-is', () => {
-    renderCard({ price: '480,00 EUR VB' });
+  it('shows raw price string as-is when price_numeric is null', () => {
+    renderCard({ price: '480,00 EUR VB', price_numeric: null });
     expect(screen.getByTestId('price')).toHaveTextContent('480,00 EUR VB');
   });
 
@@ -78,8 +83,63 @@ describe('ListingCard', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('–');
   });
 
-  it('shows author', () => {
-    renderCard();
-    expect(screen.getByTestId('author')).toHaveTextContent('MI77');
+  describe('star / favorite button', () => {
+    it('renders the star button with aria-label "Merken" when not favorited', () => {
+      renderCard({ is_favorite: false });
+      const btn = screen.getByRole('button', { name: /merken/i });
+      expect(btn).toBeInTheDocument();
+    });
+
+    it('calls toggleFavorite with (id, true) when clicking the unfavorited star', async () => {
+      vi.mocked(client.toggleFavorite).mockResolvedValue(undefined);
+      renderCard({ is_favorite: false });
+      const btn = screen.getByRole('button', { name: /merken/i });
+      fireEvent.click(btn);
+      await waitFor(() =>
+        expect(client.toggleFavorite).toHaveBeenCalledWith(130, true),
+      );
+    });
+
+    it('optimistically shows filled star (aria-label changes to "Von Merkliste entfernen") after click', async () => {
+      // Delay resolution so we can observe the optimistic state before the promise settles
+      vi.mocked(client.toggleFavorite).mockImplementation(
+        () => new Promise((resolve) => setTimeout(resolve, 50)),
+      );
+      renderCard({ is_favorite: false });
+      const btn = screen.getByRole('button', { name: /merken/i });
+      fireEvent.click(btn);
+      // Optimistic update is synchronous — label should change immediately
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /von merkliste entfernen/i }),
+        ).toBeInTheDocument(),
+      );
+    });
+
+    it('renders aria-label "Von Merkliste entfernen" when already favorited', () => {
+      renderCard({ is_favorite: true });
+      expect(
+        screen.getByRole('button', { name: /von merkliste entfernen/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('reverts star to original state when toggleFavorite rejects', async () => {
+      vi.mocked(client.toggleFavorite).mockRejectedValue(new Error('fail'));
+      renderCard({ is_favorite: false });
+      const btn = screen.getByRole('button', { name: /merken/i });
+      fireEvent.click(btn);
+      // Optimistic update: label changes to "Von Merkliste entfernen"
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /von merkliste entfernen/i }),
+        ).toBeInTheDocument(),
+      );
+      // After rejection, must revert back to "Merken"
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /^merken$/i }),
+        ).toBeInTheDocument(),
+      );
+    });
   });
 });

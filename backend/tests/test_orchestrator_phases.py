@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-from app.scraper.orchestrator import _phase1_new_listings
+from app.scraper.orchestrator import (
+    _phase1_new_listings,
+    _phase2_sold_recheck,
+    _phase3_cleanup,
+)
 
 
 @pytest.mark.asyncio
@@ -90,9 +94,6 @@ async def test_phase1_respects_max_pages_cap(db_session: AsyncSession):
 
     assert len(fetch_calls) == MAX_PAGES
     assert result["pages_crawled"] == MAX_PAGES
-
-
-from app.scraper.orchestrator import _phase2_sold_recheck, _phase3_cleanup
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getListing, toggleSold } from '../api/client';
+import { useEffect, useState, useRef } from 'react';
+import { useParams, useLocation, Link } from 'react-router-dom';
+import { getListing, toggleSold, toggleFavorite } from '../api/client';
 import type { ListingDetail } from '../types/api';
+import { formatPrice } from '../utils/format';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '–';
@@ -31,12 +32,34 @@ function Spinner() {
   );
 }
 
+const PLZ_LAT_KEY = 'rcn_ref_lat';
+const PLZ_LON_KEY = 'rcn_ref_lon';
+const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
+
+/** Haversine distance in km between two lat/lon points. */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
+  const routerLocation = useLocation();
+  // Freeze backTo at mount time — PlzBar later calls setSearchParams on the detail page URL,
+  // which pushes a new history entry without router state, losing state.from on re-renders.
+  const backTo = useRef('/' + ((routerLocation.state as { from?: string } | null)?.from ?? '')).current;
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [soldPending, setSoldPending] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -58,7 +81,7 @@ export default function DetailPage() {
   if (error) {
     return (
       <div>
-        <Link to="/" className="text-brand hover:underline text-sm mb-4 inline-block">
+        <Link to={backTo} className="text-brand hover:underline text-sm mb-4 inline-block">
           ← Zurück zur Liste
         </Link>
         <div className="rounded-md bg-red-50 border border-red-200 p-4 text-red-700">
@@ -71,23 +94,45 @@ export default function DetailPage() {
   if (!listing) return null;
 
   const location = [listing.plz, listing.city].filter(Boolean).join(' ') || '–';
+
+  // Compute distance from user's saved reference location (stored by FilterPanel)
+  const refCity = localStorage.getItem(PLZ_CITY_STORAGE_KEY);
+  const refLat = parseFloat(localStorage.getItem(PLZ_LAT_KEY) ?? '');
+  const refLon = parseFloat(localStorage.getItem(PLZ_LON_KEY) ?? '');
+  const distanceKm: number | null =
+    listing.latitude && listing.longitude && !isNaN(refLat) && !isNaN(refLon)
+      ? haversineKm(refLat, refLon, listing.latitude, listing.longitude)
+      : null;
   const mapsHref = listing.latitude && listing.longitude
     ? `https://www.google.com/maps/dir/?api=1&destination=${listing.latitude},${listing.longitude}`
     : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location + ', Deutschland')}`;
 
   async function handleToggleSold() {
+    const next = !listing!.is_sold;
+    if (next && !window.confirm(`"${listing!.title}" als verkauft markieren?`)) return;
     setSoldPending(true);
     try {
-      await toggleSold(listing!.id, !listing!.is_sold);
-      setListing((l) => l ? { ...l, is_sold: !l.is_sold } : l);
+      await toggleSold(listing!.id, next);
+      setListing((l) => l ? { ...l, is_sold: next } : l);
     } finally {
       setSoldPending(false);
     }
   }
 
+  async function handleToggleFavorite() {
+    setFavoritePending(true);
+    try {
+      const next = !listing!.is_favorite;
+      await toggleFavorite(listing!.id, next);
+      setListing((l) => l ? { ...l, is_favorite: next } : l);
+    } finally {
+      setFavoritePending(false);
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
-      <Link to="/" className="text-brand hover:underline text-sm mb-4 inline-block">
+      <Link to={backTo} className="text-brand hover:underline text-sm mb-4 inline-block">
         ← Zurück zur Liste
       </Link>
 
@@ -97,21 +142,42 @@ export default function DetailPage() {
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">
               {listing.title}
             </h1>
-            <button
-              onClick={handleToggleSold}
-              disabled={soldPending}
-              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                listing.is_sold
-                  ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
-                  : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-              } disabled:opacity-50`}
-            >
-              {listing.is_sold ? 'Verkauft ✓' : 'Als verkauft markieren'}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Favorite star */}
+              <button
+                onClick={handleToggleFavorite}
+                disabled={favoritePending}
+                aria-label={listing.is_favorite ? 'Von Merkliste entfernen' : 'Merken'}
+                className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition disabled:opacity-50"
+              >
+                <svg
+                  className={`w-5 h-5 transition-colors ${listing.is_favorite ? 'text-yellow-400' : 'text-gray-400'}`}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  fill={listing.is_favorite ? 'currentColor' : 'none'}
+                  aria-hidden="true"
+                >
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </button>
+              {/* Sold toggle */}
+              <button
+                onClick={handleToggleSold}
+                disabled={soldPending}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                  listing.is_sold
+                    ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
+                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                } disabled:opacity-50`}
+              >
+                {listing.is_sold ? 'Verkauft ✓' : 'Als verkauft markieren'}
+              </button>
+            </div>
           </div>
 
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100">
-            <Field label="Preis" value={listing.price} />
+            <Field label="Preis" value={formatPrice(listing.price_numeric, listing.price)} />
             <Field label="Zustand" value={listing.condition} />
             <Field label="Versand" value={listing.shipping} />
             <div>
@@ -149,6 +215,14 @@ export default function DetailPage() {
             </div>
             <Field label="Inserent" value={listing.author} />
             <Field label="Datum" value={formatDate(listing.posted_at)} />
+            {distanceKm != null && (
+              <div>
+                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Entfernung</dt>
+                <dd className="mt-0.5 text-sm font-semibold text-brand">
+                  {distanceKm.toFixed(1)} km{refCity ? ` von ${refCity}` : ''}
+                </dd>
+              </div>
+            )}
           </dl>
 
           {listing.images.length > 0 && (

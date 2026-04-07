@@ -15,6 +15,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.scraper.orchestrator import _parse_price_numeric
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,17 +29,22 @@ async def _insert_listing(
     title: str,
     description: str = "",
     price: str | None = None,
+    price_numeric: float | None = None,
     plz: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
 ) -> None:
-    """Insert a minimal test listing into the DB."""
+    """Insert a minimal test listing into the DB.
+
+    price_numeric is auto-computed from price when not supplied explicitly.
+    """
+    computed_price_numeric = price_numeric if price_numeric is not None else _parse_price_numeric(price)
     await session.execute(
         text("""
-            INSERT INTO listings (external_id, url, title, price, condition, shipping,
+            INSERT INTO listings (external_id, url, title, price, price_numeric, condition, shipping,
                 description, images, tags, author, posted_at, posted_at_raw, plz, city,
                 latitude, longitude, scraped_at)
-            VALUES (:eid, :url, :title, :price, NULL, NULL,
+            VALUES (:eid, :url, :title, :price, :price_numeric, NULL, NULL,
                 :desc, '[]', '[]', 'TestUser', NOW(), NULL, :plz, NULL,
                 :lat, :lon, NOW())
         """),
@@ -46,6 +53,7 @@ async def _insert_listing(
             "url": f"https://example.com/{external_id}",
             "title": title,
             "price": price,
+            "price_numeric": computed_price_numeric,
             "desc": description,
             "plz": plz,
             "lat": lat,
@@ -410,3 +418,127 @@ class TestDistanceFilter:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Scrape endpoints + Favorites
+# ---------------------------------------------------------------------------
+
+async def _insert_listing_full(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    title: str = "Test",
+    is_favorite: bool = False,
+    is_sold: bool = False,
+    lat: float | None = None,
+    lon: float | None = None,
+) -> int:
+    """Insert a listing and return its auto-incremented id."""
+    result = await session.execute(
+        text("""
+            INSERT INTO listings (external_id, url, title, price, condition, shipping,
+                description, images, tags, author, posted_at, posted_at_raw, plz, city,
+                latitude, longitude, scraped_at, is_sold, is_favorite)
+            VALUES (:eid, :url, :title, NULL, NULL, NULL,
+                '', '[]', '[]', 'TestUser', NOW(), NULL, NULL, NULL,
+                :lat, :lon, NOW(), :is_sold, :is_favorite)
+            RETURNING id
+        """),
+        {
+            "eid": external_id, "url": f"https://example.com/{external_id}",
+            "title": title, "lat": lat, "lon": lon,
+            "is_sold": is_sold, "is_favorite": is_favorite,
+        },
+    )
+    await session.commit()
+    return result.fetchone()[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestScrapeEndpoints:
+    async def test_start_scrape_returns_202(self, api_client: AsyncClient) -> None:
+        """POST /api/scrape starts background job and returns 202."""
+        from unittest.mock import patch
+        with patch("app.api.routes.start_background_job", return_value=True):
+            resp = await api_client.post("/api/scrape")
+        assert resp.status_code == 202
+        assert resp.json()["status"] == "started"
+
+    async def test_start_scrape_returns_409_when_running(
+        self, api_client: AsyncClient
+    ) -> None:
+        """POST /api/scrape returns 409 if already running."""
+        from unittest.mock import patch
+        with patch("app.api.routes.start_background_job", return_value=False):
+            resp = await api_client.post("/api/scrape")
+        assert resp.status_code == 409
+
+    async def test_scrape_status_returns_idle(self, api_client: AsyncClient) -> None:
+        """GET /api/scrape/status returns current state."""
+        from unittest.mock import patch
+        idle = {
+            "status": "idle", "started_at": None, "finished_at": None,
+            "phase": None, "progress": None, "summary": None, "error": None,
+        }
+        with patch("app.api.routes.get_state", return_value=idle):
+            resp = await api_client.get("/api/scrape/status")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "idle"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestFavorites:
+    async def test_toggle_favorite_sets_flag(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        listing_id = await _insert_listing_full(
+            db_session, external_id="fav1", is_favorite=False
+        )
+        resp = await api_client.patch(
+            f"/api/listings/{listing_id}/favorite?is_favorite=true"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_favorite"] is True
+
+    async def test_toggle_favorite_clears_flag(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        listing_id = await _insert_listing_full(
+            db_session, external_id="fav-clear", is_favorite=True
+        )
+        resp = await api_client.patch(
+            f"/api/listings/{listing_id}/favorite?is_favorite=false"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_favorite"] is False
+
+    async def test_toggle_favorite_404_for_unknown(
+        self, api_client: AsyncClient
+    ) -> None:
+        resp = await api_client.patch("/api/listings/999999/favorite?is_favorite=true")
+        assert resp.status_code == 404
+
+    async def test_get_favorites_returns_only_favorited(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        await _insert_listing_full(db_session, external_id="favA", is_favorite=True)
+        await _insert_listing_full(db_session, external_id="favB", is_favorite=False)
+
+        resp = await api_client.get("/api/favorites")
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["external_id"] == "favA"
+
+    async def test_get_favorites_includes_sold_status(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        await _insert_listing_full(
+            db_session, external_id="favSold", is_favorite=True, is_sold=True
+        )
+        resp = await api_client.get("/api/favorites")
+        assert resp.status_code == 200
+        assert resp.json()[0]["is_sold"] is True

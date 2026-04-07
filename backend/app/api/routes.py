@@ -1,7 +1,6 @@
 """REST API endpoints."""
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -9,26 +8,42 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import ListingDetail, ListingSummary, PaginatedResponse, PlzResponse, ScrapeSummary
+from app.api.schemas import ListingDetail, ListingSummary, PaginatedResponse, PlzResponse, ScrapeSummary, ScrapeStatus
 from app.db import get_session
 from app.geo.distance import haversine_km
 from app.models import Listing, PlzGeodata
-from app.scraper.orchestrator import run_scrape
+from app.scrape_runner import get_state, start_background_job
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
 
-@router.post("/scrape", response_model=ScrapeSummary)
-async def scrape(
-    max_pages: int = Query(default=10, ge=1, le=100),
-    session: AsyncSession = Depends(get_session),
-) -> ScrapeSummary:
-    """Trigger a scrape run synchronously. Blocks until complete."""
-    logger.info("POST /api/scrape — max_pages=%d", max_pages)
-    summary = await run_scrape(session=session, max_pages=max_pages)
-    return ScrapeSummary(**summary)
+@router.post("/scrape", status_code=202)
+async def start_scrape() -> dict:
+    """Trigger a background scrape job. Returns 409 if already running."""
+    logger.info("POST /api/scrape — triggering background job")
+    started = start_background_job()
+    if not started:
+        raise HTTPException(status_code=409, detail="Scrape already running")
+    return {"status": "started"}
+
+
+@router.get("/scrape/status", response_model=ScrapeStatus)
+async def scrape_status() -> ScrapeStatus:
+    """Return current scrape job status for frontend polling."""
+    state = get_state()
+    summary_data = state.get("summary")
+    summary = ScrapeSummary(**summary_data) if summary_data else None
+    return ScrapeStatus(
+        status=state["status"],
+        started_at=state["started_at"],
+        finished_at=state["finished_at"],
+        phase=state["phase"],
+        progress=state["progress"],
+        summary=summary,
+        error=state["error"],
+    )
 
 
 @router.get("/geo/plz/{plz}", response_model=PlzResponse)
@@ -44,16 +59,6 @@ async def resolve_plz(
     return PlzResponse.model_validate(row)
 
 
-def _price_numeric(price: str | None) -> float:
-    """Extract the numeric value from a price string. Returns inf for non-numeric."""
-    if not price:
-        return float("inf")
-    # Strip thousands separators (., space) and take integer part before decimal comma
-    cleaned = price.split(",")[0].replace(".", "").replace(" ", "")
-    m = re.search(r"\d+", cleaned)
-    return float(m.group()) if m else float("inf")
-
-
 def _dist_key(listing: Listing, ref_lat: float, ref_lon: float) -> float:
     """Return Haversine distance from listing to reference point, or inf if no coords."""
     if listing.latitude is None or listing.longitude is None:
@@ -67,6 +72,7 @@ async def list_listings(
     per_page: int = Query(default=20, ge=1, le=100),
     search: str | None = Query(default=None),
     sort: Literal["date", "price", "distance"] = Query(default="date"),
+    sort_dir: Literal["asc", "desc"] = Query(default="desc"),
     plz: str | None = Query(default=None),
     max_distance: int | None = Query(default=None, ge=1),
     session: AsyncSession = Depends(get_session),
@@ -79,6 +85,7 @@ async def list_listings(
         raise HTTPException(status_code=400, detail="plz is required when max_distance is set")
 
     offset = (page - 1) * per_page
+    asc = sort_dir == "asc"
 
     # Base statement with optional search filter
     stmt = select(Listing)
@@ -97,8 +104,9 @@ async def list_listings(
         count_result = await session.execute(count_stmt)
         total: int = count_result.scalar_one()
 
+        date_order = Listing.posted_at.asc().nulls_last() if asc else Listing.posted_at.desc().nulls_last()
         rows_result = await session.execute(
-            stmt.order_by(Listing.posted_at.desc().nulls_last()).limit(per_page).offset(offset)
+            stmt.order_by(date_order).limit(per_page).offset(offset)
         )
         rows = rows_result.scalars().all()
 
@@ -159,17 +167,23 @@ async def list_listings(
 
     total = len(pairs)
 
-    # Apply Python-side sort
+    # Apply Python-side sort — nulls always last regardless of direction
     if sort == "price":
-        pairs.sort(key=lambda p: _price_numeric(p[0].price))
+        if asc:
+            pairs.sort(key=lambda p: (p[0].price_numeric is None, p[0].price_numeric or 0.0))
+        else:
+            pairs.sort(key=lambda p: (p[0].price_numeric is None, -(p[0].price_numeric or 0.0)))
     elif sort == "distance":
-        pairs.sort(key=lambda p: (p[1] is None, p[1] if p[1] is not None else float("inf")))
+        if asc:
+            pairs.sort(key=lambda p: (p[1] is None, p[1] if p[1] is not None else float("inf")))
+        else:
+            pairs.sort(key=lambda p: (p[1] is None, -(p[1] if p[1] is not None else 0.0)))
     else:
         # sort=date but max_distance was active — fall back to date sort in Python
         _epoch = datetime.min.replace(tzinfo=timezone.utc)
         pairs.sort(
             key=lambda p: p[0].posted_at if p[0].posted_at is not None else _epoch,
-            reverse=True,
+            reverse=not asc,
         )
 
     page_pairs = pairs[offset : offset + per_page]
@@ -212,3 +226,36 @@ async def toggle_sold(
         raise HTTPException(status_code=404, detail="Listing not found")
     await session.commit()
     return {"id": listing_id, "is_sold": is_sold}
+
+
+@router.patch("/listings/{listing_id}/favorite")
+async def toggle_favorite(
+    listing_id: int,
+    is_favorite: bool,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set or clear the is_favorite flag on a listing."""
+    result = await session.execute(
+        update(Listing)
+        .where(Listing.id == listing_id)
+        .values(is_favorite=is_favorite)
+        .returning(Listing.id)
+    )
+    if result.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    await session.commit()
+    return {"id": listing_id, "is_favorite": is_favorite}
+
+
+@router.get("/favorites", response_model=list[ListingSummary])
+async def get_favorites(
+    session: AsyncSession = Depends(get_session),
+) -> list[ListingSummary]:
+    """Return all favorited listings ordered by posted_at desc."""
+    result = await session.execute(
+        select(Listing)
+        .where(Listing.is_favorite.is_(True))
+        .order_by(Listing.posted_at.desc().nulls_last())
+    )
+    rows = result.scalars().all()
+    return [ListingSummary.model_validate(row) for row in rows]
