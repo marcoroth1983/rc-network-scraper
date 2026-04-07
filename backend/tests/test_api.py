@@ -232,6 +232,22 @@ class TestSorting:
         assert items[1]["title"] == "Expensive"
         assert items[2]["title"] == "NoPrize"
 
+    async def test_sort_by_price_space_thousands_separator(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """Prices with space as thousands separator must sort correctly."""
+        await _insert_listing(db_session, external_id="1", title="Expensive", price="1 300,00 €")
+        await _insert_listing(db_session, external_id="2", title="Cheap", price="25 €")
+        await _insert_listing(db_session, external_id="3", title="Mid", price="250 €")
+
+        response = await api_client.get("/api/listings?sort=price")
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert items[0]["title"] == "Cheap"
+        assert items[1]["title"] == "Mid"
+        assert items[2]["title"] == "Expensive"
+
     async def test_sort_distance_without_plz_returns_400(
         self, api_client: AsyncClient
     ) -> None:
@@ -328,6 +344,30 @@ class TestDistanceFilter:
         response = await api_client.get("/api/listings?max_distance=100")
 
         assert response.status_code == 400
+
+    async def test_distance_shown_when_sort_date_and_plz_provided(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """Distance must be computed for page items even when sort=date."""
+        await _seed_plz(db_session, "80331", "München", 48.1374, 11.5755)
+        await _insert_listing(
+            db_session, external_id="near", title="Near München",
+            lat=48.1374, lon=11.5755
+        )
+        await _insert_listing(
+            db_session, external_id="nocoord", title="No coordinates",
+            lat=None, lon=None
+        )
+
+        response = await api_client.get("/api/listings?sort=date&plz=80331")
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        near = next(i for i in items if i["external_id"] == "near")
+        nocoord = next(i for i in items if i["external_id"] == "nocoord")
+        assert near["distance_km"] is not None
+        assert near["distance_km"] < 1  # same location
+        assert nocoord["distance_km"] is None  # no coords → no distance
 
     async def test_total_reflects_distance_filter(
         self, api_client: AsyncClient, db_session: AsyncSession

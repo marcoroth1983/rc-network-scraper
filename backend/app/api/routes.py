@@ -45,11 +45,11 @@ async def resolve_plz(
 
 
 def _price_numeric(price: str | None) -> float:
-    """Extract the first integer from a price string. Returns inf for non-numeric."""
+    """Extract the numeric value from a price string. Returns inf for non-numeric."""
     if not price:
         return float("inf")
-    # Strip thousands separators (.) but keep decimal comma → take integer part only
-    cleaned = price.split(",")[0].replace(".", "")
+    # Strip thousands separators (., space) and take integer part before decimal comma
+    cleaned = price.split(",")[0].replace(".", "").replace(" ", "")
     m = re.search(r"\d+", cleaned)
     return float(m.group()) if m else float("inf")
 
@@ -91,7 +91,7 @@ async def list_listings(
         )
 
     if sort == "date" and max_distance is None:
-        # SQL-side sort and count — no Python-side filtering needed
+        # SQL-side sort and count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         count_result = await session.execute(count_stmt)
         total: int = count_result.scalar_one()
@@ -101,7 +101,22 @@ async def list_listings(
         )
         rows = rows_result.scalars().all()
 
-        items = [ListingSummary.model_validate(row) for row in rows]
+        # Compute distances for current page when PLZ is provided
+        if plz is not None:
+            geo_result = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
+            geo_row = geo_result.scalar_one_or_none()
+            if geo_row is None:
+                raise HTTPException(status_code=400, detail=f"PLZ '{plz}' not found in geodata")
+            items = []
+            for row in rows:
+                summary = ListingSummary.model_validate(row)
+                if row.latitude is not None and row.longitude is not None:
+                    dist = haversine_km(geo_row.lat, geo_row.lon, row.latitude, row.longitude)
+                    summary = summary.model_copy(update={"distance_km": dist})
+                items.append(summary)
+        else:
+            items = [ListingSummary.model_validate(row) for row in rows]
+
         return PaginatedResponse(total=total, page=page, per_page=per_page, items=items)
 
     # For price/distance sort or max_distance filter: fetch all matching rows, sort/filter in Python
