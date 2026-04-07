@@ -56,3 +56,23 @@ class TestExtractListings:
         html = "<html><body><div class='nothing'></div></body></html>"
         results = _extract_listings(html, BASE_URL)
         assert results == []
+
+    def test_extract_listings_skips_sticky_items(self) -> None:
+        """Sticky/notice threads (structItem--sticky) must be excluded from results."""
+        html = """
+        <html><body>
+          <div class="structItem structItem--sticky structItem--thread">
+            <div class="structItem-title">
+              <a href="/threads/hinweis.123/">Ergänzende Hinweise</a>
+            </div>
+          </div>
+          <div class="structItem structItem--thread">
+            <div class="structItem-title">
+              <a href="/threads/verkaufe-flieger.456/">Verkaufe Flieger</a>
+            </div>
+          </div>
+        </body></html>
+        """
+        results = _extract_listings(html, BASE_URL)
+        assert len(results) == 1
+        assert results[0]["external_id"] == "456"

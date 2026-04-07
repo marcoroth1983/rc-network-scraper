@@ -138,8 +138,7 @@ async def list_listings(
                 actual_dist = haversine_km(ref_lat, ref_lon, row.latitude, row.longitude)
                 if actual_dist <= max_distance:
                     filtered.append((row, actual_dist))
-            else:
-                filtered.append((row, None))  # no coords → always include
+            # listings without coordinates are excluded when max_distance is active
         pairs = filtered
 
     total = len(pairs)

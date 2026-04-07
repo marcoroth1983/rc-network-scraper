@@ -31,6 +31,8 @@ def _extract_listings(html: str, base_url: str) -> list[dict]:
     results: list[dict] = []
 
     for item in soup.select("div.structItem"):
+        if "structItem--sticky" in item.get("class", []):
+            continue
         # Each structItem should have a thread title link
         link_tag = item.select_one("div.structItem-title a[href*='/threads/']")
         if link_tag is None:

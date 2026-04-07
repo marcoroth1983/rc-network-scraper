@@ -298,11 +298,18 @@ class TestDistanceFilter:
         assert data["total"] == 1
         assert data["items"][0]["title"] == "Near listing"
 
-    async def test_max_distance_includes_listings_without_coords(
+    async def test_max_distance_excludes_listings_without_coords(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
+        """Listings without coordinates must be excluded when max_distance is active."""
         await _seed_plz(db_session, "80331", "München", 48.1374, 11.5755)
 
+        # Listing with coordinates within range
+        await _insert_listing(
+            db_session, external_id="near", title="Near listing",
+            lat=48.1374, lon=11.5755
+        )
+        # Listing without coordinates (e.g. Belgium, no German PLZ)
         await _insert_listing(
             db_session, external_id="nocoords", title="No coordinates listing",
             lat=None, lon=None
@@ -313,7 +320,7 @@ class TestDistanceFilter:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
-        assert data["items"][0]["distance_km"] is None
+        assert data["items"][0]["title"] == "Near listing"
 
     async def test_max_distance_requires_plz(
         self, api_client: AsyncClient
