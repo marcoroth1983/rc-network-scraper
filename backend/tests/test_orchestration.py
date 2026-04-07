@@ -287,14 +287,14 @@ class TestOrchestrationFreshnessStaleness:
             text("""
                 INSERT INTO listings (
                     external_id, url, title, price, condition, shipping,
-                    description, images, author, posted_at, posted_at_raw,
+                    description, images, tags, author, posted_at, posted_at_raw,
                     plz, city, latitude, longitude, scraped_at
                 ) VALUES (
                     '12345',
                     'https://www.rc-network.de/threads/biete-multiplex-easystar-3-komplett.12345/',
                     'Biete Multiplex EasyStar 3 komplett',
                     '150€', 'Neuwertig', 'DHL 5€',
-                    'Some description.', '[]'::jsonb, 'TestUser',
+                    'Some description.', '[]'::jsonb, '[]'::jsonb, 'TestUser',
                     NULL, NULL, '80331', 'München', NULL, NULL,
                     :scraped_at
                 )

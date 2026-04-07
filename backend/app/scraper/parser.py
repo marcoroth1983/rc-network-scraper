@@ -205,6 +205,15 @@ def _extract_images(post: Tag, page_url: str = "") -> list[str]:
     return urls
 
 
+def _extract_tags(soup: BeautifulSoup) -> list[str]:
+    """Extract thread tags from the js-tagList span (outside the first post)."""
+    return [
+        a.get_text(strip=True)
+        for a in soup.select("span.js-tagList a.tagItem")
+        if a.get_text(strip=True)
+    ]
+
+
 def _detect_sold(soup: BeautifulSoup) -> bool:
     """Return True if the thread title or any reply indicates the item is sold."""
     title = _extract_title(soup) or ""
@@ -240,6 +249,7 @@ def parse_detail(html: str, page_url: str = "") -> dict:
             "city": None,
             "description": "",
             "images": [],
+            "tags": _extract_tags(soup),
             "author": None,
             "posted_at": None,
             "posted_at_raw": None,
@@ -266,6 +276,7 @@ def parse_detail(html: str, page_url: str = "") -> dict:
         "city": city,
         "description": _extract_description(post, pairs),
         "images": _extract_images(post, page_url),
+        "tags": _extract_tags(soup),
         "author": _extract_author(post),
         "posted_at": posted_at,
         "posted_at_raw": posted_at_raw,

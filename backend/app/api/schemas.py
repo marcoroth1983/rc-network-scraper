@@ -38,6 +38,7 @@ class ListingDetail(BaseModel):
     shipping: str | None
     description: str
     images: list[str]
+    tags: list[str] = []
     author: str
     posted_at: datetime | None
     posted_at_raw: str | None

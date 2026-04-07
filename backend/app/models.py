@@ -23,6 +23,7 @@ class Listing(Base):
     shipping: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     images: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     author: Mapped[str] = mapped_column(String, nullable=False)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     posted_at_raw: Mapped[str | None] = mapped_column(String, nullable=True)

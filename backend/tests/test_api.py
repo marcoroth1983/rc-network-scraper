@@ -35,10 +35,10 @@ async def _insert_listing(
     await session.execute(
         text("""
             INSERT INTO listings (external_id, url, title, price, condition, shipping,
-                description, images, author, posted_at, posted_at_raw, plz, city,
+                description, images, tags, author, posted_at, posted_at_raw, plz, city,
                 latitude, longitude, scraped_at)
             VALUES (:eid, :url, :title, :price, NULL, NULL,
-                :desc, '[]', 'TestUser', NOW(), NULL, :plz, NULL,
+                :desc, '[]', '[]', 'TestUser', NOW(), NULL, :plz, NULL,
                 :lat, :lon, NOW())
         """),
         {
@@ -67,10 +67,10 @@ async def _insert_listing_with_date(
     await session.execute(
         text("""
             INSERT INTO listings (external_id, url, title, price, condition, shipping,
-                description, images, author, posted_at, posted_at_raw, plz, city,
+                description, images, tags, author, posted_at, posted_at_raw, plz, city,
                 latitude, longitude, scraped_at)
             VALUES (:eid, :url, :title, NULL, NULL, NULL,
-                '', '[]', 'TestUser', :posted_at, NULL, NULL, NULL,
+                '', '[]', '[]', 'TestUser', :posted_at, NULL, NULL, NULL,
                 NULL, NULL, NOW())
         """),
         {
@@ -187,6 +187,22 @@ class TestSearch:
 
         response = await api_client.get("/api/listings?search=multiplex")
 
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
+    async def test_search_matches_tags(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """Search must find listings where the query matches a tag."""
+        await db_session.execute(text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags,
+                author, scraped_at, is_sold)
+            VALUES ('tag-test', 'https://example.com/tag-test', 'Some plane', '', '[]',
+                    '["dle 111", "pilot rc"]', 'TestUser', NOW(), FALSE)
+        """))
+        await db_session.commit()
+
+        response = await api_client.get("/api/listings?search=dle+111")
         assert response.status_code == 200
         assert response.json()["total"] == 1
 

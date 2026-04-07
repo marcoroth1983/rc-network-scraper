@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import ListingDetail, ListingSummary, PaginatedResponse, PlzResponse, ScrapeSummary
@@ -87,6 +87,7 @@ async def list_listings(
             or_(
                 Listing.title.ilike(f"%{search}%"),
                 Listing.description.ilike(f"%{search}%"),
+                cast(Listing.tags, String).ilike(f"%{search}%"),
             )
         )
 

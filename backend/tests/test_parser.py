@@ -100,3 +100,16 @@ class TestDateParsing:
         """posted_at_raw contains the original datetime string from the HTML."""
         result = parse_detail(_load("detail_complete.html"))
         assert result["posted_at_raw"] == "2024-03-15T10:30:00+01:00"
+
+
+class TestTagExtraction:
+    def test_parse_detail_extracts_tags(self) -> None:
+        """Tags from js-tagList are extracted correctly."""
+        result = parse_detail(_load("detail_complete.html"))
+        assert "multiplex" in result["tags"]
+        assert "easystar" in result["tags"]
+
+    def test_tags_absent_returns_empty_list(self) -> None:
+        """tags is an empty list when no js-tagList is present."""
+        result = parse_detail(_load("detail_missing_price.html"))
+        assert result["tags"] == []

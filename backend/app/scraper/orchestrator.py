@@ -21,11 +21,11 @@ _START_URL = "https://www.rc-network.de/forums/biete-flugmodelle.132/"
 _UPSERT_SQL = text("""
     INSERT INTO listings (
         external_id, url, title, price, condition, shipping,
-        description, images, author, posted_at, posted_at_raw,
+        description, images, tags, author, posted_at, posted_at_raw,
         plz, city, latitude, longitude, scraped_at, is_sold
     ) VALUES (
         :external_id, :url, :title, :price, :condition, :shipping,
-        :description, :images, :author, :posted_at, :posted_at_raw,
+        :description, :images, :tags, :author, :posted_at, :posted_at_raw,
         :plz, :city, :latitude, :longitude, :scraped_at, :is_sold
     )
     ON CONFLICT (external_id) DO UPDATE SET
@@ -36,6 +36,7 @@ _UPSERT_SQL = text("""
         shipping     = EXCLUDED.shipping,
         description  = EXCLUDED.description,
         images       = EXCLUDED.images,
+        tags         = EXCLUDED.tags,
         author       = EXCLUDED.author,
         posted_at    = EXCLUDED.posted_at,
         posted_at_raw = EXCLUDED.posted_at_raw,
@@ -125,6 +126,7 @@ async def _upsert_listing(
             "shipping": parsed.get("shipping"),
             "description": parsed.get("description") or "",
             "images": json.dumps(parsed.get("images") or []),
+            "tags": json.dumps(parsed.get("tags") or []),
             "author": parsed.get("author") or "",
             "posted_at": parsed.get("posted_at"),
             "posted_at_raw": parsed.get("posted_at_raw"),
