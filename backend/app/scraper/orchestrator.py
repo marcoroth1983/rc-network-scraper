@@ -6,11 +6,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select, text, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.scraper.crawler import fetch_listings
+from app.scraper.crawler import _build_page_url, fetch_listings, fetch_page
 from app.scraper.parser import parse_detail
 
 logger = logging.getLogger(__name__)
@@ -49,11 +49,10 @@ _UPSERT_SQL = text("""
     RETURNING (xmax = 0) AS is_insert
 """)
 
-_FRESH_IDS_SQL = text("""
-    SELECT external_id
-    FROM listings
-    WHERE external_id = ANY(:ids)
-      AND scraped_at > :threshold
+MAX_PAGES = 25  # hard safety cap for phase1 stop-early crawl
+
+_EXISTING_IDS_SQL = text("""
+    SELECT external_id FROM listings WHERE external_id = ANY(:ids)
 """)
 
 _GEO_LOOKUP_SQL = text("""
@@ -71,18 +70,14 @@ _CITY_GEO_LOOKUP_SQL = text("""
 """)
 
 
-async def _fetch_fresh_ids(
+async def _fetch_existing_ids(
     session: AsyncSession,
     external_ids: list[str],
-    threshold: datetime,
 ) -> set[str]:
-    """Return the subset of external_ids that are already fresh in the DB."""
+    """Return the subset of external_ids already in the DB."""
     if not external_ids:
         return set()
-    result = await session.execute(
-        _FRESH_IDS_SQL,
-        {"ids": external_ids, "threshold": threshold},
-    )
+    result = await session.execute(_EXISTING_IDS_SQL, {"ids": external_ids})
     return {row[0] for row in result.fetchall()}
 
 
@@ -142,123 +137,99 @@ async def _upsert_listing(
     return bool(row[0]) if row else False
 
 
-async def run_scrape(
+async def _phase1_new_listings(
     session: AsyncSession,
-    max_pages: int = 10,
-    fresh_threshold_days: int = 7,
+    update_progress: callable,
+    delay: float,
 ) -> dict:
-    """Run a full scrape cycle and return a summary dict.
+    """Phase 1: crawl overview pages and upsert new/changed listings.
 
-    Args:
-        session: Async SQLAlchemy session.
-        max_pages: Maximum number of overview pages to crawl.
-        fresh_threshold_days: Listings scraped within this many days are skipped.
+    Stops pagination when a full page contains no new external_ids
+    (rc-network.de overview is ordered newest-first).
+    Hard cap at MAX_PAGES as a safety net against parser regressions.
 
-    Returns:
-        Dict with keys: pages_crawled, listings_found, new, updated, skipped.
+    Returns: {pages_crawled, new, updated}
     """
-    delay: float = settings.SCRAPE_DELAY
-
-    # Step 1: Crawl overview pages
-    logger.info("Starting scrape — max_pages=%d, fresh_threshold_days=%d", max_pages, fresh_threshold_days)
-    all_listings = await fetch_listings(_START_URL, max_pages=max_pages, delay=delay)
-
-    pages_crawled = max_pages  # fetch_listings stops early on empty page, but we report requested
-    listings_found = len(all_listings)
-    logger.info("Crawler returned %d listings across up to %d pages", listings_found, max_pages)
-
-    if not all_listings:
-        return {
-            "pages_crawled": pages_crawled,
-            "listings_found": 0,
-            "new": 0,
-            "updated": 0,
-            "skipped": 0,
-        }
-
-    # Step 2: Determine fresh IDs to skip
-    fresh_threshold = datetime.now(timezone.utc) - timedelta(days=fresh_threshold_days)
-    all_ids = [item["external_id"] for item in all_listings]
-    fresh_ids = await _fetch_fresh_ids(session, all_ids, fresh_threshold)
-
-    to_process = [item for item in all_listings if item["external_id"] not in fresh_ids]
-    skipped = len(fresh_ids)
-    logger.info(
-        "Fresh (skipped): %d  |  To process (new + stale): %d",
-        skipped,
-        len(to_process),
-    )
-
-    # Step 3: Fetch, parse, enrich, and upsert each non-fresh listing
     new_count = 0
     updated_count = 0
     scraped_at = datetime.now(timezone.utc)
 
     headers = {"User-Agent": _USER_AGENT}
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-        for idx, item in enumerate(to_process):
-            external_id: str = item["external_id"]
-            url: str = item["url"]
+        for page in range(1, MAX_PAGES + 1):
+            update_progress(f"Seite {page} scannen…")
+            url = _build_page_url(_START_URL, page)
+            page_listings = await fetch_page(url, client)
 
-            logger.info(
-                "[%d/%d] Fetching detail: %s",
-                idx + 1,
-                len(to_process),
-                url,
-            )
+            if not page_listings:
+                logger.info("Phase 1: empty page %d — stopping", page)
+                return {"pages_crawled": page, "new": new_count, "updated": updated_count}
 
-            try:
-                response = await client.get(url)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                logger.warning(
-                    "HTTP %s for listing %s — skipping",
-                    exc.response.status_code,
-                    external_id,
+            ids = [item["external_id"] for item in page_listings]
+            existing_ids = await _fetch_existing_ids(session, ids)
+            new_on_page = [item for item in page_listings if item["external_id"] not in existing_ids]
+
+            if not new_on_page:
+                logger.info(
+                    "Phase 1: page %d fully known — stopping after %d pages", page, page
                 )
-                skipped += 1
-                continue
-            except httpx.RequestError as exc:
-                logger.warning("Request error for listing %s: %s — skipping", external_id, exc)
-                skipped += 1
-                continue
+                return {"pages_crawled": page, "new": new_count, "updated": updated_count}
 
-            parsed = parse_detail(response.text, page_url=url)
+            logger.info("Phase 1: page %d has %d new listings", page, len(new_on_page))
 
-            # Geo enrichment — falls back to city name when PLZ is missing
-            latitude, longitude, resolved_plz = await _geo_lookup(
-                session, parsed.get("plz"), parsed.get("city")
-            )
-            parsed["plz"] = resolved_plz  # store resolved PLZ (may come from city lookup)
+            for idx, item in enumerate(new_on_page):
+                update_progress(f"Seite {page}: {idx + 1}/{len(new_on_page)} neue Inserate")
+                external_id: str = item["external_id"]
+                url_detail: str = item["url"]
 
-            is_new = await _upsert_listing(
-                session=session,
-                external_id=external_id,
-                url=url,
-                parsed=parsed,
-                latitude=latitude,
-                longitude=longitude,
-                scraped_at=scraped_at,
-            )
-            await session.commit()
+                try:
+                    response = await client.get(url_detail)
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    logger.warning(
+                        "Phase 1: HTTP %s for %s — skipping",
+                        exc.response.status_code, external_id,
+                    )
+                    continue
+                except httpx.RequestError as exc:
+                    logger.warning(
+                        "Phase 1: request error for %s: %s — skipping", external_id, exc
+                    )
+                    continue
 
-            if is_new:
-                new_count += 1
-                logger.debug("Inserted new listing %s", external_id)
-            else:
-                updated_count += 1
-                logger.debug("Updated existing listing %s", external_id)
+                parsed = parse_detail(response.text, page_url=url_detail)
+                latitude, longitude, resolved_plz = await _geo_lookup(
+                    session, parsed.get("plz"), parsed.get("city")
+                )
+                parsed["plz"] = resolved_plz
 
-            # Respect rate limit between requests (skip delay after last item)
-            if idx < len(to_process) - 1:
+                is_new = await _upsert_listing(
+                    session=session,
+                    external_id=external_id,
+                    url=url_detail,
+                    parsed=parsed,
+                    latitude=latitude,
+                    longitude=longitude,
+                    scraped_at=scraped_at,
+                )
+                await session.commit()
+
+                if is_new:
+                    new_count += 1
+                else:
+                    updated_count += 1
+
+                if idx < len(new_on_page) - 1:
+                    await asyncio.sleep(delay)
+
+            if page < MAX_PAGES:
                 await asyncio.sleep(delay)
 
-    summary = {
-        "pages_crawled": pages_crawled,
-        "listings_found": listings_found,
-        "new": new_count,
-        "updated": updated_count,
-        "skipped": skipped,
-    }
-    logger.info("Scrape complete: %s", summary)
-    return summary
+    logger.warning("Phase 1: reached MAX_PAGES cap (%d)", MAX_PAGES)
+    return {"pages_crawled": MAX_PAGES, "new": new_count, "updated": updated_count}
+
+
+async def run_scrape(session: AsyncSession, max_pages: int = 10, fresh_threshold_days: int = 7) -> dict:
+    """Deprecated shim — superseded by scrape_runner.run_scrape_job. Removed in Task 7."""
+    logger.warning("run_scrape shim called — consider using run_scrape_job directly")
+    return {"pages_crawled": 0, "listings_found": 0, "new": 0, "updated": 0, "skipped": 0}
