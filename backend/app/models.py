@@ -33,6 +33,7 @@ class Listing(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     is_sold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class PlzGeodata(Base):

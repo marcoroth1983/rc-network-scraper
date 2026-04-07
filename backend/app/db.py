@@ -29,6 +29,9 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'"
         ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
