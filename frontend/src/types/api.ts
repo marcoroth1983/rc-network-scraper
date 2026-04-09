@@ -72,10 +72,18 @@ export type ScrapePhase = 'phase1' | 'phase2' | 'phase3' | null;
 
 export interface ScrapeStatus {
   status: ScrapeJobStatus;
+  job_type: 'update' | 'regular' | null;
   started_at: string | null;
   finished_at: string | null;
   phase: ScrapePhase;
   progress: string | null;
+  summary: ScrapeSummary | null;
+  error: string | null;
+}
+
+export interface ScrapeLogEntry {
+  job_type: 'update' | 'regular';
+  finished_at: string;  // ISO 8601
   summary: ScrapeSummary | null;
   error: string | null;
 }

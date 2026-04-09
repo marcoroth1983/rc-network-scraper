@@ -4,6 +4,7 @@ import type {
   ListingSummary,
   PaginatedResponse,
   PlzResponse,
+  ScrapeLogEntry,
   ScrapeStatus,
 } from '../types/api';
 import { ApiError } from '../types/api';
@@ -54,6 +55,11 @@ export async function startScrape(): Promise<{ status: 'started' | 'already_runn
 export async function getScrapeStatus(): Promise<ScrapeStatus> {
   const res = await fetch('/api/scrape/status');
   return handleResponse<ScrapeStatus>(res);
+}
+
+export async function getScrapeLog(): Promise<ScrapeLogEntry[]> {
+  const res = await fetch('/api/scrape/log');
+  return handleResponse<ScrapeLogEntry[]>(res);
 }
 
 export async function toggleSold(id: number, isSold: boolean): Promise<void> {
