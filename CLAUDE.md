@@ -30,3 +30,4 @@ docker compose exec backend pytest tests/ -v  # Run tests
 - Prefer simple solutions over configurable/extensible ones
 - Rate-limit scraping (min 500ms between requests)
 - Tests use saved HTML fixtures, no live requests
+- Frontend tests import all Vitest globals explicitly: `import { describe, it, expect, vi } from 'vitest'` (globals are NOT enabled in vitest config)
