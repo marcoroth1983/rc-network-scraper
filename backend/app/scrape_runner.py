@@ -1,16 +1,19 @@
-"""Scrape job state machine and background job runner.
+"""Scrape job state machine and background job runners.
 
-Single module-level dict tracks job status — safe for single-process uvicorn.
-The check-and-set in run_scrape_job is synchronous (no await between the guard
-and the state mutation), making it safe without a lock in asyncio's cooperative
-multitasking model.
+Two job types:
+- update  (Phase 1 only): crawl overview, upsert new listings
+- regular (Phase 2+3):    sold-recheck + cleanup rotation
 
-Task reference tracking: callers must store the asyncio.Task in _background_tasks
-to prevent GC collection mid-execution (Python docs warning).
+Single module-level _state tracks the currently-running job — safe for
+single-process uvicorn. The check-and-set is synchronous (no await between
+the guard and the state mutation) — safe in asyncio's cooperative model.
+
+Completed runs are appended to _log (deque, maxlen=50) for the UI log view.
 """
 
 import asyncio
 import logging
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,19 +27,22 @@ from app.scraper.orchestrator import (
 
 logger = logging.getLogger(__name__)
 
-# Module-level state — single-process, single-user
+# Current job state — one job runs at a time
 _state: dict[str, Any] = {
     "status": "idle",    # "idle" | "running" | "done" | "error"
-    "started_at": None,  # ISO 8601 string
+    "job_type": None,    # "update" | "regular" | None
+    "started_at": None,
     "finished_at": None,
-    "phase": None,       # "phase1" | "phase2" | "phase3"
-    "progress": None,    # human-readable current step
-    "summary": None,     # final result dict
+    "phase": None,       # "phase1" | "phase2" | "phase3" | None
+    "progress": None,
+    "summary": None,
     "error": None,
 }
 
+# Completed run history — survives until process restart
+_log: deque[dict[str, Any]] = deque(maxlen=50)
+
 # Strong references to background tasks prevent GC cancellation
-# (see https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task)
 _background_tasks: set[asyncio.Task] = set()
 
 
@@ -45,10 +51,16 @@ def get_state() -> dict[str, Any]:
     return dict(_state)
 
 
+def get_log() -> list[dict[str, Any]]:
+    """Return log entries newest-first."""
+    return list(reversed(_log))
+
+
 def reset_state() -> None:
-    """Reset state to idle. Used in tests only."""
+    """Reset state to idle and clear log. Used in tests only."""
     _state.update({
         "status": "idle",
+        "job_type": None,
         "started_at": None,
         "finished_at": None,
         "phase": None,
@@ -56,38 +68,57 @@ def reset_state() -> None:
         "summary": None,
         "error": None,
     })
+    _log.clear()
 
 
 def _update(**kwargs: Any) -> None:
     _state.update(kwargs)
 
 
-def start_background_job() -> bool:
-    """Create an asyncio.Task for run_scrape_job, keeping a strong reference.
+def _append_log(job_type: str, summary: dict | None, error: str | None) -> None:
+    _log.append({
+        "job_type": job_type,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "summary": summary,
+        "error": error,
+    })
 
-    Returns True if the job was started, False if already running.
+
+async def start_update_job() -> bool:
+    """Schedule run_update_job as a background task.
+
+    Returns True if started, False if already running.
     """
     if _state["status"] == "running":
         return False
-    task = asyncio.create_task(run_scrape_job())
+    task = asyncio.create_task(run_update_job())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return True
 
 
-async def run_scrape_job() -> None:
-    """Full scrape cycle: phase1 + phase2 + phase3.
+async def start_recheck_job() -> bool:
+    """Schedule run_recheck_job as a background task.
 
-    No-op if already running. Updates _state throughout so callers can poll.
-    Creates its own DB sessions — not request-scoped.
+    Returns True if started, False if already running.
     """
-    # Guard: synchronous check-and-set (no await between them — safe in asyncio)
     if _state["status"] == "running":
-        logger.info("Scrape already running — ignoring trigger")
+        return False
+    task = asyncio.create_task(run_recheck_job())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return True
+
+
+async def run_update_job() -> None:
+    """Phase 1 only: crawl overview pages and upsert new listings."""
+    if _state["status"] == "running":
+        logger.info("Scrape already running — skipping update job")
         return
 
     _update(
         status="running",
+        job_type="update",
         started_at=datetime.now(timezone.utc).isoformat(),
         finished_at=None,
         phase="phase1",
@@ -95,28 +126,66 @@ async def run_scrape_job() -> None:
         summary=None,
         error=None,
     )
-    logger.info("Scrape job started")
+    logger.info("Update job started")
 
     try:
-        summary: dict[str, Any] = {}
-        delay = settings.SCRAPE_DELAY
-
-        _update(phase="phase1", progress="Übersichtsseiten scannen…")
         async with AsyncSessionLocal() as session:
             result = await _phase1_new_listings(
                 session,
                 update_progress=lambda p: _update(phase="phase1", progress=p),
-                delay=delay,
+                delay=settings.SCRAPE_DELAY,
             )
-        summary.update(result)
-        logger.info("Phase 1 done: %s", result)
 
-        _update(phase="phase2", progress="Sold-Check…")
+        _update(
+            status="done",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            phase=None,
+            progress=None,
+            summary=result,
+            error=None,
+        )
+        _append_log("update", result, None)
+        logger.info("Update job complete: %s", result)
+
+    except Exception as exc:
+        logger.exception("Update job failed: %s", exc)
+        _update(
+            status="error",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            phase=None,
+            progress=None,
+            summary=None,  # clear any stale summary from a previous successful run
+            error=str(exc),
+        )
+        _append_log("update", None, str(exc))
+
+
+async def run_recheck_job() -> None:
+    """Phase 2+3: sold-recheck rotation and cleanup."""
+    if _state["status"] == "running":
+        logger.info("Scrape already running — skipping recheck job")
+        return
+
+    _update(
+        status="running",
+        job_type="regular",
+        started_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=None,
+        phase="phase2",
+        progress="Sold-Check…",
+        summary=None,
+        error=None,
+    )
+    logger.info("Recheck job started")
+
+    try:
+        summary: dict[str, Any] = {}
+
         async with AsyncSessionLocal() as session:
             result = await _phase2_sold_recheck(
                 session,
                 update_progress=lambda p: _update(phase="phase2", progress=p),
-                delay=delay,
+                delay=settings.RECHECK_DELAY,
             )
         summary.update(result)
         logger.info("Phase 2 done: %s", result)
@@ -133,16 +202,19 @@ async def run_scrape_job() -> None:
             phase=None,
             progress=None,
             summary=summary,
-            error=None,  # clear any error from a previous failed run
+            error=None,
         )
-        logger.info("Scrape job complete: %s", summary)
+        _append_log("regular", summary, None)
+        logger.info("Recheck job complete: %s", summary)
 
     except Exception as exc:
-        logger.exception("Scrape job failed: %s", exc)
+        logger.exception("Recheck job failed: %s", exc)
         _update(
             status="error",
             finished_at=datetime.now(timezone.utc).isoformat(),
             phase=None,
             progress=None,
+            summary=None,  # clear any stale summary from a previous successful run
             error=str(exc),
         )
+        _append_log("regular", None, str(exc))

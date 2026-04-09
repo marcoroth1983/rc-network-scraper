@@ -100,3 +100,12 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def load_fixture(name: str) -> str:
     """Load an HTML fixture file by filename (e.g. 'overview_page.html')."""
     return (FIXTURES_DIR / name).read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def reset_scrape_runner():
+    """Reset scrape_runner module state before each test."""
+    from app.scrape_runner import reset_state
+    reset_state()
+    yield
+    reset_state()
