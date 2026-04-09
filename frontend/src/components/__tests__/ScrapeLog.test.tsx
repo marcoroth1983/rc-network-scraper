@@ -39,6 +39,23 @@ describe('ScrapeLog', () => {
     });
   });
 
+  it('renders error entry with red styling', async () => {
+    vi.spyOn(client, 'getScrapeLog').mockResolvedValue([
+      {
+        job_type: 'update',
+        finished_at: new Date('2026-04-08T16:00:00Z').toISOString(),
+        summary: null,
+        error: 'connection timeout',
+      },
+    ]);
+    render(<ScrapeLog />);
+    await userEvent.click(screen.getByRole('button'));
+    await waitFor(() => {
+      expect(screen.getByText('Fehler')).toBeInTheDocument();
+      expect(screen.getByText('Fehler').className).toContain('text-red-500');
+    });
+  });
+
   it('renders regular entry correctly', async () => {
     vi.spyOn(client, 'getScrapeLog').mockResolvedValue([
       {
