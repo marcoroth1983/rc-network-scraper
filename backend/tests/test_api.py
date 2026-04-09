@@ -460,8 +460,8 @@ async def _insert_listing_full(
 class TestScrapeEndpoints:
     async def test_start_scrape_returns_202(self, api_client: AsyncClient) -> None:
         """POST /api/scrape starts background job and returns 202."""
-        from unittest.mock import patch
-        with patch("app.api.routes.start_background_job", return_value=True):
+        from unittest.mock import patch, AsyncMock
+        with patch("app.api.routes.start_update_job", new_callable=AsyncMock, return_value=True):
             resp = await api_client.post("/api/scrape")
         assert resp.status_code == 202
         assert resp.json()["status"] == "started"
@@ -470,22 +470,27 @@ class TestScrapeEndpoints:
         self, api_client: AsyncClient
     ) -> None:
         """POST /api/scrape returns 409 if already running."""
-        from unittest.mock import patch
-        with patch("app.api.routes.start_background_job", return_value=False):
+        from unittest.mock import patch, AsyncMock
+        with patch("app.api.routes.start_update_job", new_callable=AsyncMock, return_value=False):
             resp = await api_client.post("/api/scrape")
         assert resp.status_code == 409
 
     async def test_scrape_status_returns_idle(self, api_client: AsyncClient) -> None:
         """GET /api/scrape/status returns current state."""
-        from unittest.mock import patch
-        idle = {
-            "status": "idle", "started_at": None, "finished_at": None,
-            "phase": None, "progress": None, "summary": None, "error": None,
-        }
-        with patch("app.api.routes.get_state", return_value=idle):
-            resp = await api_client.get("/api/scrape/status")
+        from app.scrape_runner import reset_state
+        reset_state()
+        resp = await api_client.get("/api/scrape/status")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "idle"
+        data = resp.json()
+        assert data["status"] == "idle"
+
+    async def test_scrape_log_returns_empty_initially(self, api_client: AsyncClient) -> None:
+        """GET /api/scrape/log returns empty list on fresh start."""
+        from app.scrape_runner import reset_state
+        reset_state()
+        resp = await api_client.get("/api/scrape/log")
+        assert resp.status_code == 200
+        assert resp.json() == []
 
 
 @pytest.mark.asyncio

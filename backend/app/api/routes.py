@@ -8,11 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import ListingDetail, ListingSummary, PaginatedResponse, PlzResponse, ScrapeSummary, ScrapeStatus
+from app.api.schemas import (
+    ListingDetail, ListingSummary, PaginatedResponse, PlzResponse,
+    ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
+)
 from app.db import get_session
 from app.geo.distance import haversine_km
 from app.models import Listing, PlzGeodata
-from app.scrape_runner import get_state, start_background_job
+from app.scrape_runner import get_state, get_log, start_update_job
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +24,9 @@ router = APIRouter(prefix="/api")
 
 @router.post("/scrape", status_code=202)
 async def start_scrape() -> dict:
-    """Trigger a background scrape job. Returns 409 if already running."""
-    logger.info("POST /api/scrape — triggering background job")
-    started = start_background_job()
+    """Trigger a background update job (Phase 1). Returns 409 if already running."""
+    logger.info("POST /api/scrape — triggering update job")
+    started = await start_update_job()
     if not started:
         raise HTTPException(status_code=409, detail="Scrape already running")
     return {"status": "started"}
@@ -37,6 +40,7 @@ async def scrape_status() -> ScrapeStatus:
     summary = ScrapeSummary(**summary_data) if summary_data else None
     return ScrapeStatus(
         status=state["status"],
+        job_type=state.get("job_type"),
         started_at=state["started_at"],
         finished_at=state["finished_at"],
         phase=state["phase"],
@@ -44,6 +48,23 @@ async def scrape_status() -> ScrapeStatus:
         summary=summary,
         error=state["error"],
     )
+
+
+@router.get("/scrape/log", response_model=list[ScrapeLogEntry])
+async def scrape_log() -> list[ScrapeLogEntry]:
+    """Return in-memory scrape run history, newest first (max 50 entries)."""
+    entries = get_log()
+    result = []
+    for entry in entries:
+        summary_data = entry.get("summary")
+        summary = ScrapeSummary(**summary_data) if summary_data else None
+        result.append(ScrapeLogEntry(
+            job_type=entry["job_type"],
+            finished_at=entry["finished_at"],
+            summary=summary,
+            error=entry.get("error"),
+        ))
+    return result
 
 
 @router.get("/geo/plz/{plz}", response_model=PlzResponse)

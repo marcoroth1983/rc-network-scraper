@@ -76,10 +76,18 @@ class ScrapeSummary(BaseModel):
 
 class ScrapeStatus(BaseModel):
     status: Literal["idle", "running", "done", "error"]
+    job_type: Literal["update", "regular"] | None = None
     started_at: str | None = None
     finished_at: str | None = None
     phase: Literal["phase1", "phase2", "phase3"] | None = None
     progress: str | None = None
+    summary: ScrapeSummary | None = None
+    error: str | None = None
+
+
+class ScrapeLogEntry(BaseModel):
+    job_type: Literal["update", "regular"]
+    finished_at: str
     summary: ScrapeSummary | None = None
     error: str | None = None
 
