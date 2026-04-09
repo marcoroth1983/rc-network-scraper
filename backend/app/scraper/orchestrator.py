@@ -395,12 +395,6 @@ async def _phase1_new_listings(
     return {"pages_crawled": MAX_PAGES, "new": new_count, "updated": updated_count}
 
 
-async def run_scrape(session: AsyncSession, max_pages: int = 10, fresh_threshold_days: int = 7) -> dict:
-    """Deprecated shim — superseded by scrape_runner.run_scrape_job. Removed in Task 7."""
-    logger.warning("run_scrape shim called — consider using run_scrape_job directly")
-    return {"pages_crawled": 0, "listings_found": 0, "new": 0, "updated": 0, "skipped": 0}
-
-
 _RECHECK_SQL = text("""
     SELECT id, url, external_id
     FROM listings
@@ -414,7 +408,7 @@ async def _phase2_sold_recheck(
     session: AsyncSession,
     update_progress: Callable[[str], None],
     delay: float,
-    batch_size: int = 50,
+    batch_size: int = 100,
 ) -> dict:
     """Phase 2: re-fetch oldest non-sold listings to detect sold status.
 

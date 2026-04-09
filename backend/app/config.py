@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "postgresql+asyncpg://rcscout:rcscout_dev@db:5432/rcscout"
     SCRAPE_DELAY: float = 1.0
+    RECHECK_DELAY: float = 2.0
 
 
 settings = Settings()
