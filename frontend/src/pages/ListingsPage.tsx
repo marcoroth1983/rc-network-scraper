@@ -11,8 +11,8 @@ function Spinner() {
   );
 }
 
-export default function ListingsPage({ scrapeKey = 0 }: { scrapeKey?: number }) {
-  const { data, loading, error, filter, setFilter } = useListings(scrapeKey);
+export default function ListingsPage() {
+  const { data, loading, error, filter, setFilter } = useListings();
 
   return (
     <div>

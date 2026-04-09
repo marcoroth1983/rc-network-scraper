@@ -50,7 +50,7 @@ interface UseListingsResult {
   setFilter: (next: ListingsFilter) => void;
 }
 
-export function useListings(reloadKey = 0): UseListingsResult {
+export function useListings(): UseListingsResult {
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = readFiltersFromParams(searchParams);
 
@@ -104,7 +104,6 @@ export function useListings(reloadKey = 0): UseListingsResult {
     filter.sort,
     filter.sort_dir,
     filter.max_distance,
-    reloadKey,
   ]);
 
   return { data, loading, error, filter, setFilter };
