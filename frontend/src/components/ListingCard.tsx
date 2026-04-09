@@ -26,10 +26,22 @@ interface Props {
   onFavoriteChange?: (id: number, isFavorite: boolean) => void;
 }
 
+function isToday(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  const today = new Date();
+  const d = new Date(dateStr);
+  return (
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate()
+  );
+}
+
 export default function ListingCard({ listing, onFavoriteChange }: Props) {
   const routerLocation = useLocation();
   const location = listing.city ?? listing.plz ?? null;
   const hasDistance = listing.distance_km != null;
+  const isNew = isToday(listing.posted_at);
 
   const [favorite, setFavorite] = useState(listing.is_favorite);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
@@ -61,6 +73,11 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
               VERKAUFT
             </span>
           </div>
+        )}
+        {isNew && !listing.is_sold && (
+          <span className="absolute top-2 left-2 z-10 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow pointer-events-none">
+            NEU
+          </span>
         )}
         {listing.images.length > 0 && (
           <img
