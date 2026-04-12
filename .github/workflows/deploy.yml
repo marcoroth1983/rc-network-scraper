@@ -64,3 +64,5 @@ jobs:
             docker compose -f docker-compose.prod.yml pull nginx backend
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
+            sleep 10
+            curl --fail --retry 3 --retry-delay 5 --max-time 10 http://localhost/health || (echo "Health check failed!" && exit 1)
