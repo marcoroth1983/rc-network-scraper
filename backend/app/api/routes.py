@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.api.schemas import (
     ListingDetail, ListingSummary, PaginatedResponse, PlzResponse,
     ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
 )
 from app.db import get_session
 from app.geo.distance import haversine_km
-from app.models import Listing, PlzGeodata
+from app.models import Listing, PlzGeodata, User
 from app.scrape_runner import get_state, get_log, start_update_job
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/api")
 
 
 @router.post("/scrape", status_code=202)
-async def start_scrape() -> dict:
+async def start_scrape(_: User = Depends(get_current_user)) -> dict:
     """Trigger a background update job (Phase 1). Returns 409 if already running."""
     logger.info("POST /api/scrape — triggering update job")
     started = await start_update_job()
@@ -33,7 +34,7 @@ async def start_scrape() -> dict:
 
 
 @router.get("/scrape/status", response_model=ScrapeStatus)
-async def scrape_status() -> ScrapeStatus:
+async def scrape_status(_: User = Depends(get_current_user)) -> ScrapeStatus:
     """Return current scrape job status for frontend polling."""
     state = get_state()
     summary_data = state.get("summary")
@@ -51,7 +52,7 @@ async def scrape_status() -> ScrapeStatus:
 
 
 @router.get("/scrape/log", response_model=list[ScrapeLogEntry])
-async def scrape_log() -> list[ScrapeLogEntry]:
+async def scrape_log(_: User = Depends(get_current_user)) -> list[ScrapeLogEntry]:
     """Return in-memory scrape run history, newest first (max 50 entries)."""
     entries = get_log()
     result = []
@@ -71,6 +72,7 @@ async def scrape_log() -> list[ScrapeLogEntry]:
 async def resolve_plz(
     plz: str,
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> PlzResponse:
     """Resolve a German PLZ to coordinates. Returns 404 if PLZ not found."""
     result = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
@@ -97,6 +99,7 @@ async def list_listings(
     plz: str | None = Query(default=None),
     max_distance: int | None = Query(default=None, ge=1),
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> PaginatedResponse:
     """Return a paginated, filterable, sortable list of listings."""
     # Validate parameter combinations
@@ -222,6 +225,7 @@ async def list_listings(
 async def get_listing(
     listing_id: int,
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> ListingDetail:
     """Return a single listing by ID. Returns 404 if not found."""
     result = await session.execute(select(Listing).where(Listing.id == listing_id))
@@ -238,6 +242,7 @@ async def toggle_sold(
     listing_id: int,
     is_sold: bool,
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> dict:
     """Set or clear the is_sold flag on a listing."""
     result = await session.execute(
@@ -254,6 +259,7 @@ async def toggle_favorite(
     listing_id: int,
     is_favorite: bool,
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> dict:
     """Set or clear the is_favorite flag on a listing."""
     result = await session.execute(
@@ -271,6 +277,7 @@ async def toggle_favorite(
 @router.get("/favorites", response_model=list[ListingSummary])
 async def get_favorites(
     session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
 ) -> list[ListingSummary]:
     """Return all favorited listings ordered by posted_at desc."""
     result = await session.execute(
