@@ -274,7 +274,7 @@ Origin is correctly locked to the production domain. `allow_methods=["*"]` and `
 | NET-1 | Resolved (already configured) | 2026-04-13 | Traefik global HTTP→HTTPS redirect was already in place. |
 | DB-2 | Resolved (verified) | 2026-04-13 | Strong 32-char random password confirmed on VPS. |
 | CI-1 | Fixed | 2026-04-13 | Added `curl --fail --retry 3` health check after deploy in `.github/workflows/deploy.yml`. |
-| TLS-1 | Fixed | 2026-04-13 | Added HSTS header (`max-age=3600`) in `frontend/nginx.conf`. Increase to `max-age=31536000` after confirming no issues. |
+| TLS-1 | Fixed | 2026-04-13 | Added HSTS header in `frontend/nginx.conf`. Initially `max-age=3600`, confirmed working via successful deploy, increased to `max-age=31536000` (1 year). |
 | SEC-2 | Fixed | 2026-04-13 | Secret rotation procedure documented in `docs/SECRET_ROTATION.md`. |
 
 ---
