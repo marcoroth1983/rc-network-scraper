@@ -42,10 +42,19 @@ from app.scraper.orchestrator import _parse_price_numeric
         # Large prices with dot-thousands separator
         ("25.000,00 €", 25000.0),
         ("10.000,-€", 10000.0),
-        # Lowercase "euro" — stripped by re.sub fallback, result still correct
+        # Lowercase "euro"
         ("275,00 euro", 275.0),
+        # Dot-thousands with lowercase "euro" (bug: was parsed as 6.9)
+        ("6.900 euro", 6900.0),
         # Trailing comma (no decimal digits)
         ("200,", 200.0),
+        # Multiple prices in one string — take only the first
+        ("275,- leer oder 375,- mit Antrieb", 275.0),
+        ("100 oder 150 EUR", 100.0),
+        # Space as thousands separator without decimal
+        ("1 000", 1000.0),
+        ("1 000,-", 1000.0),
+        ("1 000 oder 2 000", 1000.0),
     ],
 )
 def test_parse_price_numeric(price: str | None, expected: float | None) -> None:

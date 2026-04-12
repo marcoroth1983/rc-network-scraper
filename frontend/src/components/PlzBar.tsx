@@ -107,7 +107,7 @@ export default function PlzBar({ onOpenFavorites }: Props) {
               onBlur={() => validateAndApplyPlz(plzInput)}
               onKeyDown={(e) => e.key === 'Enter' && validateAndApplyPlz(plzInput)}
               maxLength={5}
-              className={`w-28 px-3 py-1 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-white/50 transition text-gray-900 ${
+              className={`w-28 px-3 py-1.5 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-white/50 transition text-gray-900 ${
                 plzCity
                   ? 'bg-green-50 border-2 border-green-400'
                   : plzError
@@ -124,7 +124,7 @@ export default function PlzBar({ onOpenFavorites }: Props) {
               <button
                 type="button"
                 onClick={handlePlzClear}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-700 text-xs leading-none"
                 aria-label="PLZ löschen"
               >
                 ✕
@@ -132,7 +132,7 @@ export default function PlzBar({ onOpenFavorites }: Props) {
             )}
           </div>
           {plzCity && (
-            <span className="text-sm text-white font-medium drop-shadow-sm">{plzCity}</span>
+            <span className="text-xs sm:text-sm text-white font-medium drop-shadow-sm">{plzCity}</span>
           )}
           {plzError && (
             <span className="text-xs text-red-200 font-medium">{plzError}</span>
@@ -155,7 +155,7 @@ export default function PlzBar({ onOpenFavorites }: Props) {
           >
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg>
-          Merkliste
+          <span className="hidden sm:inline">Merkliste</span>
         </button>
       </div>
     </div>

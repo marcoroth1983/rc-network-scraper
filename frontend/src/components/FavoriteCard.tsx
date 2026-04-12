@@ -24,7 +24,7 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
   return (
     <article className={`flex gap-4 p-4 bg-white rounded-xl border border-gray-100 shadow-sm relative${listing.is_sold ? ' opacity-70' : ''}`}>
       {/* Thumbnail */}
-      <div className="relative shrink-0 w-24 h-20 rounded-lg overflow-hidden bg-gray-100">
+      <div className="relative shrink-0 w-20 h-16 sm:w-24 sm:h-20 rounded-lg overflow-hidden bg-gray-100">
         {listing.images.length > 0 ? (
           <img
             src={listing.images[0].startsWith('/') ? `https://www.rc-network.de${listing.images[0]}` : listing.images[0]}

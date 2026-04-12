@@ -32,8 +32,8 @@ def _parse_price_numeric(price: str | None) -> float | None:
     if not price:
         return None
     cleaned = price.replace('\u00a0', ' ')  # non-breaking space
-    for token in ['Euro', 'EUR', '€', 'VB', 'vb', 'Vb', ',-']:
-        cleaned = cleaned.replace(token, '')
+    cleaned = re.sub(r'(?i)\b(euro|eur|vb)\b', '', cleaned)
+    cleaned = cleaned.replace('€', '').replace(',-', '')
     cleaned = cleaned.strip()
     if not cleaned:
         return None
@@ -50,7 +50,12 @@ def _parse_price_numeric(price: str | None) -> float | None:
         parts = cleaned.split('.')
         if all(len(p) == 3 for p in parts[1:]):
             cleaned = cleaned.replace('.', '')
-    cleaned = re.sub(r'[^0-9.]', '', cleaned)
+    # Extract first numeric token only — avoids concatenating multiple prices,
+    # e.g. "275leeroder375mitAntrieb" → "275" instead of "275375".
+    m = re.search(r'[\d.]+', cleaned)
+    if not m:
+        return None
+    cleaned = m.group(0)
     if cleaned.count('.') > 1:
         return None
     try:
@@ -440,7 +445,31 @@ async def _phase2_sold_recheck(
                 response.raise_for_status()
                 parsed = parse_detail(response.text, page_url=url)
                 is_sold = parsed.get("is_sold", False)
-            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (403, 404, 410):
+                    logger.info(
+                        "Phase 2: %s returned %d — marking as SOLD",
+                        external_id, exc.response.status_code,
+                    )
+                    await session.execute(
+                        text("UPDATE listings SET is_sold = TRUE, scraped_at = :now WHERE id = :id"),
+                        {"now": now, "id": listing_id},
+                    )
+                    await session.commit()
+                    rechecked += 1
+                    sold_found += 1
+                else:
+                    logger.warning(
+                        "Phase 2: failed to fetch %s: %s — bumping scraped_at only",
+                        external_id, exc,
+                    )
+                    await session.execute(
+                        text("UPDATE listings SET scraped_at = :now WHERE id = :id"),
+                        {"now": now, "id": listing_id},
+                    )
+                    await session.commit()
+                continue
+            except httpx.RequestError as exc:
                 logger.warning(
                     "Phase 2: failed to fetch %s: %s — bumping scraped_at only",
                     external_id, exc,

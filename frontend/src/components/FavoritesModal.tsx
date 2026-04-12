@@ -57,10 +57,10 @@ export default function FavoritesModal({ open, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Meine Merkliste"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto py-8 px-4"
+      className="fixed inset-0 z-50 flex items-stretch sm:items-start justify-center bg-black/40 backdrop-blur-sm overflow-hidden sm:overflow-y-auto py-0 sm:py-8 px-0 sm:px-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl">
+      <div className="relative w-full sm:max-w-2xl bg-white rounded-none sm:rounded-2xl shadow-2xl flex flex-col max-h-[100dvh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">
@@ -82,7 +82,7 @@ export default function FavoritesModal({ open, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
+        <div className="px-6 py-4 space-y-3 min-h-0 flex-1 overflow-y-auto">
           {loading && (
             <div className="flex justify-center py-8">
               <div className="animate-spin h-6 w-6 border-2 border-brand border-t-transparent rounded-full" />

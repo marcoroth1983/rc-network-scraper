@@ -45,7 +45,7 @@ export default function App() {
     <div className="min-h-screen bg-surface text-gray-900 antialiased">
       <Header />
       <PlzBar onOpenFavorites={() => setFavoritesOpen(true)} />
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      <main className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
         <Routes>
           <Route path="/" element={<ListingsPage />} />
           <Route path="/listings/:id" element={<DetailPage />} />

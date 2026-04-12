@@ -137,8 +137,8 @@ export default function DetailPage() {
       </Link>
 
       <div className="bg-white rounded-card shadow-card overflow-hidden">
-        <div className="p-6">
-          <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">
               {listing.title}
             </h1>
@@ -176,7 +176,7 @@ export default function DetailPage() {
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100">
+          <dl className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100">
             <Field label="Preis" value={formatPrice(listing.price_numeric, listing.price)} />
             <Field label="Zustand" value={listing.condition} />
             <Field label="Versand" value={listing.shipping} />
@@ -230,7 +230,7 @@ export default function DetailPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                 Bilder
               </h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex overflow-x-auto flex-nowrap sm:flex-wrap gap-2">
                 {listing.images.map((src, i) => {
                   const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
                   return (

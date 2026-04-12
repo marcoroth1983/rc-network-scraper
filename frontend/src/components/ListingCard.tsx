@@ -121,7 +121,7 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         <div className="flex items-center justify-between mb-3">
           <span
             data-testid="price"
-            className="text-xl font-bold text-gray-900"
+            className="text-lg sm:text-xl font-bold text-gray-900"
           >
             {formatPrice(listing.price_numeric, listing.price)}
           </span>
@@ -134,7 +134,7 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         </div>
 
         {/* Location + distance + date row */}
-        <div className="flex items-center gap-3 text-xs text-gray-500 border-t border-gray-50 pt-2.5">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 border-t border-gray-50 pt-2.5">
           {/* Location with pin icon */}
           <span
             data-testid="location"

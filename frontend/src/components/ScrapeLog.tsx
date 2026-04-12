@@ -75,7 +75,7 @@ export default function ScrapeLog() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute right-0 top-10 z-50 w-64 sm:w-72 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Scrape-Verlauf
           </div>
