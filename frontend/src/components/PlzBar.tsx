@@ -11,9 +11,11 @@ const PLZ_LON_KEY = 'rcn_ref_lon';
 
 interface Props {
   onOpenFavorites: () => void;
+  totalUnread: number;
+  suppressPlzRestore: boolean;
 }
 
-export default function PlzBar({ onOpenFavorites }: Props) {
+export default function PlzBar({ onOpenFavorites, totalUnread, suppressPlzRestore }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = readFiltersFromParams(searchParams);
 
@@ -24,7 +26,9 @@ export default function PlzBar({ onOpenFavorites }: Props) {
 
   // Restore PLZ from localStorage whenever it's missing from the URL.
   // Covers: initial page load AND back-navigation from detail page (which drops URL params).
+  // Skip restore when a saved search is active — it may intentionally have no PLZ.
   useEffect(() => {
+    if (suppressPlzRestore) return;
     if (!filter.plz) {
       const saved = localStorage.getItem(PLZ_STORAGE_KEY);
       const savedCity = localStorage.getItem(PLZ_CITY_STORAGE_KEY);
@@ -42,7 +46,7 @@ export default function PlzBar({ onOpenFavorites }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter.plz]);
+  }, [filter.plz, suppressPlzRestore]);
 
   async function validateAndApplyPlz(value: string) {
     if (!value) {
@@ -91,6 +95,8 @@ export default function PlzBar({ onOpenFavorites }: Props) {
       setSearchParams,
     );
   }
+
+  const badgeLabel = totalUnread > 99 ? '99+' : String(totalUnread);
 
   return (
     <div
@@ -152,29 +158,55 @@ export default function PlzBar({ onOpenFavorites }: Props) {
           )}
         </div>
 
-        {/* Merkliste button */}
-        <button
-          onClick={onOpenFavorites}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition"
-          style={{
-            color: '#A78BFA',
-            background: 'rgba(167, 139, 250, 0.08)',
-            border: '1px solid rgba(167, 139, 250, 0.3)',
-          }}
-          aria-label="Merkliste öffnen"
-        >
-          <svg
-            className="w-4 h-4"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            fill="none"
-            aria-hidden="true"
+        {/* Merkliste button with unread badge */}
+        <div className="relative inline-flex">
+          <button
+            onClick={onOpenFavorites}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition"
+            style={{
+              color: '#A78BFA',
+              background: 'rgba(167, 139, 250, 0.08)',
+              border: '1px solid rgba(167, 139, 250, 0.3)',
+            }}
+            aria-label="Merkliste öffnen"
           >
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
-          <span className="hidden sm:inline">Merkliste</span>
-        </button>
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              fill="none"
+              aria-hidden="true"
+            >
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            <span className="hidden sm:inline">Merkliste</span>
+          </button>
+          {totalUnread > 0 && (
+            <span
+              aria-label={`${badgeLabel} neue Treffer`}
+              style={{
+                position: 'absolute',
+                top: -6,
+                right: -6,
+                minWidth: 18,
+                height: 18,
+                padding: '0 4px',
+                borderRadius: 9,
+                background: '#EC4899',
+                color: '#F8FAFC',
+                fontSize: 10,
+                fontWeight: 700,
+                lineHeight: '18px',
+                textAlign: 'center',
+                pointerEvents: 'none',
+                boxShadow: '0 0 0 2px rgba(15,15,35,0.85)',
+              }}
+            >
+              {badgeLabel}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -97,7 +97,7 @@ _UPSERT_SQL = text("""
         longitude     = EXCLUDED.longitude,
         scraped_at    = EXCLUDED.scraped_at,
         is_sold       = EXCLUDED.is_sold OR listings.is_sold
-    RETURNING (xmax = 0) AS is_insert
+    RETURNING id, (xmax = 0) AS is_insert
 """)
 
 MAX_PAGES = 40  # hard safety cap for phase1 stop-early crawl
@@ -267,8 +267,12 @@ async def _upsert_listing(
     latitude: float | None,
     longitude: float | None,
     scraped_at: datetime,
-) -> bool:
-    """Upsert a listing and return True if it was a new insert, False if an update."""
+) -> tuple[bool, int]:
+    """Upsert a listing and return (is_new, listing_id).
+
+    is_new is True if the row was a new insert, False if it was an update.
+    listing_id is the DB id of the upserted row.
+    """
     result = await session.execute(
         _UPSERT_SQL,
         {
@@ -294,7 +298,7 @@ async def _upsert_listing(
         },
     )
     row = result.fetchone()
-    return bool(row[0]) if row else False
+    return (bool(row[1]), int(row[0])) if row else (False, 0)
 
 
 async def _phase1_new_listings(
@@ -312,6 +316,7 @@ async def _phase1_new_listings(
     """
     new_count = 0
     updated_count = 0
+    new_ids: list[int] = []
     scraped_at = datetime.now(timezone.utc)
 
     headers = {"User-Agent": _USER_AGENT}
@@ -323,7 +328,7 @@ async def _phase1_new_listings(
 
             if not page_listings:
                 logger.info("Phase 1: empty page %d — stopping", page)
-                return {"pages_crawled": page, "new": new_count, "updated": updated_count}
+                return {"pages_crawled": page, "new": new_count, "updated": updated_count, "new_ids": new_ids}
 
             ids = [item["external_id"] for item in page_listings]
             existing_ids = await _fetch_existing_ids(session, ids)
@@ -333,7 +338,7 @@ async def _phase1_new_listings(
                 logger.info(
                     "Phase 1: page %d fully known — stopping after %d pages", page, page
                 )
-                return {"pages_crawled": page, "new": new_count, "updated": updated_count}
+                return {"pages_crawled": page, "new": new_count, "updated": updated_count, "new_ids": new_ids}
 
             logger.info("Phase 1: page %d has %d new listings", page, len(new_on_page))
 
@@ -363,7 +368,7 @@ async def _phase1_new_listings(
                 )
                 parsed["plz"] = resolved_plz
 
-                is_new = await _upsert_listing(
+                is_new, listing_id = await _upsert_listing(
                     session=session,
                     external_id=external_id,
                     url=url_detail,
@@ -376,6 +381,7 @@ async def _phase1_new_listings(
 
                 if is_new:
                     new_count += 1
+                    new_ids.append(listing_id)
                     logger.info(
                         "Phase 1: NEW   [%s] %s | %s",
                         external_id,
@@ -397,7 +403,7 @@ async def _phase1_new_listings(
                 await asyncio.sleep(delay)
 
     logger.warning("Phase 1: reached MAX_PAGES cap (%d)", MAX_PAGES)
-    return {"pages_crawled": MAX_PAGES, "new": new_count, "updated": updated_count}
+    return {"pages_crawled": MAX_PAGES, "new": new_count, "updated": updated_count, "new_ids": new_ids}
 
 
 _RECHECK_SQL = text("""

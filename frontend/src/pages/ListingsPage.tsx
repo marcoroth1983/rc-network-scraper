@@ -1,7 +1,17 @@
+import { useState, useEffect, useRef } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
 import Pagination from '../components/Pagination';
 import { useListings } from '../hooks/useListings';
+import type { SavedSearch, SearchCriteria } from '../types/api';
+
+interface Props {
+  activeSavedSearchId: number | null;
+  activeSavedSearchCriteria?: SavedSearch;
+  onSaveSearch: (criteria: SearchCriteria) => Promise<void>;
+  onUpdateSearch: (id: number, criteria: SearchCriteria) => Promise<void>;
+  onClearActiveSavedSearch: () => void;
+}
 
 function Spinner() {
   return (
@@ -14,8 +24,116 @@ function Spinner() {
   );
 }
 
-export default function ListingsPage() {
+function BookmarkIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      className="w-4 h-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+    </svg>
+  );
+}
+
+// Returns true if the current filter differs from the saved search criteria
+function criteriaChanged(
+  filter: { search: string; plz: string; sort: string; sort_dir: string; max_distance: string },
+  saved: SavedSearch,
+): boolean {
+  const savedSearch = saved.search ?? '';
+  const savedPlz = saved.plz ?? '';
+  const savedMaxDistance = saved.max_distance != null ? String(saved.max_distance) : '';
+  return (
+    filter.search !== savedSearch ||
+    filter.plz !== savedPlz ||
+    filter.sort !== saved.sort ||
+    filter.sort_dir !== saved.sort_dir ||
+    filter.max_distance !== savedMaxDistance
+  );
+}
+
+export default function ListingsPage({
+  activeSavedSearchId,
+  activeSavedSearchCriteria,
+  onSaveSearch,
+  onUpdateSearch,
+  onClearActiveSavedSearch,
+}: Props) {
   const { data, loading, error, filter, setFilter } = useListings();
+  const [fabFeedback, setFabFeedback] = useState<'saved' | 'updated' | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When all filter fields are cleared, clear the active saved search ID
+  useEffect(() => {
+    if (!filter.search && !filter.plz && !filter.max_distance && activeSavedSearchId != null) {
+      onClearActiveSavedSearch();
+    }
+  }, [filter.search, filter.plz, filter.max_distance, activeSavedSearchId, onClearActiveSavedSearch]);
+
+  // Determine FAB mode
+  const hasActiveFilters = Boolean(filter.search || filter.plz || filter.max_distance);
+  const isExistingSearch = activeSavedSearchId != null;
+  const hasCriteriaChanged =
+    isExistingSearch && activeSavedSearchCriteria != null
+      ? criteriaChanged(filter, activeSavedSearchCriteria)
+      : false;
+
+  // Mode 1: new search — filters active, no saved search selected
+  const showSaveNew = hasActiveFilters && !isExistingSearch;
+  // Mode 2: update existing — active saved search selected and filters differ
+  const showUpdate = isExistingSearch && hasCriteriaChanged;
+
+  function showFeedback(type: 'saved' | 'updated') {
+    setFabFeedback(type);
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => setFabFeedback(null), 2000);
+  }
+
+  async function handleSave() {
+    await onSaveSearch({
+      search: filter.search || null,
+      plz: filter.plz || null,
+      max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
+      sort: filter.sort,
+      sort_dir: filter.sort_dir,
+    });
+    showFeedback('saved');
+  }
+
+  async function handleUpdate() {
+    if (activeSavedSearchId == null) return;
+    await onUpdateSearch(activeSavedSearchId, {
+      search: filter.search || null,
+      plz: filter.plz || null,
+      max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
+      sort: filter.sort,
+      sort_dir: filter.sort_dir,
+    });
+    showFeedback('updated');
+  }
+
+  const showFab = showSaveNew || showUpdate;
 
   return (
     <div>
@@ -44,7 +162,6 @@ export default function ListingsPage() {
           </p>
           {data.items.length === 0 ? (
             <div className="text-center py-16">
-              {/* Subtle empty state icon */}
               <svg
                 className="w-12 h-12 mx-auto mb-4"
                 fill="none"
@@ -73,6 +190,48 @@ export default function ListingsPage() {
             </>
           )}
         </>
+      )}
+
+      {/* FAB — Suche speichern / aktualisieren */}
+      {showFab && (
+        <button
+          type="button"
+          onClick={showUpdate ? handleUpdate : handleSave}
+          aria-label={showUpdate ? 'Suche aktualisieren' : 'Suche speichern'}
+          className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full px-4 py-3 font-semibold text-sm shadow-lg transition-all duration-200"
+          style={{
+            background: fabFeedback
+              ? 'rgba(45,212,191,0.25)'
+              : 'rgba(99,102,241,0.85)',
+            border: fabFeedback
+              ? '1px solid rgba(45,212,191,0.5)'
+              : '1px solid rgba(139,92,246,0.5)',
+            color: fabFeedback ? '#2DD4BF' : '#F8FAFC',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <span className="flex-shrink-0">
+            {fabFeedback ? (
+              // Checkmark on success
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : showUpdate ? (
+              <RefreshIcon />
+            ) : (
+              <BookmarkIcon />
+            )}
+          </span>
+          <span className="hidden sm:inline">
+            {fabFeedback === 'saved'
+              ? 'Gespeichert!'
+              : fabFeedback === 'updated'
+              ? 'Aktualisiert!'
+              : showUpdate
+              ? 'Suche aktualisieren'
+              : 'Suche speichern'}
+          </span>
+        </button>
       )}
     </div>
   );

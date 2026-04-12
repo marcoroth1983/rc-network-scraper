@@ -106,3 +106,27 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+export interface SearchCriteria {
+  search?: string | null;
+  plz?: string | null;
+  max_distance?: number | null;
+  sort?: 'date' | 'price' | 'distance';
+  sort_dir?: 'asc' | 'desc';
+}
+
+export interface SavedSearch {
+  id: number;
+  user_id: number;
+  name: string | null;
+  search: string | null;
+  plz: string | null;
+  max_distance: number | null;
+  sort: string;
+  sort_dir: string;
+  is_active: boolean;
+  last_checked_at: string | null;  // ISO 8601
+  last_viewed_at: string | null;   // ISO 8601
+  created_at: string;              // ISO 8601
+  match_count: number;
+}

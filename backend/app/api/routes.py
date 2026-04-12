@@ -5,18 +5,19 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, cast, func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.api.schemas import (
     ListingDetail, ListingSummary, PaginatedResponse, PlzResponse,
+    SavedSearchCreate, SavedSearchResponse, SavedSearchUpdate,
     ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
 )
 from app.db import get_session
-from app.geo.distance import haversine_km
-from app.models import Listing, PlzGeodata, User
+from app.models import Listing, PlzGeodata, SavedSearch, SearchNotification, User
 from app.scrape_runner import get_state, get_log, start_update_job
+from app.services.listing_filter import build_text_filter, filter_by_distance
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +83,6 @@ async def resolve_plz(
     return PlzResponse.model_validate(row)
 
 
-def _dist_key(listing: Listing, ref_lat: float, ref_lon: float) -> float:
-    """Return Haversine distance from listing to reference point, or inf if no coords."""
-    if listing.latitude is None or listing.longitude is None:
-        return float("inf")
-    return haversine_km(ref_lat, ref_lon, listing.latitude, listing.longitude)
-
-
 @router.get("/listings", response_model=PaginatedResponse)
 async def list_listings(
     page: int = Query(default=1, ge=1),
@@ -113,14 +107,8 @@ async def list_listings(
 
     # Base statement with optional search filter
     stmt = select(Listing)
-    if search:
-        stmt = stmt.where(
-            or_(
-                Listing.title.ilike(f"%{search}%"),
-                Listing.description.ilike(f"%{search}%"),
-                cast(Listing.tags, String).ilike(f"%{search}%"),
-            )
-        )
+    for clause in build_text_filter(search):
+        stmt = stmt.where(clause)
 
     if sort == "date" and max_distance is None:
         # SQL-side sort and count
@@ -132,19 +120,19 @@ async def list_listings(
         rows_result = await session.execute(
             stmt.order_by(date_order).limit(per_page).offset(offset)
         )
-        rows = rows_result.scalars().all()
+        rows = list(rows_result.scalars().all())
 
         # Compute distances for current page when PLZ is provided
         if plz is not None:
-            geo_result = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
-            geo_row = geo_result.scalar_one_or_none()
-            if geo_row is None:
+            # Validate PLZ exists before computing distances
+            geo_check = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
+            if geo_check.scalar_one_or_none() is None:
                 raise HTTPException(status_code=400, detail=f"PLZ '{plz}' not found in geodata")
+            page_pairs = await filter_by_distance(rows, plz, None, session)
             items = []
-            for row in rows:
+            for row, dist in page_pairs:
                 summary = ListingSummary.model_validate(row)
-                if row.latitude is not None and row.longitude is not None:
-                    dist = haversine_km(geo_row.lat, geo_row.lon, row.latitude, row.longitude)
+                if dist is not None:
                     summary = summary.model_copy(update={"distance_km": dist})
                 items.append(summary)
         else:
@@ -156,38 +144,14 @@ async def list_listings(
     all_rows_result = await session.execute(stmt)
     all_rows = list(all_rows_result.scalars().all())
 
-    # Resolve reference coordinates when plz is provided
-    ref_lat: float | None = None
-    ref_lon: float | None = None
+    # Validate PLZ and build (row, distance_km) pairs
     if plz is not None:
-        geo_result = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
-        geo_row = geo_result.scalar_one_or_none()
-        if geo_row is None:
+        geo_check = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
+        if geo_check.scalar_one_or_none() is None:
             raise HTTPException(status_code=400, detail=f"PLZ '{plz}' not found in geodata")
-        ref_lat = geo_row.lat
-        ref_lon = geo_row.lon
-
-    # Build (row, distance_km) pairs
-    pairs: list[tuple[Listing, float | None]] = []
-    for row in all_rows:
-        if ref_lat is not None and ref_lon is not None:
-            dist: float | None = _dist_key(row, ref_lat, ref_lon)
-            if dist == float("inf"):
-                dist = None  # no coordinates on listing
-        else:
-            dist = None
-        pairs.append((row, dist))
-
-    # Apply max_distance filter (Python-side)
-    if max_distance is not None and ref_lat is not None and ref_lon is not None:
-        filtered: list[tuple[Listing, float | None]] = []
-        for row, dist in pairs:
-            if row.latitude is not None and row.longitude is not None:
-                actual_dist = haversine_km(ref_lat, ref_lon, row.latitude, row.longitude)
-                if actual_dist <= max_distance:
-                    filtered.append((row, actual_dist))
-            # listings without coordinates are excluded when max_distance is active
-        pairs = filtered
+        pairs = await filter_by_distance(all_rows, plz, max_distance, session)
+    else:
+        pairs = [(row, None) for row in all_rows]
 
     total = len(pairs)
 
@@ -287,3 +251,181 @@ async def get_favorites(
     )
     rows = result.scalars().all()
     return [ListingSummary.model_validate(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Saved searches
+# ---------------------------------------------------------------------------
+
+def _generate_search_name(search: str | None, plz: str | None, max_distance: int | None) -> str:
+    """Auto-generate a human-readable name from search criteria."""
+    if search and plz:
+        return f"{search} in {plz}"
+    if search:
+        return search
+    if plz and max_distance:
+        return f"Alles in {plz} (+{max_distance}km)"
+    if plz:
+        return f"Alles in {plz}"
+    return "Alle Anzeigen"
+
+
+async def _validate_plz(plz: str, session: AsyncSession) -> None:
+    """Raise HTTP 400 if the given PLZ is not found in plz_geodata."""
+    result = await session.execute(select(PlzGeodata).where(PlzGeodata.plz == plz))
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=400, detail=f"PLZ '{plz}' not found in geodata")
+
+
+async def _get_match_count(saved_search_id: int, last_viewed_at: datetime | None, session: AsyncSession) -> int:
+    """Return number of notifications newer than last_viewed_at (or total if NULL)."""
+    stmt = (
+        select(func.count(SearchNotification.id))
+        .where(SearchNotification.saved_search_id == saved_search_id)
+    )
+    if last_viewed_at is not None:
+        stmt = stmt.where(SearchNotification.notified_at > last_viewed_at)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
+@router.get("/searches", response_model=list[SavedSearchResponse])
+async def list_searches(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[SavedSearchResponse]:
+    """Return all saved searches for the current user with unread match counts."""
+    result = await session.execute(
+        select(SavedSearch)
+        .where(SavedSearch.user_id == current_user.id)
+        .order_by(SavedSearch.created_at.desc())
+    )
+    searches = result.scalars().all()
+
+    response = []
+    for s in searches:
+        count = await _get_match_count(s.id, s.last_viewed_at, session)
+        item = SavedSearchResponse.model_validate(s)
+        item = item.model_copy(update={"match_count": count})
+        response.append(item)
+    return response
+
+
+@router.post("/searches", response_model=SavedSearchResponse, status_code=201)
+async def create_search(
+    body: SavedSearchCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SavedSearchResponse:
+    """Create a new saved search from filter criteria."""
+    if body.plz:
+        await _validate_plz(body.plz, session)
+
+    name = _generate_search_name(body.search, body.plz, body.max_distance)
+    saved = SavedSearch(
+        user_id=current_user.id,
+        name=name,
+        search=body.search,
+        plz=body.plz,
+        max_distance=body.max_distance,
+        sort=body.sort,
+        sort_dir=body.sort_dir,
+    )
+    session.add(saved)
+    await session.commit()
+    await session.refresh(saved)
+    return SavedSearchResponse.model_validate(saved)
+
+
+# mark-viewed MUST be declared before {id} routes to avoid FastAPI capturing it as {id}
+@router.post("/searches/mark-viewed")
+async def mark_searches_viewed(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Set last_viewed_at = now() for all saved searches of the current user."""
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        update(SavedSearch)
+        .where(SavedSearch.user_id == current_user.id)
+        .values(last_viewed_at=now)
+    )
+    await session.commit()
+    return {"ok": True}
+
+
+@router.put("/searches/{search_id}", response_model=SavedSearchResponse)
+async def update_search(
+    search_id: int,
+    body: SavedSearchUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> SavedSearchResponse:
+    """Update criteria for a saved search."""
+    result = await session.execute(
+        select(SavedSearch).where(
+            SavedSearch.id == search_id,
+            SavedSearch.user_id == current_user.id,
+        )
+    )
+    saved = result.scalar_one_or_none()
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+
+    if body.plz:
+        await _validate_plz(body.plz, session)
+
+    saved.search = body.search
+    saved.plz = body.plz
+    saved.max_distance = body.max_distance
+    saved.sort = body.sort
+    saved.sort_dir = body.sort_dir
+    saved.name = _generate_search_name(body.search, body.plz, body.max_distance)
+    await session.commit()
+    await session.refresh(saved)
+
+    count = await _get_match_count(saved.id, saved.last_viewed_at, session)
+    item = SavedSearchResponse.model_validate(saved)
+    return item.model_copy(update={"match_count": count})
+
+
+@router.delete("/searches/{search_id}")
+async def delete_search(
+    search_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete a saved search. Returns 200 with {ok: true}."""
+    result = await session.execute(
+        select(SavedSearch).where(
+            SavedSearch.id == search_id,
+            SavedSearch.user_id == current_user.id,
+        )
+    )
+    saved = result.scalar_one_or_none()
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+
+    await session.delete(saved)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.patch("/searches/{search_id}")
+async def toggle_search_active(
+    search_id: int,
+    is_active: bool = Query(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Toggle is_active on a saved search (consistent with PATCH /listings/{id}/sold)."""
+    result = await session.execute(
+        update(SavedSearch)
+        .where(SavedSearch.id == search_id, SavedSearch.user_id == current_user.id)
+        .values(is_active=is_active)
+        .returning(SavedSearch.id)
+    )
+    if result.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+    await session.commit()
+    return {"id": search_id, "is_active": is_active}

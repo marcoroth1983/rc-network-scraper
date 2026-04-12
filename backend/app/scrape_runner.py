@@ -24,6 +24,7 @@ from app.scraper.orchestrator import (
     _phase2_sold_recheck,
     _phase3_cleanup,
 )
+from app.services.search_matcher import check_new_matches
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,10 @@ async def run_update_job() -> None:
                 update_progress=lambda p: _update(phase="phase1", progress=p),
                 delay=settings.SCRAPE_DELAY,
             )
+            new_ids = result.get("new_ids", [])
+            if new_ids:
+                matches = await check_new_matches(session, new_ids)
+                logger.info("Matcher found %d new matches", matches)
 
         _update(
             status="done",

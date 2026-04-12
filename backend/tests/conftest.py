@@ -71,7 +71,13 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_listings(db_session: AsyncSession) -> None:
-    """Truncate listings, users and plz_geodata before each test to ensure isolation."""
+    """Truncate listings, users and geodata before each test to ensure isolation.
+
+    FK-safe delete order: search_notifications → saved_searches → listings → plz_geodata.
+    users is included in the TRUNCATE CASCADE so dependent rows are cleaned up automatically.
+    """
+    await db_session.execute(text("DELETE FROM search_notifications"))
+    await db_session.execute(text("DELETE FROM saved_searches"))
     await db_session.execute(text("TRUNCATE TABLE listings, users RESTART IDENTITY CASCADE"))
     await db_session.execute(text("DELETE FROM plz_geodata"))
     await db_session.commit()

@@ -1,5 +1,5 @@
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { Routes, Route, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useCallback } from 'react';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
 import LoginPage from './pages/LoginPage';
@@ -8,6 +8,9 @@ import FavoritesModal from './components/FavoritesModal';
 import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
+import { useSavedSearches } from './hooks/useSavedSearches';
+import type { SearchCriteria, SavedSearch } from './types/api';
+import { writeFiltersToParams } from './hooks/useListings';
 
 function PlaneIcon() {
   return (
@@ -24,8 +27,50 @@ function PlaneIcon() {
   );
 }
 
-function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void }) {
+// Inner component so useSearchParams and useNavigate work inside the Router context
+function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () => void }) {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [activeSavedSearchId, setActiveSavedSearchId] = useState<number | null>(null);
+  const { searches, totalUnread, load, save, update, remove, toggleActive, markViewed } =
+    useSavedSearches();
+
+  const navigate = useNavigate();
+  const [, setSearchParams] = useSearchParams();
+
+  // Derive the active saved search criteria object from the searches array
+  const activeSavedSearchCriteria: SavedSearch | undefined = activeSavedSearchId != null
+    ? searches.find((s) => s.id === activeSavedSearchId)
+    : undefined;
+
+  const handleActivateSearch = useCallback(
+    (id: number, criteria: SearchCriteria) => {
+      setActiveSavedSearchId(id);
+      setFavoritesOpen(false);
+      // Navigate to / and apply the saved search criteria as URL params
+      navigate('/');
+      // Build the params from the criteria. We need to do this after navigation
+      // so we use a short timeout to let the route settle first, then write params.
+      // We call writeFiltersToParams with a ListingsFilter-compatible shape.
+      setTimeout(() => {
+        writeFiltersToParams(
+          {
+            search: criteria.search ?? '',
+            plz: criteria.plz ?? '',
+            sort: (criteria.sort as 'date' | 'price' | 'distance') ?? 'date',
+            sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
+            max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
+            page: 1,
+          },
+          setSearchParams,
+        );
+      }, 0);
+    },
+    [navigate, setSearchParams],
+  );
+
+  const handleClearActiveSavedSearch = useCallback(() => {
+    setActiveSavedSearchId(null);
+  }, []);
 
   return (
     <AuroraBackground>
@@ -60,16 +105,44 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void
           </div>
         </div>
       </header>
-      <PlzBar onOpenFavorites={() => setFavoritesOpen(true)} />
+      <PlzBar
+        onOpenFavorites={() => setFavoritesOpen(true)}
+        totalUnread={totalUnread}
+        suppressPlzRestore={activeSavedSearchId != null}
+      />
       <main className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
         <Routes>
-          <Route path="/" element={<ListingsPage />} />
+          <Route
+            path="/"
+            element={
+              <ListingsPage
+                activeSavedSearchId={activeSavedSearchId}
+                activeSavedSearchCriteria={activeSavedSearchCriteria}
+                onSaveSearch={save}
+                onUpdateSearch={update}
+                onClearActiveSavedSearch={handleClearActiveSavedSearch}
+              />
+            }
+          />
           <Route path="/listings/:id" element={<DetailPage />} />
         </Routes>
       </main>
-      <FavoritesModal open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
+      <FavoritesModal
+        open={favoritesOpen}
+        onClose={() => setFavoritesOpen(false)}
+        searches={searches}
+        onLoadSearches={load}
+        onRemoveSearch={remove}
+        onToggleSearchActive={toggleActive}
+        onMarkViewed={markViewed}
+        onActivateSearch={handleActivateSearch}
+      />
     </AuroraBackground>
   );
+}
+
+function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void }) {
+  return <AuthenticatedAppInner user={user} logout={logout} />;
 }
 
 export default function App() {

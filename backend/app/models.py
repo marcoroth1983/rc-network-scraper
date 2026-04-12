@@ -1,8 +1,8 @@
-"""SQLAlchemy ORM models: Listing, PlzGeodata, and User."""
+"""SQLAlchemy ORM models: Listing, PlzGeodata, User, SavedSearch, SearchNotification."""
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -67,4 +67,42 @@ class User(Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SavedSearch(Base):
+    __tablename__ = "saved_searches"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(255))
+    search: Mapped[str | None] = mapped_column(String(255))
+    plz: Mapped[str | None] = mapped_column(String(10))
+    max_distance: Mapped[int | None] = mapped_column(Integer)
+    sort: Mapped[str] = mapped_column(String(20), server_default="date")
+    sort_dir: Mapped[str] = mapped_column(String(4), server_default="desc")
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SearchNotification(Base):
+    __tablename__ = "search_notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    saved_search_id: Mapped[int] = mapped_column(
+        ForeignKey("saved_searches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    listing_id: Mapped[int] = mapped_column(
+        ForeignKey("listings.id", ondelete="CASCADE"), nullable=False
+    )
+    notified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("saved_search_id", "listing_id", name="uq_search_listing"),
     )
