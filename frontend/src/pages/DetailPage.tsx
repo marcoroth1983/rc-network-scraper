@@ -15,11 +15,30 @@ function formatDate(iso: string | null): string {
   });
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
+interface FieldProps {
+  label: string;
+  value: string | null | undefined;
+  highlight?: boolean;
+}
+
+function Field({ label, value, highlight }: FieldProps) {
   return (
-    <div>
-      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</dt>
-      <dd className="mt-0.5 text-sm text-gray-900">{value ?? '–'}</dd>
+    <div
+      className="p-3 rounded-xl"
+      style={{ background: 'rgba(255,255,255,0.03)' }}
+    >
+      <dt
+        className="text-xs font-medium uppercase tracking-wide mb-0.5"
+        style={{ color: 'rgba(248,250,252,0.35)' }}
+      >
+        {label}
+      </dt>
+      <dd
+        className="text-sm font-medium"
+        style={{ color: highlight ? '#FDE68A' : '#F8FAFC' }}
+      >
+        {value ?? '–'}
+      </dd>
     </div>
   );
 }
@@ -27,7 +46,10 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 function Spinner() {
   return (
     <div className="flex justify-center py-16">
-      <div className="animate-spin h-8 w-8 border-4 border-brand border-t-transparent rounded-full" />
+      <div
+        className="animate-spin h-8 w-8 border-4 rounded-full"
+        style={{ borderColor: '#A78BFA', borderTopColor: 'transparent' }}
+      />
     </div>
   );
 }
@@ -80,11 +102,22 @@ export default function DetailPage() {
 
   if (error) {
     return (
-      <div>
-        <Link to={backTo} className="text-brand hover:underline text-sm mb-4 inline-block">
+      <div className="max-w-2xl mx-auto">
+        <Link
+          to={backTo}
+          className="text-sm mb-4 inline-block transition-colors"
+          style={{ color: '#A78BFA' }}
+        >
           ← Zurück zur Liste
         </Link>
-        <div className="rounded-md bg-red-50 border border-red-200 p-4 text-red-700">
+        <div
+          className="rounded-xl p-4"
+          style={{
+            background: 'rgba(236,72,153,0.08)',
+            border: '1px solid rgba(236,72,153,0.3)',
+            color: '#EC4899',
+          }}
+        >
           Fehler: {error}
         </div>
       </div>
@@ -132,14 +165,33 @@ export default function DetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <Link to={backTo} className="text-brand hover:underline text-sm mb-4 inline-block">
+      {/* Back button */}
+      <Link
+        to={backTo}
+        className="text-sm mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all duration-200"
+        style={{
+          color: '#A78BFA',
+          background: 'rgba(167,139,250,0.08)',
+          border: '1px solid rgba(167,139,250,0.2)',
+        }}
+      >
         ← Zurück zur Liste
       </Link>
 
-      <div className="bg-white rounded-card shadow-card overflow-hidden">
+      {/* Main content card */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          background: 'rgba(15, 15, 35, 0.6)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(20px) saturate(1.2)',
+          boxShadow: '0 0 60px rgba(99,102,241,0.06), 0 4px 16px rgba(0,0,0,0.2)',
+        }}
+      >
         <div className="p-4 sm:p-6">
+          {/* Title row + actions */}
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-            <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+            <h1 className="text-2xl font-bold leading-tight" style={{ color: '#F8FAFC' }}>
               {listing.title}
             </h1>
             <div className="flex items-center gap-2 shrink-0">
@@ -148,49 +200,87 @@ export default function DetailPage() {
                 onClick={handleToggleFavorite}
                 disabled={favoritePending}
                 aria-label={listing.is_favorite ? 'Von Merkliste entfernen' : 'Merken'}
-                className="p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 transition disabled:opacity-50"
+                className="p-1.5 rounded-full transition-all duration-200 disabled:opacity-50"
+                style={{
+                  background: listing.is_favorite ? 'rgba(253,230,138,0.12)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${listing.is_favorite ? 'rgba(253,230,138,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                }}
               >
                 <svg
-                  className={`w-5 h-5 transition-colors ${listing.is_favorite ? 'text-yellow-400' : 'text-gray-400'}`}
+                  className="w-5 h-5 transition-colors"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
                   strokeWidth={2}
                   fill={listing.is_favorite ? 'currentColor' : 'none'}
+                  style={{ color: listing.is_favorite ? '#FDE68A' : 'rgba(248,250,252,0.4)' }}
                   aria-hidden="true"
                 >
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                 </svg>
               </button>
+
               {/* Sold toggle */}
               <button
                 onClick={handleToggleSold}
                 disabled={soldPending}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                className="text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 disabled:opacity-50"
+                style={
                   listing.is_sold
-                    ? 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200'
-                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-                } disabled:opacity-50`}
+                    ? {
+                        background: 'rgba(236,72,153,0.12)',
+                        border: '1px solid rgba(236,72,153,0.35)',
+                        color: '#EC4899',
+                      }
+                    : {
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        color: 'rgba(248,250,252,0.6)',
+                      }
+                }
               >
                 {listing.is_sold ? 'Verkauft ✓' : 'Als verkauft markieren'}
               </button>
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 pb-6 border-b border-gray-100">
-            <Field label="Preis" value={formatPrice(listing.price_numeric, listing.price)} />
+          {/* Metadata grid */}
+          <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6 pb-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            {/* Price — highlighted yellow, spans full width on small */}
+            <div
+              className="col-span-2 md:col-span-1 p-3 rounded-xl"
+              style={{ background: 'rgba(253,230,138,0.06)', border: '1px solid rgba(253,230,138,0.12)' }}
+            >
+              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                Preis
+              </dt>
+              <dd className="text-lg font-bold" style={{ color: '#FDE68A' }}>
+                {formatPrice(listing.price_numeric, listing.price)}
+              </dd>
+            </div>
+
             <Field label="Zustand" value={listing.condition} />
             <Field label="Versand" value={listing.shipping} />
-            <div>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ort</dt>
+
+            {/* Location with Maps link */}
+            <div
+              className="p-3 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.03)' }}
+            >
+              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                Ort
+              </dt>
               <dd className="mt-0.5 flex items-center gap-2">
-                <span className="text-sm text-gray-900">{location}</span>
+                <span className="text-sm font-medium" style={{ color: '#F8FAFC' }}>{location}</span>
                 {location !== '–' && (
                   <a
                     href={mapsHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Route in Google Maps"
-                    className="text-brand hover:text-brand-dark"
+                    className="transition-colors"
+                    style={{ color: '#6366F1' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -200,65 +290,93 @@ export default function DetailPage() {
                 )}
               </dd>
             </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Original</dt>
+
+            {/* Original link */}
+            <div
+              className="p-3 rounded-xl"
+              style={{ background: 'rgba(255,255,255,0.03)' }}
+            >
+              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                Original
+              </dt>
               <dd className="mt-0.5">
                 <a
                   href={listing.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-brand hover:underline"
+                  className="text-sm transition-colors"
+                  style={{ color: '#6366F1' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
                 >
                   rc-network.de →
                 </a>
               </dd>
             </div>
+
             <Field label="Inserent" value={listing.author} />
             <Field label="Datum" value={formatDate(listing.posted_at)} />
+
             {distanceKm != null && (
-              <div>
-                <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Entfernung</dt>
-                <dd className="mt-0.5 text-sm font-semibold text-brand">
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: 'rgba(255,255,255,0.03)' }}
+              >
+                <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                  Entfernung
+                </dt>
+                <dd className="mt-0.5 text-sm font-semibold" style={{ color: '#A78BFA' }}>
                   {distanceKm.toFixed(1)} km{refCity ? ` von ${refCity}` : ''}
                 </dd>
               </div>
             )}
           </dl>
 
+          {/* Image gallery */}
           {listing.images.length > 0 && (
             <div className="mb-6">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'rgba(248,250,252,0.35)' }}
+              >
                 Bilder
               </h2>
               <div className="flex overflow-x-auto flex-nowrap sm:flex-wrap gap-2">
                 {listing.images.map((src, i) => {
                   const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
                   return (
-                  <a key={i} href={abs} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={abs}
-                      alt={`Bild ${i + 1}`}
-                      className="h-32 w-auto rounded border border-gray-200 object-cover hover:opacity-90 transition-opacity"
-                      loading="lazy"
-                    />
-                  </a>
+                    <a key={i} href={abs} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={abs}
+                        alt={`Bild ${i + 1}`}
+                        className="h-32 w-auto rounded-xl object-cover hover:opacity-90 transition-opacity"
+                        style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                        loading="lazy"
+                      />
+                    </a>
                   );
                 })}
               </div>
             </div>
           )}
 
+          {/* Description */}
           {listing.description && (
             <div className="mb-6">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'rgba(248,250,252,0.35)' }}
+              >
                 Beschreibung
               </h2>
-              <div className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+              <div
+                className="text-sm whitespace-pre-line leading-relaxed"
+                style={{ color: 'rgba(248,250,252,0.65)' }}
+              >
                 {listing.description}
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>

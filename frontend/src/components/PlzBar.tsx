@@ -93,7 +93,10 @@ export default function PlzBar({ onOpenFavorites }: Props) {
   }
 
   return (
-    <div className="sticky top-14 z-30 bg-brand shadow-sm">
+    <div
+      className="sticky top-14 z-30 backdrop-blur shadow-sm"
+      style={{ background: 'rgba(15, 15, 35, 0.7)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+    >
       <div className="max-w-6xl mx-auto px-4 h-11 flex items-center justify-between gap-4">
         {/* PLZ input + city label */}
         <div className="flex items-center gap-3">
@@ -107,16 +110,20 @@ export default function PlzBar({ onOpenFavorites }: Props) {
               onBlur={() => validateAndApplyPlz(plzInput)}
               onKeyDown={(e) => e.key === 'Enter' && validateAndApplyPlz(plzInput)}
               maxLength={5}
-              className={`w-28 px-3 py-1.5 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-white/50 transition text-gray-900 ${
+              className={`w-28 px-3 py-1.5 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-aurora-indigo/50 transition text-white placeholder:text-white/30 ${
                 plzCity
-                  ? 'bg-green-50 border-2 border-green-400'
+                  ? 'border-2 border-aurora-teal/60'
                   : plzError
-                  ? 'bg-red-50 border-2 border-red-400'
-                  : 'bg-white/90 border border-white/30'
+                  ? 'border-2 border-aurora-pink/60'
+                  : 'border border-white/15'
               }`}
+              style={{ background: 'rgba(255, 255, 255, 0.05)' }}
             />
             {plzValidating && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+              <span
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
+                style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+              >
                 …
               </span>
             )}
@@ -124,7 +131,8 @@ export default function PlzBar({ onOpenFavorites }: Props) {
               <button
                 type="button"
                 onClick={handlePlzClear}
-                className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-xs leading-none transition"
+                style={{ color: 'rgba(248, 250, 252, 0.35)' }}
                 aria-label="PLZ löschen"
               >
                 ✕
@@ -132,17 +140,27 @@ export default function PlzBar({ onOpenFavorites }: Props) {
             )}
           </div>
           {plzCity && (
-            <span className="text-xs sm:text-sm text-white font-medium drop-shadow-sm">{plzCity}</span>
+            <span
+              className="text-xs sm:text-sm font-medium"
+              style={{ color: 'rgba(248, 250, 252, 0.65)' }}
+            >
+              {plzCity}
+            </span>
           )}
           {plzError && (
-            <span className="text-xs text-red-200 font-medium">{plzError}</span>
+            <span className="text-xs font-medium text-aurora-pink/80">{plzError}</span>
           )}
         </div>
 
         {/* Merkliste button */}
         <button
           onClick={onOpenFavorites}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm text-white font-medium transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition"
+          style={{
+            color: '#A78BFA',
+            background: 'rgba(167, 139, 250, 0.08)',
+            border: '1px solid rgba(167, 139, 250, 0.3)',
+          }}
           aria-label="Merkliste öffnen"
         >
           <svg

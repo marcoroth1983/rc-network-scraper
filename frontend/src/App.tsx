@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import ScrapeLog from './components/ScrapeLog';
 import FavoritesModal from './components/FavoritesModal';
 import PlzBar from './components/PlzBar';
+import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
 
 function PlaneIcon() {
@@ -27,21 +28,32 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void
   const [favoritesOpen, setFavoritesOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-surface text-gray-900 antialiased">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-sm border-b border-gray-200">
+    <AuroraBackground>
+      <header
+        className="sticky top-0 z-40 backdrop-blur-lg border-b"
+        style={{
+          background: 'rgba(15, 15, 35, 0.8)',
+          borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+        }}
+      >
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           <Link
             to="/"
-            className="flex items-center gap-2 text-brand font-bold text-lg tracking-tight"
+            className="flex items-center gap-2 font-bold text-lg tracking-tight"
+            style={{ color: '#A78BFA' }}
           >
             <PlaneIcon />
             RC-Network Scraper
           </Link>
           <div className="flex items-center gap-4">
             <ScrapeLog />
-            <div className="flex items-center gap-3 text-sm text-gray-500">
-              <span>{user.email}</span>
-              <button onClick={logout} className="text-brand hover:underline">
+            <div className="flex items-center gap-3 text-sm">
+              <span style={{ color: 'rgba(248, 250, 252, 0.5)' }}>{user.email}</span>
+              <button
+                onClick={logout}
+                className="hover:underline transition-colors"
+                style={{ color: '#A78BFA' }}
+              >
                 Abmelden
               </button>
             </div>
@@ -56,7 +68,7 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void
         </Routes>
       </main>
       <FavoritesModal open={favoritesOpen} onClose={() => setFavoritesOpen(false)} />
-    </div>
+    </AuroraBackground>
   );
 }
 
@@ -65,8 +77,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center">
-        <span className="text-gray-400 text-sm">Lade…</span>
+      <div className="min-h-screen bg-aurora-deep flex items-center justify-center">
+        <span className="text-sm" style={{ color: 'rgba(248, 250, 252, 0.35)' }}>Lade…</span>
       </div>
     );
   }
