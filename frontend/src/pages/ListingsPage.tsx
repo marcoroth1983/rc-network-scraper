@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
 import { useInfiniteListings } from '../hooks/useInfiniteListings';
