@@ -61,8 +61,20 @@ export default function ScrapeLog() {
       <button
         onClick={() => setOpen((v) => !v)}
         title="Scrape-Verlauf"
-        className="p-2 rounded-lg text-gray-500 hover:text-brand hover:bg-gray-100 transition-colors"
+        className="p-2 rounded-lg transition-all duration-200"
         aria-label="Scrape-Verlauf anzeigen"
+        style={{
+          color: 'rgba(248,250,252,0.5)',
+          background: open ? 'rgba(255,255,255,0.08)' : 'transparent',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = '#A78BFA';
+          if (!open) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.5)';
+          if (!open) (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+        }}
       >
         {/* Clock icon */}
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -75,31 +87,52 @@ export default function ScrapeLog() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-64 sm:w-72 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <div
+          className="absolute right-0 top-10 z-50 w-64 sm:w-72 rounded-xl overflow-hidden"
+          style={{
+            background: 'rgba(15, 15, 35, 0.9)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            backdropFilter: 'blur(20px) saturate(1.2)',
+            boxShadow: '0 0 60px rgba(99,102,241,0.06), 0 4px 16px rgba(0,0,0,0.4)',
+          }}
+        >
+          <div
+            className="px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+            style={{
+              color: 'rgba(248,250,252,0.35)',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}
+          >
             Scrape-Verlauf
           </div>
           {entries.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-gray-400 text-center">Noch keine Läufe</div>
+            <div className="px-3 py-4 text-sm text-center" style={{ color: 'rgba(248,250,252,0.35)' }}>
+              Noch keine Läufe
+            </div>
           ) : (
-            <ul className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+            <ul className="max-h-72 overflow-y-auto">
               {entries.map((entry, i) => (
-                <li key={i} className="flex items-baseline justify-between px-3 py-2 text-sm">
+                <li
+                  key={i}
+                  className="flex items-baseline justify-between px-3 py-2 text-sm"
+                  style={i > 0 ? { borderTop: '1px solid rgba(255,255,255,0.06)' } : undefined}
+                >
                   <span>
                     <span
-                      className={`font-mono text-xs px-1.5 py-0.5 rounded mr-2 ${
+                      className="font-mono text-xs px-1.5 py-0.5 rounded mr-2"
+                      style={
                         entry.job_type === 'update'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-green-50 text-green-700'
-                      }`}
+                          ? { background: 'rgba(99,102,241,0.15)', color: '#A78BFA' }
+                          : { background: 'rgba(45,212,191,0.12)', color: '#2DD4BF' }
+                      }
                     >
                       {entry.job_type === 'update' ? 'update' : 'regular'}
                     </span>
-                    <span className={entry.error ? 'text-red-500' : 'text-gray-700'}>
+                    <span style={{ color: entry.error ? '#EC4899' : 'rgba(248,250,252,0.65)' }}>
                       {formatEntry(entry)}
                     </span>
                   </span>
-                  <span className="text-xs text-gray-400 ml-2 shrink-0">
+                  <span className="text-xs ml-2 shrink-0" style={{ color: 'rgba(248,250,252,0.35)' }}>
                     {formatTime(entry.finished_at)}
                   </span>
                 </li>

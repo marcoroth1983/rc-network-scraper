@@ -11,8 +11,13 @@ logging.getLogger("app").setLevel(logging.INFO)
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.routes import router
+from app.config import settings
+from app.notifications.log_plugin import LogPlugin
+from app.notifications.registry import notification_registry
 from app.scrape_runner import start_update_job, start_recheck_job
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,10 @@ async def lifespan(app: FastAPI):
     from app.db import init_db
     await init_db()
     logger.info("Database initialised")
+
+    # Register notification plugins — guard against hot-reload duplicates
+    if not notification_registry._plugins:
+        notification_registry.register(LogPlugin())
 
     # Create a fresh scheduler per lifespan cycle — avoids stale state on hot-reload.
     # update job: crawl overview pages every 30 minutes (Phase 1 only).
@@ -55,7 +64,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="RC-Markt Scout", lifespan=lifespan)
-app.include_router(router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router, prefix="/api")
+app.include_router(router)  # existing business router — unchanged
 
 
 @app.get("/health")

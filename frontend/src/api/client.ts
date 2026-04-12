@@ -4,6 +4,8 @@ import type {
   ListingSummary,
   PaginatedResponse,
   PlzResponse,
+  SavedSearch,
+  SearchCriteria,
   ScrapeLogEntry,
   ScrapeStatus,
 } from '../types/api';
@@ -75,6 +77,46 @@ export async function toggleFavorite(id: number, isFavorite: boolean): Promise<v
 }
 
 export async function getFavorites(): Promise<ListingSummary[]> {
-  const res = await fetch('/api/favorites');
+  const plz = localStorage.getItem('rcn_ref_plz');
+  const url = plz ? `/api/favorites?plz=${encodeURIComponent(plz)}` : '/api/favorites';
+  const res = await fetch(url);
   return handleResponse<ListingSummary[]>(res);
+}
+
+export async function getSavedSearches(): Promise<SavedSearch[]> {
+  const res = await fetch('/api/searches');
+  return handleResponse<SavedSearch[]>(res);
+}
+
+export async function createSavedSearch(criteria: SearchCriteria): Promise<SavedSearch> {
+  const res = await fetch('/api/searches', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(criteria),
+  });
+  return handleResponse<SavedSearch>(res);
+}
+
+export async function updateSavedSearch(id: number, criteria: SearchCriteria): Promise<SavedSearch> {
+  const res = await fetch(`/api/searches/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(criteria),
+  });
+  return handleResponse<SavedSearch>(res);
+}
+
+export async function deleteSavedSearch(id: number): Promise<{ ok: boolean }> {
+  const res = await fetch(`/api/searches/${id}`, { method: 'DELETE' });
+  return handleResponse<{ ok: boolean }>(res);
+}
+
+export async function toggleSavedSearch(id: number, isActive: boolean): Promise<{ id: number; is_active: boolean }> {
+  const res = await fetch(`/api/searches/${id}?is_active=${isActive}`, { method: 'PATCH' });
+  return handleResponse<{ id: number; is_active: boolean }>(res);
+}
+
+export async function markSearchesViewed(): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/searches/mark-viewed', { method: 'POST' });
+  return handleResponse<{ ok: boolean }>(res);
 }

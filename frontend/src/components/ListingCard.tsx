@@ -64,18 +64,31 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
   }
 
   return (
-    <article className={`bg-white rounded-card shadow-card card-transition overflow-hidden relative${listing.is_sold ? ' opacity-60' : ''}`}>
+    <article
+      className={`rounded-card card-transition overflow-hidden relative${listing.is_sold ? ' opacity-60' : ''}`}
+      style={{
+        background: 'rgba(15, 15, 35, 0.6)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        boxShadow: '0 0 60px rgba(99,102,241,0.06), 0 4px 16px rgba(0,0,0,0.2)',
+      }}
+    >
       {/* 16:9 image area */}
-      <div className="aspect-[16/9] bg-gray-100 overflow-hidden relative">
+      <div className="aspect-[16/9] overflow-hidden relative" style={{ background: 'rgba(255,255,255,0.04)' }}>
         {listing.is_sold && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-            <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full rotate-[-8deg] shadow">
+          <div
+            className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+            style={{ background: 'rgba(0, 0, 0, 0.45)' }}
+          >
+            <span className="bg-aurora-pink/80 text-white text-xs font-bold px-3 py-1 rounded-full rotate-[-8deg] shadow">
               VERKAUFT
             </span>
           </div>
         )}
         {isNew && !listing.is_sold && (
-          <span className="absolute top-2 left-2 z-10 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow pointer-events-none">
+          <span
+            className="absolute top-2 left-2 z-10 text-xs font-bold px-2 py-0.5 rounded-full shadow pointer-events-none"
+            style={{ background: '#34D399', color: '#0f0f23' }}
+          >
             NEU
           </span>
         )}
@@ -92,10 +105,12 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         <button
           onClick={handleFavorite}
           aria-label={favorite ? 'Von Merkliste entfernen' : 'Merken'}
-          className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-white/80 backdrop-blur-sm shadow hover:bg-white transition"
+          className="absolute top-2 right-2 z-20 p-1.5 rounded-full backdrop-blur-sm shadow transition"
+          style={{ background: 'rgba(15, 15, 35, 0.7)', border: '1px solid rgba(255,255,255,0.12)' }}
         >
           <svg
-            className={`w-4 h-4 transition-colors ${favorite ? 'text-yellow-400' : 'text-gray-400'}`}
+            className="w-4 h-4 transition-colors"
+            style={{ color: favorite ? '#FDE68A' : 'rgba(248,250,252,0.35)' }}
             viewBox="0 0 24 24"
             stroke="currentColor"
             strokeWidth={2}
@@ -112,7 +127,8 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         <Link
           to={`/listings/${listing.id}`}
           state={{ from: routerLocation.search }}
-          className="font-semibold text-gray-900 text-sm leading-snug mb-2 line-clamp-2 hover:text-brand transition-colors after:absolute after:inset-0"
+          className="font-semibold text-sm leading-snug mb-2 line-clamp-2 transition-colors after:absolute after:inset-0"
+          style={{ color: '#F8FAFC' }}
         >
           {listing.title}
         </Link>
@@ -121,20 +137,25 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         <div className="flex items-center justify-between mb-3">
           <span
             data-testid="price"
-            className="text-lg sm:text-xl font-bold text-gray-900"
+            className="text-lg sm:text-xl font-bold"
+            style={{ color: '#FDE68A' }}
           >
             {formatPrice(listing.price_numeric, listing.price)}
           </span>
           <span
             data-testid="condition"
-            className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full"
+            className="text-xs font-medium px-2 py-0.5 rounded-full"
+            style={{ color: 'rgba(248,250,252,0.5)', background: 'rgba(255,255,255,0.07)' }}
           >
             {listing.condition ?? '–'}
           </span>
         </div>
 
         {/* Location + distance + date row */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 border-t border-gray-50 pt-2.5">
+        <div
+          className="flex flex-wrap items-center gap-3 text-xs pt-2.5"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(248,250,252,0.65)' }}
+        >
           {/* Location with pin icon */}
           <span
             data-testid="location"
@@ -144,25 +165,26 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
             {location ?? '–'}
           </span>
 
-          {/* Distance — brand blue when present, muted dash when null */}
+          {/* Distance — indigo accent when present, muted dash when null */}
           {hasDistance ? (
             <span
               data-testid="distance"
-              className="flex items-center gap-1 font-semibold text-brand"
+              className="flex items-center gap-1 font-semibold"
+              style={{ color: '#6366F1' }}
             >
               {listing.distance_km!.toFixed(1)} km
             </span>
           ) : (
             <span
               data-testid="distance"
-              className="text-gray-300 text-xs"
+              style={{ color: 'rgba(248,250,252,0.2)' }}
             >
               –
             </span>
           )}
 
           {/* Date pushed to the right */}
-          <span className="ml-auto text-gray-400">
+          <span className="ml-auto" style={{ color: 'rgba(248,250,252,0.35)' }}>
             {formatDate(listing.posted_at)}
           </span>
         </div>

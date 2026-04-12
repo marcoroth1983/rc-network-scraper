@@ -1,6 +1,14 @@
 """Shared pytest fixtures: DB session, HTML fixture helpers."""
 
 import os
+
+# Set required OAuth/JWT env vars before any app imports so Settings validation passes.
+# Use direct assignment (not setdefault) because docker-compose may set these as
+# empty strings, which setdefault would not override.
+os.environ["GOOGLE_CLIENT_ID"] = os.environ.get("GOOGLE_CLIENT_ID") or "test-client-id"
+os.environ["GOOGLE_CLIENT_SECRET"] = os.environ.get("GOOGLE_CLIENT_SECRET") or "test-client-secret"
+os.environ["JWT_SECRET"] = os.environ.get("JWT_SECRET") or "test-jwt-secret-for-testing-only"
+
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -63,8 +71,14 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_listings(db_session: AsyncSession) -> None:
-    """Truncate listings and plz_geodata before each test to ensure isolation."""
-    await db_session.execute(text("DELETE FROM listings"))
+    """Truncate listings, users and geodata before each test to ensure isolation.
+
+    FK-safe delete order: search_notifications → saved_searches → listings → plz_geodata.
+    users is included in the TRUNCATE CASCADE so dependent rows are cleaned up automatically.
+    """
+    await db_session.execute(text("DELETE FROM search_notifications"))
+    await db_session.execute(text("DELETE FROM saved_searches"))
+    await db_session.execute(text("TRUNCATE TABLE listings, users RESTART IDENTITY CASCADE"))
     await db_session.execute(text("DELETE FROM plz_geodata"))
     await db_session.commit()
 
@@ -72,8 +86,10 @@ async def clean_listings(db_session: AsyncSession) -> None:
 @pytest_asyncio.fixture()
 async def api_client(test_engine) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient wired to the test DB via dependency_overrides."""
+    from app.api.deps import get_current_user  # noqa: PLC0415
     from app.db import get_session  # noqa: PLC0415
     from app.main import app  # noqa: PLC0415
+    from app.models import User  # noqa: PLC0415
 
     factory = async_sessionmaker(
         bind=test_engine, class_=AsyncSession, expire_on_commit=False
@@ -83,7 +99,17 @@ async def api_client(test_engine) -> AsyncGenerator[AsyncClient, None]:
         async with factory() as session:
             yield session
 
+    def _fake_user() -> User:
+        return User(
+            id=1,
+            google_id="test-google-id",
+            email="test@example.com",
+            name="Test User",
+            is_approved=True,
+        )
+
     app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_current_user] = _fake_user
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

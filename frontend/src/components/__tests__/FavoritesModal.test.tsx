@@ -16,10 +16,19 @@ const makeListing = (overrides = {}) => ({
   ...overrides,
 });
 
+const defaultSearchProps = {
+  searches: [] as never[],
+  onLoadSearches: vi.fn().mockResolvedValue(undefined),
+  onRemoveSearch: vi.fn().mockResolvedValue(undefined),
+  onToggleSearchActive: vi.fn().mockResolvedValue(undefined),
+  onMarkViewed: vi.fn().mockResolvedValue(undefined),
+  onActivateSearch: vi.fn(),
+};
+
 function renderModal(props: { open: boolean; onClose?: () => void }) {
   return render(
     <MemoryRouter>
-      <FavoritesModal open={props.open} onClose={props.onClose ?? vi.fn()} />
+      <FavoritesModal open={props.open} onClose={props.onClose ?? vi.fn()} {...defaultSearchProps} />
     </MemoryRouter>
   );
 }
@@ -39,7 +48,7 @@ describe('FavoritesModal', () => {
     vi.mocked(client.getFavorites).mockResolvedValue([]);
     renderModal({ open: true });
     expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(screen.getByText('Meine Merkliste')).toBeTruthy();
+    expect(screen.getByText('Meine Listen')).toBeTruthy();
   });
 
   it('shows loading spinner while fetching', async () => {
@@ -123,7 +132,7 @@ describe('FavoritesModal', () => {
 
     await waitFor(() => screen.getByRole('dialog'));
     // Click the heading (inner content) — the e.target !== e.currentTarget guard must block close
-    fireEvent.click(screen.getByText('Meine Merkliste'));
+    fireEvent.click(screen.getByText('Meine Listen'));
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -164,25 +173,25 @@ describe('FavoritesModal', () => {
     vi.mocked(client.getFavorites).mockResolvedValue([]);
     const { rerender } = render(
       <MemoryRouter>
-        <FavoritesModal open={false} onClose={vi.fn()} />
+        <FavoritesModal open={false} onClose={vi.fn()} {...defaultSearchProps} />
       </MemoryRouter>
     );
 
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={true} onClose={vi.fn()} />
+        <FavoritesModal open={true} onClose={vi.fn()} {...defaultSearchProps} />
       </MemoryRouter>
     );
     await waitFor(() => expect(client.getFavorites).toHaveBeenCalledTimes(1));
 
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={false} onClose={vi.fn()} />
+        <FavoritesModal open={false} onClose={vi.fn()} {...defaultSearchProps} />
       </MemoryRouter>
     );
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={true} onClose={vi.fn()} />
+        <FavoritesModal open={true} onClose={vi.fn()} {...defaultSearchProps} />
       </MemoryRouter>
     );
     await waitFor(() => expect(client.getFavorites).toHaveBeenCalledTimes(2));

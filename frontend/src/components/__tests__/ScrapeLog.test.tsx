@@ -52,7 +52,8 @@ describe('ScrapeLog', () => {
     await userEvent.click(screen.getByRole('button'));
     await waitFor(() => {
       expect(screen.getByText('Fehler')).toBeInTheDocument();
-      expect(screen.getByText('Fehler').className).toContain('text-red-500');
+      // Aurora Dark uses inline pink color instead of Tailwind text-red-500
+      expect(screen.getByText('Fehler').style.color).toBe('rgb(236, 72, 153)');
     });
   });
 

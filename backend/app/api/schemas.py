@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ListingSummary(BaseModel):
@@ -97,3 +97,49 @@ class PaginatedResponse(BaseModel):
     page: int
     per_page: int
     items: list[ListingSummary]
+
+
+class SavedSearchCreate(BaseModel):
+    search: str | None = None
+    plz: str | None = None
+    max_distance: int | None = None
+    sort: Literal["date", "price", "distance"] = "date"
+    sort_dir: Literal["asc", "desc"] = "desc"
+
+    @model_validator(mode="after")
+    def validate_distance_requires_plz(self) -> "SavedSearchCreate":
+        if self.max_distance is not None and self.plz is None:
+            raise ValueError("max_distance requires plz to be set")
+        return self
+
+
+class SavedSearchUpdate(BaseModel):
+    search: str | None = None
+    plz: str | None = None
+    max_distance: int | None = None
+    sort: Literal["date", "price", "distance"] = "date"
+    sort_dir: Literal["asc", "desc"] = "desc"
+
+    @model_validator(mode="after")
+    def validate_distance_requires_plz(self) -> "SavedSearchUpdate":
+        if self.max_distance is not None and self.plz is None:
+            raise ValueError("max_distance requires plz to be set")
+        return self
+
+
+class SavedSearchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    name: str | None
+    search: str | None
+    plz: str | None
+    max_distance: int | None
+    sort: str
+    sort_dir: str
+    is_active: bool
+    last_checked_at: datetime | None
+    last_viewed_at: datetime | None
+    created_at: datetime
+    match_count: int = 0
