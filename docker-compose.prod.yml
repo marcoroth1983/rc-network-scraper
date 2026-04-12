@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: rcscout
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - default
+
+  backend:
+    image: ghcr.io/marcoroth1983/rc-network-scraper/backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/rcscout
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_BASE_URL: https://rcn-scout.d2x-labs.de
+      FRONTEND_URL: https://rcn-scout.d2x-labs.de
+      ALLOWED_ORIGINS: https://rcn-scout.d2x-labs.de
+      COOKIE_SECURE: "true"
+      SCRAPE_DELAY: "1.0"
+    networks:
+      - default
+
+  nginx:
+    image: ghcr.io/marcoroth1983/rc-network-scraper/nginx:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rcn-scout.rule=Host(`rcn-scout.d2x-labs.de`)"
+      - "traefik.http.routers.rcn-scout.entrypoints=websecure"
+      - "traefik.http.routers.rcn-scout.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rcn-scout.loadbalancer.server.port=80"
+      - "traefik.docker.network=web"
+    networks:
+      - default
+      - web
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+  web:
+    external: true
