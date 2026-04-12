@@ -240,6 +240,7 @@ async def toggle_favorite(
 
 @router.get("/favorites", response_model=list[ListingSummary])
 async def get_favorites(
+    plz: str | None = None,
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> list[ListingSummary]:
@@ -249,7 +250,13 @@ async def get_favorites(
         .where(Listing.is_favorite.is_(True))
         .order_by(Listing.posted_at.desc().nulls_last())
     )
-    rows = result.scalars().all()
+    rows = list(result.scalars().all())
+    if plz:
+        pairs = await filter_by_distance(rows, plz, None, session)
+        return [
+            ListingSummary.model_validate(row).model_copy(update={"distance_km": dist})
+            for row, dist in pairs
+        ]
     return [ListingSummary.model_validate(row) for row in rows]
 
 

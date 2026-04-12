@@ -100,7 +100,7 @@ export default function PlzBar({ onOpenFavorites, totalUnread, suppressPlzRestor
 
   return (
     <div
-      className="sticky top-14 z-30 backdrop-blur shadow-sm"
+      className="hidden sm:block sticky sm:top-14 z-30 backdrop-blur shadow-sm"
       style={{ background: 'rgba(15, 15, 35, 0.7)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
     >
       <div className="max-w-6xl mx-auto px-4 h-11 flex items-center justify-between gap-4">

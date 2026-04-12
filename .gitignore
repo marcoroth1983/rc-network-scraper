@@ -32,3 +32,4 @@ Thumbs.db
 
 # Docker volumes
 postgres_data/
+g-oauth-client-id

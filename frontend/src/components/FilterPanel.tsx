@@ -27,7 +27,7 @@ export default function FilterPanel({ filter, onChange }: Props) {
 
   return (
     <div
-      className="sticky top-[6.25rem] z-20 rounded-none sm:rounded-card px-4 py-3 mb-4 sm:mb-6 shadow-aurora-card"
+      className="sticky top-0 sm:top-[6.25rem] z-20 rounded-none sm:rounded-card px-4 py-3 mb-4 sm:mb-6 shadow-aurora-card"
       style={{
         background: 'rgba(15, 15, 35, 0.6)',
         backdropFilter: 'blur(20px)',

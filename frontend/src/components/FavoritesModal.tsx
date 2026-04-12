@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { getFavorites } from '../api/client';
 import type { ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
 import FavoriteCard from './FavoriteCard';
@@ -205,6 +206,13 @@ export default function FavoritesModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tab]);
 
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;
@@ -318,7 +326,7 @@ export default function FavoritesModal({
         </div>
 
         {/* Body */}
-        <div className="px-6 py-4 space-y-3 min-h-0 flex-1 overflow-y-auto">
+        <div className="px-4 py-4 min-h-0 flex-1 overflow-y-auto">
           {tab === 'merkliste' && (
             <>
               {loading && (
@@ -337,8 +345,11 @@ export default function FavoritesModal({
                   Keine Favoriten gespeichert
                 </p>
               )}
-              {!loading && favorites.map((listing) => (
-                <FavoriteCard key={listing.id} listing={listing} onRemove={handleRemoveFavorite} />
+              {!loading && favorites.map((listing, i) => (
+                <React.Fragment key={listing.id}>
+                  {i > 0 && <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />}
+                  <FavoriteCard listing={listing} onRemove={handleRemoveFavorite} />
+                </React.Fragment>
               ))}
             </>
           )}

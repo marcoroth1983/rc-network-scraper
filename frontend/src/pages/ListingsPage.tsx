@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
-import Pagination from '../components/Pagination';
-import { useListings } from '../hooks/useListings';
+import { useInfiniteListings } from '../hooks/useInfiniteListings';
 import type { SavedSearch, SearchCriteria } from '../types/api';
 
 interface Props {
@@ -80,9 +79,13 @@ export default function ListingsPage({
   onUpdateSearch,
   onClearActiveSavedSearch,
 }: Props) {
-  const { data, loading, error, filter, setFilter } = useListings();
+  const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, loadMore } =
+    useInfiniteListings();
   const [fabFeedback, setFabFeedback] = useState<'saved' | 'updated' | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sentinel ref for IntersectionObserver-based infinite scroll trigger
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // When all filter fields are cleared, clear the active saved search ID
   useEffect(() => {
@@ -90,6 +93,23 @@ export default function ListingsPage({
       onClearActiveSavedSearch();
     }
   }, [filter.search, filter.plz, filter.max_distance, activeSavedSearchId, onClearActiveSavedSearch]);
+
+  // Stable loadMore ref so the observer effect doesn't re-run on every render
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreRef.current();
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Determine FAB mode
   const hasActiveFilters = Boolean(filter.search || filter.plz || filter.max_distance);
@@ -139,7 +159,8 @@ export default function ListingsPage({
     <div>
       <FilterPanel filter={filter} onChange={setFilter} />
 
-      {loading && <Spinner />}
+      {/* Full-page spinner: only on the very first load before any items exist */}
+      {loading && items.length === 0 && <Spinner />}
 
       {!loading && error && (
         <div
@@ -154,13 +175,14 @@ export default function ListingsPage({
         </div>
       )}
 
-      {!loading && !error && data && (
+      {!error && (total !== null || items.length > 0) && (
         <>
           <p className="text-sm mb-4" style={{ color: 'rgba(248,250,252,0.65)' }}>
-            <span className="font-semibold" style={{ color: '#F8FAFC' }}>{data.total}</span>{' '}
+            <span className="font-semibold" style={{ color: '#F8FAFC' }}>{total}</span>{' '}
             Anzeigen gefunden
           </p>
-          {data.items.length === 0 ? (
+
+          {items.length === 0 && !loading ? (
             <div className="text-center py-16">
               <svg
                 className="w-12 h-12 mx-auto mb-4"
@@ -176,21 +198,34 @@ export default function ListingsPage({
               <p style={{ color: 'rgba(248,250,252,0.35)' }}>Keine Anzeigen gefunden.</p>
             </div>
           ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {data.items.map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
-                ))}
-              </div>
-              <Pagination
-                page={data.page}
-                totalPages={Math.ceil(data.total / data.per_page)}
-                onPageChange={(p) => setFilter({ ...filter, page: p })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {items.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} />
+              ))}
+            </div>
+          )}
+
+          {/* Small spinner shown while fetching subsequent pages */}
+          {loadingMore && (
+            <div className="flex justify-center py-6">
+              <div
+                className="animate-spin h-5 w-5 border-2 rounded-full"
+                style={{ borderColor: '#A78BFA', borderTopColor: 'transparent' }}
               />
-            </>
+            </div>
+          )}
+
+          {/* End-of-list indicator */}
+          {!hasMore && items.length > 0 && (
+            <p className="text-center text-sm py-6" style={{ color: 'rgba(248,250,252,0.35)' }}>
+              Alle {total} Anzeigen geladen
+            </p>
           )}
         </>
       )}
+
+      {/* Sentinel: always mounted so the IntersectionObserver is set up on initial render */}
+      <div ref={sentinelRef} className="h-1" />
 
       {/* FAB — Suche speichern / aktualisieren */}
       {showFab && (
@@ -198,7 +233,7 @@ export default function ListingsPage({
           type="button"
           onClick={showUpdate ? handleUpdate : handleSave}
           aria-label={showUpdate ? 'Suche aktualisieren' : 'Suche speichern'}
-          className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full px-4 py-3 font-semibold text-sm shadow-lg transition-all duration-200"
+          className="fixed bottom-20 sm:bottom-6 right-6 z-30 flex items-center gap-2 rounded-full px-4 py-3 font-semibold text-sm shadow-lg transition-all duration-200"
           style={{
             background: fabFeedback
               ? 'rgba(45,212,191,0.25)'

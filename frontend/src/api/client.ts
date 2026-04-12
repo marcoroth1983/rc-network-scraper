@@ -77,7 +77,9 @@ export async function toggleFavorite(id: number, isFavorite: boolean): Promise<v
 }
 
 export async function getFavorites(): Promise<ListingSummary[]> {
-  const res = await fetch('/api/favorites');
+  const plz = localStorage.getItem('rcn_ref_plz');
+  const url = plz ? `/api/favorites?plz=${encodeURIComponent(plz)}` : '/api/favorites';
+  const res = await fetch(url);
   return handleResponse<ListingSummary[]>(res);
 }
 

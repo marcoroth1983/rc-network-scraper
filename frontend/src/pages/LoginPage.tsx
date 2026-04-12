@@ -47,13 +47,14 @@ export default function LoginPage() {
                borderColor: 'rgba(255,255,255,0.1)',
              }}>
           <svg className="w-7 h-7" style={{ color: '#A78BFA' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path d="M5 3l14 9-14 9V3z" />
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
           </svg>
         </div>
 
         <div>
           <h1 className="text-[28px] font-bold tracking-tight" style={{ color: '#F8FAFC' }}>
-            RC-Markt Scout
+            RC-Network Scout
           </h1>
           <p className="text-sm mt-1.5" style={{ color: 'rgba(248,250,252,0.5)' }}>
             Dein persönlicher RC-Flohmarkt-Scout

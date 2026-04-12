@@ -3,8 +3,11 @@ import { useState, useCallback } from 'react';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
 import LoginPage from './pages/LoginPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { FavoritesPage } from './pages/FavoritesPage';
 import ScrapeLog from './components/ScrapeLog';
 import FavoritesModal from './components/FavoritesModal';
+import { MobileFooter } from './components/MobileFooter';
 import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
@@ -22,7 +25,8 @@ function PlaneIcon() {
       strokeWidth={2}
       aria-hidden="true"
     >
-      <path d="M5 3l14 9-14 9V3z" />
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
     </svg>
   );
 }
@@ -75,7 +79,7 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
   return (
     <AuroraBackground>
       <header
-        className="sticky top-0 z-40 backdrop-blur-lg border-b"
+        className="hidden sm:block sticky top-0 z-40 backdrop-blur-lg border-b"
         style={{
           background: 'rgba(15, 15, 35, 0.8)',
           borderBottomColor: 'rgba(255, 255, 255, 0.06)',
@@ -87,7 +91,13 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             className="flex items-center gap-2 font-bold text-lg tracking-tight"
             style={{ color: '#A78BFA' }}
           >
-            <PlaneIcon />
+            <div className="inline-flex items-center justify-center w-8 h-8 rounded-xl border"
+                 style={{
+                   background: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(236,72,153,0.3))',
+                   borderColor: 'rgba(255,255,255,0.1)',
+                 }}>
+              <PlaneIcon />
+            </div>
             RC-Network Scraper
           </Link>
           <div className="flex items-center gap-4">
@@ -110,7 +120,7 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         totalUnread={totalUnread}
         suppressPlzRestore={activeSavedSearchId != null}
       />
-      <main className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-6">
+      <main className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-6 pb-20 sm:pb-0">
         <Routes>
           <Route
             path="/"
@@ -125,6 +135,8 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             }
           />
           <Route path="/listings/:id" element={<DetailPage />} />
+          <Route path="/profile" element={<ProfilePage user={user} onLogout={logout} />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
         </Routes>
       </main>
       <FavoritesModal
@@ -137,6 +149,7 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         onMarkViewed={markViewed}
         onActivateSearch={handleActivateSearch}
       />
+      <MobileFooter totalUnread={totalUnread} />
     </AuroraBackground>
   );
 }
