@@ -259,6 +259,8 @@ export function FavoritesPage() {
           sort: (criteria.sort as 'date' | 'price' | 'distance') ?? 'date',
           sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
           max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
+          price_min: '',
+          price_max: '',
           page: 1,
           category: localStorage.getItem('rcn_category') ?? 'all',
         },

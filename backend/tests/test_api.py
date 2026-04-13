@@ -247,7 +247,7 @@ class TestSorting:
         await _insert_listing(db_session, external_id="2", title="Expensive", price="300€")
         await _insert_listing(db_session, external_id="3", title="NoPrize", price=None)
 
-        response = await api_client.get("/api/listings?sort=price")
+        response = await api_client.get("/api/listings?sort=price&sort_dir=asc")
 
         assert response.status_code == 200
         items = response.json()["items"]
@@ -264,7 +264,7 @@ class TestSorting:
         await _insert_listing(db_session, external_id="2", title="Cheap", price="25 €")
         await _insert_listing(db_session, external_id="3", title="Mid", price="250 €")
 
-        response = await api_client.get("/api/listings?sort=price")
+        response = await api_client.get("/api/listings?sort=price&sort_dir=asc")
 
         assert response.status_code == 200
         items = response.json()["items"]
@@ -298,7 +298,7 @@ class TestSorting:
             lat=53.5753, lon=10.0153
         )
 
-        response = await api_client.get("/api/listings?sort=distance&plz=80331")
+        response = await api_client.get("/api/listings?sort=distance&sort_dir=asc&plz=80331")
 
         assert response.status_code == 200
         items = response.json()["items"]

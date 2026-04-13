@@ -10,6 +10,8 @@ const defaultFilter: ListingsFilter = {
   sort: 'date',
   sort_dir: 'desc',
   max_distance: '',
+  price_min: '',
+  price_max: '',
   page: 1,
   category: 'all',
 };
@@ -17,7 +19,12 @@ const defaultFilter: ListingsFilter = {
 function renderPanel(filter = defaultFilter, onChange = vi.fn()) {
   return render(
     <MemoryRouter>
-      <FilterPanel filter={filter} onChange={onChange} />
+      <FilterPanel
+        filter={filter}
+        onChange={onChange}
+        activeCategoryLabel="Alle Kategorien"
+        onOpenCategoryModal={vi.fn()}
+      />
     </MemoryRouter>,
   );
 }

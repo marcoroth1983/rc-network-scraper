@@ -29,10 +29,8 @@ export function useSavedSearches(): UseSavedSearchesResult {
   };
 
   // Load on mount
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, []);
 
   const save = async (criteria: SearchCriteria) => {
     await createSavedSearch(criteria);

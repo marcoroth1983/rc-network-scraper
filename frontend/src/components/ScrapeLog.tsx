@@ -42,6 +42,7 @@ export default function ScrapeLog() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLog();
     const id = setInterval(fetchLog, POLL_MS);
     return () => clearInterval(id);

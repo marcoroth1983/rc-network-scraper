@@ -89,6 +89,8 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             sort: (criteria.sort as 'date' | 'price' | 'distance') ?? 'date',
             sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
             max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
+            price_min: '',
+            price_max: '',
             page: 1,
             // Preserve the currently active category — saved searches don't override it
             category: localStorage.getItem('rcn_category') ?? 'all',
@@ -158,8 +160,6 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         </div>
       </header>
       <PlzBar
-        onOpenFavorites={() => setFavoritesOpen(true)}
-        totalUnread={totalUnread}
         suppressPlzRestore={activeSavedSearchId != null}
         activeCategoryLabel={
           activeCategory === 'all'

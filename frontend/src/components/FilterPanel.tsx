@@ -25,9 +25,14 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
   const [filterOpen, setFilterOpen] = useState(false);
   const swipeStartY = useRef<number | null>(null);
 
+  // Sync local input state when external filter changes (e.g. saved-search activation)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setSearchInput(filter.search); }, [filter.search]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setDistanceInput(filter.max_distance); }, [filter.max_distance]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setPriceMinInput(filter.price_min); }, [filter.price_min]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setPriceMaxInput(filter.price_max); }, [filter.price_max]);
 
   // Lock body scroll when modal is open
