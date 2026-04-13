@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -16,13 +16,21 @@ from app.api.schemas import (
 )
 from app.config import CATEGORIES, CATEGORY_KEYS
 from app.db import get_session
-from app.models import Listing, PlzGeodata, SavedSearch, SearchNotification, User
+from app.models import Listing, PlzGeodata, SavedSearch, SearchNotification, User, UserFavorite
 from app.scrape_runner import get_state, get_log, start_update_job
 from app.services.listing_filter import build_text_filter, filter_by_distance
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+
+async def _get_favorite_listing_ids(user_id: int, session: AsyncSession) -> set[int]:
+    """Return set of listing IDs favorited by the given user. One DB round-trip."""
+    result = await session.execute(
+        select(UserFavorite.listing_id).where(UserFavorite.user_id == user_id)
+    )
+    return {row for (row,) in result.all()}
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +238,7 @@ async def list_listings(
     price_min: float | None = Query(default=None, ge=0),
     price_max: float | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
     """Return a paginated, filterable, sortable list of listings."""
     # Validate parameter combinations
@@ -242,6 +250,8 @@ async def list_listings(
         raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
     if price_min is not None and price_max is not None and price_min > price_max:
         raise HTTPException(status_code=400, detail="price_min must be <= price_max")
+
+    fav_ids = await _get_favorite_listing_ids(current_user.id, session)
 
     offset = (page - 1) * per_page
     asc = sort_dir == "asc"
@@ -281,11 +291,18 @@ async def list_listings(
             items = []
             for row, dist in page_pairs:
                 summary = ListingSummary.model_validate(row)
+                if row.id in fav_ids:
+                    summary = summary.model_copy(update={"is_favorite": True})
                 if dist is not None:
                     summary = summary.model_copy(update={"distance_km": dist})
                 items.append(summary)
         else:
-            items = [ListingSummary.model_validate(row) for row in rows]
+            items = []
+            for row in rows:
+                summary = ListingSummary.model_validate(row)
+                if row.id in fav_ids:
+                    summary = summary.model_copy(update={"is_favorite": True})
+                items.append(summary)
 
         # Attach price indicators (one batch query for all items on this page)
         indicator_map = await _compute_price_indicators(items, session)
@@ -332,6 +349,8 @@ async def list_listings(
     items = []
     for row, dist in page_pairs:
         summary = ListingSummary.model_validate(row)
+        if row.id in fav_ids:
+            summary = summary.model_copy(update={"is_favorite": True})
         summary = summary.model_copy(update={"distance_km": dist})
         items.append(summary)
 
@@ -347,25 +366,33 @@ async def get_listings_by_author(
     author: str,
     exclude_id: int | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> list[ListingSummary]:
     """Return up to 10 listings from the same author, excluding the given listing."""
+    fav_ids = await _get_favorite_listing_ids(current_user.id, session)
     q = select(Listing).where(Listing.author == author)
     if exclude_id is not None:
         q = q.where(Listing.id != exclude_id)
     q = q.order_by(Listing.posted_at.desc()).limit(10)
     result = await session.execute(q)
     rows = result.scalars().all()
-    return [ListingSummary.model_validate(row) for row in rows]
+    items = []
+    for row in rows:
+        summary = ListingSummary.model_validate(row)
+        if row.id in fav_ids:
+            summary = summary.model_copy(update={"is_favorite": True})
+        items.append(summary)
+    return items
 
 
 @router.get("/listings/{listing_id}", response_model=ListingDetail)
 async def get_listing(
     listing_id: int,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> ListingDetail:
     """Return a single listing by ID. Returns 404 if not found."""
+    fav_ids = await _get_favorite_listing_ids(current_user.id, session)
     result = await session.execute(select(Listing).where(Listing.id == listing_id))
     listing = result.scalar_one_or_none()
 
@@ -373,6 +400,8 @@ async def get_listing(
         raise HTTPException(status_code=404, detail="Listing not found")
 
     detail = ListingDetail.model_validate(listing)
+    if listing.id in fav_ids:
+        detail = detail.model_copy(update={"is_favorite": True})
     indicator_map = await _compute_price_indicators([detail], session)
     return _apply_price_indicator(detail, indicator_map)
 
@@ -399,22 +428,29 @@ async def toggle_favorite(
     listing_id: int,
     is_favorite: bool,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Set or clear the is_favorite flag on a listing."""
-    values_dict: dict = {"is_favorite": is_favorite}
-    if is_favorite:
-        values_dict["favorited_at"] = func.now()
-    else:
-        values_dict["favorited_at"] = None
-    result = await session.execute(
-        update(Listing)
-        .where(Listing.id == listing_id)
-        .values(**values_dict)
-        .returning(Listing.id)
-    )
-    if result.fetchone() is None:
+    """Add or remove a listing from the current user's favorites."""
+    exists = await session.execute(select(Listing.id).where(Listing.id == listing_id))
+    if exists.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Listing not found")
+
+    if is_favorite:
+        await session.execute(
+            text("""
+                INSERT INTO user_favorites (user_id, listing_id)
+                VALUES (:uid, :lid)
+                ON CONFLICT (user_id, listing_id) DO NOTHING
+            """),
+            {"uid": current_user.id, "lid": listing_id},
+        )
+    else:
+        await session.execute(
+            delete(UserFavorite).where(
+                UserFavorite.user_id == current_user.id,
+                UserFavorite.listing_id == listing_id,
+            )
+        )
     await session.commit()
     return {"id": listing_id, "is_favorite": is_favorite}
 
@@ -423,22 +459,30 @@ async def toggle_favorite(
 async def get_favorites(
     plz: str | None = None,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> list[ListingSummary]:
-    """Return all favorited listings ordered by posted_at desc."""
+    """Return the current user's favorited listings, newest favorite first."""
     result = await session.execute(
         select(Listing)
-        .where(Listing.is_favorite.is_(True))
-        .order_by(Listing.posted_at.desc().nulls_last())
+        .join(UserFavorite, UserFavorite.listing_id == Listing.id)
+        .where(UserFavorite.user_id == current_user.id)
+        .order_by(UserFavorite.created_at.desc())
     )
-    rows = list(result.scalars().all())
+    listings = result.scalars().all()
+
     if plz:
-        pairs = await filter_by_distance(rows, plz, None, session)
+        pairs = await filter_by_distance(listings, plz, None, session)
         return [
-            ListingSummary.model_validate(row).model_copy(update={"distance_km": dist})
-            for row, dist in pairs
+            ListingSummary.model_validate(listing).model_copy(
+                update={"is_favorite": True, "distance_km": dist}
+            )
+            for listing, dist in pairs
         ]
-    return [ListingSummary.model_validate(row) for row in rows]
+
+    return [
+        ListingSummary.model_validate(l).model_copy(update={"is_favorite": True})
+        for l in listings
+    ]
 
 
 # ---------------------------------------------------------------------------

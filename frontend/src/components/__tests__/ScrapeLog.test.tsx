@@ -27,7 +27,7 @@ describe('ScrapeLog', () => {
       {
         job_type: 'update',
         finished_at: new Date('2026-04-08T14:30:00Z').toISOString(),
-        summary: { pages_crawled: 2, new: 4, updated: 0, rechecked: 0, sold_found: 0, deleted_sold: 0, deleted_stale: 0 },
+        summary: { pages_crawled: 2, new: 4, updated: 0, rechecked: 0, sold_found: 0, cleaned_sold: 0, deleted_stale: 0 },
         error: null,
       },
     ]);
@@ -62,7 +62,7 @@ describe('ScrapeLog', () => {
       {
         job_type: 'regular',
         finished_at: new Date('2026-04-08T15:00:00Z').toISOString(),
-        summary: { pages_crawled: 0, new: 0, updated: 0, rechecked: 10, sold_found: 2, deleted_sold: 1, deleted_stale: 0 },
+        summary: { pages_crawled: 0, new: 0, updated: 0, rechecked: 10, sold_found: 2, cleaned_sold: 1, deleted_stale: 0 },
         error: null,
       },
     ]);

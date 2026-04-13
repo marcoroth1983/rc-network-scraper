@@ -27,6 +27,13 @@ const base: ListingSummary = {
   is_sold: false,
   is_favorite: false,
   category: 'flugmodelle',
+  manufacturer: null,
+  model_name: null,
+  model_type: null,
+  model_subtype: null,
+  price_indicator: null,
+  price_indicator_median: null,
+  price_indicator_sample: null,
 };
 
 function renderCard(props: Partial<ListingSummary> = {}) {

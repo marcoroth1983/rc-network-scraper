@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { getFavorites } from '../api/client';
 import { useSavedSearches } from '../hooks/useSavedSearches';
-import { writeFiltersToParams } from '../hooks/useListings';
 import type { ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
 import FavoriteCard from '../components/FavoriteCard';
 
@@ -179,7 +178,7 @@ function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearch
 
 function tabStyle(active: boolean): React.CSSProperties {
   return {
-    padding: '8px 0',
+    padding: '14px 0',
     marginRight: 24,
     fontSize: 14,
     fontWeight: active ? 600 : 400,
@@ -197,7 +196,6 @@ function tabStyle(active: boolean): React.CSSProperties {
 
 export function FavoritesPage() {
   const navigate = useNavigate();
-  const [, setSearchParams] = useSearchParams();
 
   const { searches, totalUnread, load: loadSearches, remove: removeSearch, toggleActive, markViewed } =
     useSavedSearches();
@@ -247,26 +245,16 @@ export function FavoritesPage() {
   }
 
   function handleActivateSearch(_id: number, criteria: SearchCriteria) {
-    navigate('/');
-    // Let the route settle before writing params so ListingsPage picks them up.
-    // writeFiltersToParams expects (URLSearchParams) => void; useSearchParams'
-    // setSearchParams satisfies that signature.
-    setTimeout(() => {
-      writeFiltersToParams(
-        {
-          search: criteria.search ?? '',
-          plz: criteria.plz ?? '',
-          sort: (criteria.sort as 'date' | 'price' | 'distance') ?? 'date',
-          sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
-          max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
-          price_min: '',
-          price_max: '',
-          page: 1,
-          category: localStorage.getItem('rcn_category') ?? 'all',
-        },
-        setSearchParams,
-      );
-    }, 0);
+    const p = new URLSearchParams();
+    if (criteria.search) p.set('search', criteria.search);
+    if (criteria.plz) p.set('plz', criteria.plz);
+    if (criteria.sort && criteria.sort !== 'date') p.set('sort', criteria.sort);
+    if (criteria.sort_dir && criteria.sort_dir !== 'desc') p.set('sort_dir', criteria.sort_dir);
+    if (criteria.max_distance != null) p.set('max_distance', String(criteria.max_distance));
+    const cat = localStorage.getItem('rcn_category') ?? 'all';
+    if (cat !== 'all') p.set('category', cat);
+    const qs = p.toString();
+    navigate(qs ? `/?${qs}` : '/');
   }
 
   const soldCount = favorites.filter((f) => f.is_sold).length;

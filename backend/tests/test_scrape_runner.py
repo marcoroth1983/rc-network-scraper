@@ -85,7 +85,7 @@ async def test_run_recheck_job_transitions_to_done():
     """run_recheck_job: idle → running → done, appends to log."""
     reset_state()
     p2 = {"rechecked": 10, "sold_found": 2}
-    p3 = {"deleted_sold": 1, "deleted_stale": 0}
+    p3 = {"cleaned_sold": 1, "deleted_stale": 0}
 
     with patch("app.scrape_runner._phase2_sold_recheck", new_callable=AsyncMock, return_value=p2), \
          patch("app.scrape_runner._phase3_cleanup", new_callable=AsyncMock, return_value=p3), \
@@ -96,7 +96,7 @@ async def test_run_recheck_job_transitions_to_done():
     assert state["status"] == "done"
     assert state["summary"]["rechecked"] == 10
     assert state["summary"]["sold_found"] == 2
-    assert state["summary"]["deleted_sold"] == 1
+    assert state["summary"]["cleaned_sold"] == 1
 
     log = get_log()
     assert log[0]["job_type"] == "regular"
@@ -128,7 +128,7 @@ async def test_log_accumulates_multiple_runs():
     reset_state()
     p1 = {"pages_crawled": 1, "new": 1, "updated": 0}
     p2 = {"rechecked": 5, "sold_found": 0}
-    p3 = {"deleted_sold": 0, "deleted_stale": 0}
+    p3 = {"cleaned_sold": 0, "deleted_stale": 0}
 
     with patch("app.scrape_runner._phase1_new_listings", new_callable=AsyncMock, return_value=p1), \
          patch("app.scrape_runner.AsyncSessionLocal", return_value=_mock_session()):

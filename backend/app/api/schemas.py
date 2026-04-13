@@ -30,6 +30,15 @@ class ListingSummary(BaseModel):
     is_sold: bool = False
     is_favorite: bool = False
     category: str = "flugmodelle"
+    # LLM-extracted product fields
+    manufacturer: str | None = None
+    model_name: str | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    # Price indicator (computed on-the-fly, not stored in DB)
+    price_indicator: str | None = None
+    price_indicator_median: float | None = None
+    price_indicator_sample: int | None = None
 
 
 class ListingDetail(BaseModel):
@@ -57,6 +66,18 @@ class ListingDetail(BaseModel):
     is_sold: bool
     is_favorite: bool = False
     category: str = "flugmodelle"
+    # LLM-extracted product fields
+    manufacturer: str | None = None
+    model_name: str | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    drive_type: str | None = None
+    completeness: str | None = None
+    attributes: dict[str, str] = {}
+    # Price indicator (computed on-the-fly, not stored in DB)
+    price_indicator: str | None = None
+    price_indicator_median: float | None = None
+    price_indicator_sample: int | None = None
 
 
 class PlzResponse(BaseModel):
@@ -74,7 +95,7 @@ class ScrapeSummary(BaseModel):
     updated: int = 0
     rechecked: int = 0
     sold_found: int = 0
-    deleted_sold: int = 0
+    cleaned_sold: int = 0
     deleted_stale: int = 0
 
 

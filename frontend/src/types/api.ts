@@ -24,6 +24,15 @@ export interface ListingSummary {
   is_sold: boolean;
   is_favorite: boolean;
   category: string;
+  // LLM-extracted product fields
+  manufacturer: string | null;
+  model_name: string | null;
+  model_type: string | null;
+  model_subtype: string | null;
+  // Price indicator
+  price_indicator: 'bargain' | 'fair' | 'expensive' | null;
+  price_indicator_median: number | null;
+  price_indicator_sample: number | null;
 }
 
 export interface ListingDetail {
@@ -49,6 +58,18 @@ export interface ListingDetail {
   is_sold: boolean;
   is_favorite: boolean;
   category: string;
+  // LLM-extracted product fields
+  manufacturer: string | null;
+  model_name: string | null;
+  model_type: string | null;
+  model_subtype: string | null;
+  drive_type: string | null;
+  completeness: string | null;
+  attributes: Record<string, string>;
+  // Price indicator
+  price_indicator: 'bargain' | 'fair' | 'expensive' | null;
+  price_indicator_median: number | null;
+  price_indicator_sample: number | null;
 }
 
 export interface PaginatedResponse {
@@ -71,7 +92,7 @@ export interface ScrapeSummary {
   updated: number;
   rechecked: number;
   sold_found: number;
-  deleted_sold: number;
+  cleaned_sold: number;
   deleted_stale: number;
 }
 

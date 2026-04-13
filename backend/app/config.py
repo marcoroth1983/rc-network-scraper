@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:4200"  # comma-separated
     COOKIE_SECURE: bool = False  # set True in production (HTTPS)
 
+    # OpenRouter — optional, analysis disabled if not set
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "qwen/qwen3-30b-a3b:free"
+    OPENROUTER_FALLBACK_MODEL: str = "mistralai/mistral-nemo"
+    OPENROUTER_BATCH_MODEL: str = "google/gemini-2.5-flash-lite"
+
     @field_validator("JWT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")
     @classmethod
     def must_not_be_empty(cls, v: str) -> str:

@@ -276,19 +276,21 @@ async def test_phase2_rotates_scraped_at(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_phase3_deletes_old_sold_listings(db_session: AsyncSession):
-    """Phase 3 deletes sold listings older than 2 months."""
+async def test_phase3_strips_images_from_old_sold_listings(db_session: AsyncSession):
+    """Phase 3 strips images from sold listings older than 2 weeks, keeps the listing itself."""
     await db_session.execute(text("""
         INSERT INTO listings (external_id, url, title, description, images, tags, author,
                               scraped_at, posted_at, is_sold)
         VALUES
-            -- Old sold: should be deleted
-            ('old-sold', 'https://rc-network.de/t/1/', 'Old sold', '', '[]', '[]', 'u',
-             '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', TRUE),
-            -- Recent sold: should NOT be deleted (only 1 day old)
-            ('new-sold', 'https://rc-network.de/t/2/', 'New sold', '', '[]', '[]', 'u',
-             NOW(), NOW(), TRUE),
-            -- Old not-sold with recent posted_at: should NOT be deleted (not sold, not stale)
+            -- Old sold: images should be stripped, listing kept
+            ('old-sold', 'https://rc-network.de/t/1/', 'Old sold', '',
+             '["https://example.com/img1.jpg", "https://example.com/img2.jpg"]',
+             '[]', 'u', '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', TRUE),
+            -- Recent sold: images must NOT be stripped (only 1 day old)
+            ('new-sold', 'https://rc-network.de/t/2/', 'New sold', '',
+             '["https://example.com/img3.jpg"]',
+             '[]', 'u', NOW(), NOW(), TRUE),
+            -- Old not-sold with recent posted_at: should NOT be affected (not sold, not stale)
             ('old-active', 'https://rc-network.de/t/3/', 'Old active', '', '[]', '[]', 'u',
              NOW(), NOW(), FALSE)
     """))
@@ -296,15 +298,25 @@ async def test_phase3_deletes_old_sold_listings(db_session: AsyncSession):
 
     result = await _phase3_cleanup(db_session)
 
-    assert result["deleted_sold"] == 1
+    assert result["cleaned_sold"] == 1
 
     remaining = await db_session.execute(
         text("SELECT external_id FROM listings ORDER BY external_id")
     )
     ids = {r[0] for r in remaining.fetchall()}
-    assert "old-sold" not in ids
+    assert "old-sold" in ids       # listing still exists
     assert "new-sold" in ids
     assert "old-active" in ids
+
+    old_sold_images = await db_session.execute(
+        text("SELECT images FROM listings WHERE external_id = 'old-sold'")
+    )
+    assert old_sold_images.fetchone()[0] == []
+
+    new_sold_images = await db_session.execute(
+        text("SELECT images FROM listings WHERE external_id = 'new-sold'")
+    )
+    assert new_sold_images.fetchone()[0] == ["https://example.com/img3.jpg"]
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-import { Routes, Route, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
 import { useState, useCallback, useEffect } from 'react';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
@@ -16,7 +16,6 @@ import { useAuth, type AuthUser } from './hooks/useAuth';
 import { useSavedSearches } from './hooks/useSavedSearches';
 import type { Category, SearchCriteria, SavedSearch } from './types/api';
 import { getCategories } from './api/client';
-import { writeFiltersToParams } from './hooks/useListings';
 
 function PlaneIcon() {
   return (
@@ -65,7 +64,6 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
   }, []);
 
   const navigate = useNavigate();
-  const [, setSearchParams] = useSearchParams();
 
   // Derive the active saved search criteria object from the searches array
   const activeSavedSearchCriteria: SavedSearch | undefined = activeSavedSearchId != null
@@ -76,30 +74,19 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
     (id: number, criteria: SearchCriteria) => {
       setActiveSavedSearchId(id);
       setFavoritesOpen(false);
-      // Navigate to / and apply the saved search criteria as URL params
-      navigate('/');
-      // Build the params from the criteria. We need to do this after navigation
-      // so we use a short timeout to let the route settle first, then write params.
-      // We call writeFiltersToParams with a ListingsFilter-compatible shape.
-      setTimeout(() => {
-        writeFiltersToParams(
-          {
-            search: criteria.search ?? '',
-            plz: criteria.plz ?? '',
-            sort: (criteria.sort as 'date' | 'price' | 'distance') ?? 'date',
-            sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
-            max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
-            price_min: '',
-            price_max: '',
-            page: 1,
-            // Preserve the currently active category — saved searches don't override it
-            category: localStorage.getItem('rcn_category') ?? 'all',
-          },
-          setSearchParams,
-        );
-      }, 0);
+      const p = new URLSearchParams();
+      if (criteria.search) p.set('search', criteria.search);
+      if (criteria.plz) p.set('plz', criteria.plz);
+      if (criteria.sort && criteria.sort !== 'date') p.set('sort', criteria.sort);
+      if (criteria.sort_dir && criteria.sort_dir !== 'desc') p.set('sort_dir', criteria.sort_dir);
+      if (criteria.max_distance != null) p.set('max_distance', String(criteria.max_distance));
+      // Preserve the currently active category — saved searches don't override it
+      const cat = localStorage.getItem('rcn_category') ?? 'all';
+      if (cat !== 'all') p.set('category', cat);
+      const qs = p.toString();
+      navigate(qs ? `/?${qs}` : '/');
     },
-    [navigate, setSearchParams],
+    [navigate],
   );
 
   const handleClearActiveSavedSearch = useCallback(() => {

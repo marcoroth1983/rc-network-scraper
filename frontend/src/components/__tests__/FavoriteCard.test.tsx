@@ -14,6 +14,8 @@ const baseListing = {
   scraped_at: '2026-04-01T10:00:00Z', distance_km: null,
   images: ['https://rc-network.de/img/test.jpg'], is_sold: false, is_favorite: true,
   category: 'flugmodelle',
+  manufacturer: null, model_name: null, model_type: null, model_subtype: null,
+  price_indicator: null, price_indicator_median: null, price_indicator_sample: null,
 };
 
 describe('FavoriteCard', () => {

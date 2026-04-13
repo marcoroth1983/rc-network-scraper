@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.1.0] - 2026-04-14
+
+### Added
+
+**Benutzer-Merkliste (PLAN-015)**
+- Jeder Benutzer hat jetzt seine eigene, unabhängige Merkliste (`user_favorites`-Tabelle mit FK auf `users` + `listings`)
+- Bestehende Marco-Favoriten wurden via Email-Lookup migriert
+- `is_favorite` und `favorited_at` aus `listings`-Tabelle entfernt
+
+**LLM-Analyse Infrastruktur (Basis für PLAN-014)**
+- `backend/app/analysis/` Modul: `extractor.py` (OpenRouter), `job.py` (Hintergrundworker), `backfill.py` (CLI)
+- OpenRouter-Config: Primary `qwen/qwen3-30b-a3b:free`, Fallback `mistralai/mistral-nemo`
+- `openai>=1.40` als Dependency
+- DB-Felder für LLM-Daten: `manufacturer`, `model_name`, `model_type`, `model_subtype`, `drive_type`, `completeness`, `attributes`, `llm_analyzed`, `price_indicator`, `shipping_available`
+- API-Schemas und Frontend-Types um Analyse-Felder erweitert
+
+**Activity Tracking**
+- `last_seen_at` auf `users` — wird bei jedem `/auth/me` aktualisiert
+- Benutzeridentifizierung in Backend-Logs
+
+### Fixed
+- **OAuth 500**: Doppelter Callback (zweiter Request nach Button-Klick) führte zu `httpx.HTTPStatusError` vom Google-Token-Endpunkt → wird jetzt abgefangen und zu `/login?error=denied` weitergeleitet
+- **OAuth 400**: Ungültiger State löst jetzt Redirect statt HTTP 400 aus
+- **Login-Button**: Deaktiviert nach erstem Klick (verhindert Doppelklick-Fehler)
+- **Preisparser**: `"VB. 4.500 Euro"` wurde fälschlicherweise als `0.45` geparst — führende Nicht-Ziffern werden jetzt korrekt entfernt
+- `ScrapeSummary.deleted_sold` → `cleaned_sold` (korrekter Feldname des Orchestrators)
+
+---
+
 ## [1.0.0] - 2026-04-13
 
 ### Added

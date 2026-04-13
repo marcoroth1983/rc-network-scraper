@@ -36,8 +36,6 @@ class Listing(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     is_sold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    favorited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, server_default="flugmodelle", index=True)
 
     # --- LLM-extracted analysis fields (Step 014) ---
@@ -122,4 +120,18 @@ class SearchNotification(Base):
 
     __table_args__ = (
         UniqueConstraint("saved_search_id", "listing_id", name="uq_search_listing"),
+    )
+
+
+class UserFavorite(Base):
+    __tablename__ = "user_favorites"
+
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    listing_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

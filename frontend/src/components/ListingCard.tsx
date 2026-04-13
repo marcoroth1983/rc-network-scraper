@@ -21,6 +21,35 @@ function PinIcon() {
   );
 }
 
+interface PriceIndicatorBadgeProps {
+  indicator: ListingSummary['price_indicator'];
+}
+
+function PriceIndicatorBadge({ indicator }: PriceIndicatorBadgeProps) {
+  if (indicator === 'bargain') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+      >
+        Schnäppchen
+      </span>
+    );
+  }
+  if (indicator === 'expensive') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
+      >
+        Über Durchschnitt
+      </span>
+    );
+  }
+  // "fair" and null → no badge
+  return null;
+}
+
 interface Props {
   listing: ListingSummary;
   onFavoriteChange?: (id: number, isFavorite: boolean) => void;
@@ -92,6 +121,15 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
             NEU
           </span>
         )}
+        {listing.is_sold && listing.images.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(15, 15, 35, 0.8)' }}>
+            <svg className="w-12 h-12" style={{ color: 'rgba(248,250,252,0.12)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </div>
+        )}
         {listing.images.length > 0 && (
           <img
             src={listing.images[0].startsWith('/') ? `https://www.rc-network.de${listing.images[0]}` : listing.images[0]}
@@ -135,13 +173,16 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
 
         {/* Price + condition row */}
         <div className="flex items-center justify-between mb-3">
-          <span
-            data-testid="price"
-            className="text-lg sm:text-xl font-bold"
-            style={{ color: '#FDE68A' }}
-          >
-            {formatPrice(listing.price_numeric, listing.price)}
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              data-testid="price"
+              className="text-lg sm:text-xl font-bold"
+              style={{ color: '#FDE68A' }}
+            >
+              {formatPrice(listing.price_numeric, listing.price)}
+            </span>
+            <PriceIndicatorBadge indicator={listing.price_indicator} />
+          </div>
           <span
             data-testid="condition"
             className="text-xs font-medium px-2 py-0.5 rounded-full"

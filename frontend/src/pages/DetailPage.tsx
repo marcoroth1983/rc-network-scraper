@@ -17,6 +17,51 @@ function formatDate(iso: string | null): string {
   });
 }
 
+type PriceIndicator = 'bargain' | 'fair' | 'expensive' | null;
+
+function PriceIndicatorBadge({ indicator }: { indicator: PriceIndicator }) {
+  if (indicator === 'bargain') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+      >
+        Schnäppchen
+      </span>
+    );
+  }
+  if (indicator === 'expensive') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
+      >
+        Über Durchschnitt
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Convert snake_case English attribute keys to readable German-friendly labels. */
+function humanizeAttributeKey(key: string): string {
+  const knownLabels: Record<string, string> = {
+    wingspan_mm: 'Spannweite (mm)',
+    weight_g: 'Gewicht (g)',
+    scale: 'Maßstab',
+    battery: 'Akku',
+    motor: 'Motor',
+    channels: 'Kanäle',
+    servos_included: 'Servos inkl.',
+    esc: 'Regler',
+    length_mm: 'Länge (mm)',
+    height_mm: 'Höhe (mm)',
+    blade_size: 'Rotorblattgröße',
+    frame_size: 'Rahmengröße',
+  };
+  return knownLabels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 interface FieldProps {
   label: string;
   value: string | null | undefined;
@@ -187,7 +232,7 @@ export default function DetailPage() {
       </Link>
 
       {/* Hero image */}
-      {listing.images.length > 0 && (() => {
+      {listing.images.length > 0 ? (() => {
         const src = listing.images[0];
         const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
         return (
@@ -200,7 +245,25 @@ export default function DetailPage() {
             />
           </a>
         );
-      })()}
+      })() : listing.is_sold ? (
+        <div
+          className="w-full rounded-2xl mb-4 flex items-center justify-center"
+          style={{
+            height: '200px',
+            background: 'rgba(15, 15, 35, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          <div className="flex flex-col items-center gap-2">
+            <svg className="w-10 h-10" style={{ color: 'rgba(248,250,252,0.12)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            <span className="text-xs font-medium" style={{ color: 'rgba(248,250,252,0.25)' }}>Bild nicht mehr verfügbar</span>
+          </div>
+        </div>
+      ) : null}
 
       {/* Main content card */}
       <div
@@ -277,9 +340,17 @@ export default function DetailPage() {
               <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
                 Preis
               </dt>
-              <dd className="text-lg font-bold" style={{ color: '#FDE68A' }}>
-                {formatPrice(listing.price_numeric, listing.price)}
+              <dd className="flex flex-wrap items-center gap-2">
+                <span className="text-lg font-bold" style={{ color: '#FDE68A' }}>
+                  {formatPrice(listing.price_numeric, listing.price)}
+                </span>
+                <PriceIndicatorBadge indicator={listing.price_indicator} />
               </dd>
+              {listing.price_indicator_median != null && listing.price_indicator_sample != null && (
+                <p className="text-xs mt-1.5" style={{ color: 'rgba(248,250,252,0.4)' }}>
+                  Ø {listing.price_indicator_median.toLocaleString('de-DE', { maximumFractionDigits: 0 })}€ bei {listing.price_indicator_sample} Verkäufen
+                </p>
+              )}
             </div>
 
             <Field label="Zustand" value={listing.condition} />
@@ -354,6 +425,18 @@ export default function DetailPage() {
                 </dd>
               </div>
             )}
+
+            {/* LLM-extracted product fields — only rendered when present */}
+            {listing.manufacturer && <Field label="Hersteller" value={listing.manufacturer} />}
+            {listing.model_name && <Field label="Modell" value={listing.model_name} />}
+            {listing.model_type && <Field label="Typ" value={listing.model_type} />}
+            {listing.drive_type && <Field label="Antrieb" value={listing.drive_type} />}
+            {listing.completeness && <Field label="Vollständigkeit" value={listing.completeness} />}
+
+            {/* Dynamic attributes from LLM extraction */}
+            {Object.entries(listing.attributes).map(([key, val]) => (
+              <Field key={key} label={humanizeAttributeKey(key)} value={val} />
+            ))}
           </dl>
 
           {/* Image gallery — remaining images after hero */}

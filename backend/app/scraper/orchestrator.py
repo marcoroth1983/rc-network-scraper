@@ -38,6 +38,8 @@ def _parse_price_numeric(price: str | None) -> float | None:
     if not cleaned:
         return None
     cleaned = cleaned.replace(' ', '')
+    # Strip leading non-digit garbage left by keyword removal (e.g. "." from "VB. 4500")
+    cleaned = re.sub(r'^[^\d]+', '', cleaned)
     if ',' in cleaned and '.' in cleaned:
         # Both separators: assume dot=thousands, comma=decimal (e.g. "1.300,00")
         cleaned = cleaned.replace('.', '').replace(',', '.')
@@ -536,28 +538,28 @@ async def _phase2_sold_recheck(
 
 
 async def _phase3_cleanup(session: AsyncSession) -> dict:
-    """Phase 3: delete stale and sold listings per retention policy.
+    """Phase 3: clean up sold and stale listings per retention policy.
 
     Retention rules:
-    - Sold listings with scraped_at older than 2 months: delete
+    - Sold listings with scraped_at older than 2 weeks: strip images (kept forever for seller history)
     - Non-sold listings with posted_at older than 8 weeks: delete
       (listings with NULL posted_at are excluded and kept indefinitely)
 
-    Returns: {deleted_sold, deleted_stale}
+    Returns: {cleaned_sold, deleted_stale}
     """
     now = datetime.now(timezone.utc)
-    two_months_ago = now - timedelta(days=60)   # ~2 months (intentionally slightly longer than 8-week stale cutoff)
+    two_weeks_ago = now - timedelta(weeks=2)
     eight_weeks_ago = now - timedelta(weeks=8)
 
     sold_result = await session.execute(
         text("""
-            DELETE FROM listings
-            WHERE is_sold = TRUE AND scraped_at < :cutoff
+            UPDATE listings SET images = '[]'::jsonb
+            WHERE is_sold = TRUE AND scraped_at < :cutoff AND images != '[]'::jsonb
             RETURNING id
         """),
-        {"cutoff": two_months_ago},
+        {"cutoff": two_weeks_ago},
     )
-    deleted_sold = len(sold_result.fetchall())
+    cleaned_sold = len(sold_result.fetchall())
 
     stale_result = await session.execute(
         text("""
@@ -574,6 +576,6 @@ async def _phase3_cleanup(session: AsyncSession) -> dict:
     await session.commit()
 
     logger.info(
-        "Phase 3: deleted %d sold + %d stale listings", deleted_sold, deleted_stale
+        "Phase 3: cleaned images from %d sold + deleted %d stale listings", cleaned_sold, deleted_stale
     )
-    return {"deleted_sold": deleted_sold, "deleted_stale": deleted_stale}
+    return {"cleaned_sold": cleaned_sold, "deleted_stale": deleted_stale}

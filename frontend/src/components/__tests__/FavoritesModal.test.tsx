@@ -13,6 +13,8 @@ const makeListing = (overrides = {}) => ({
   author: 'seller1', posted_at: '2026-03-01T10:00:00Z',
   scraped_at: '2026-04-01T10:00:00Z', distance_km: null,
   images: [], is_sold: false, is_favorite: true, category: 'flugmodelle',
+  manufacturer: null, model_name: null, model_type: null, model_subtype: null,
+  price_indicator: null, price_indicator_median: null, price_indicator_sample: null,
   ...overrides,
 });
 

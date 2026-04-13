@@ -18,6 +18,7 @@ from app.api.routes import router
 from app.config import settings
 from app.notifications.log_plugin import LogPlugin
 from app.notifications.registry import notification_registry
+from app.analysis.job import run_analysis_job
 from app.scrape_runner import start_update_job, start_recheck_job
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,16 @@ async def lifespan(app: FastAPI):
         id="auto_recheck",
         replace_existing=True,
     )
+    scheduler.add_job(
+        run_analysis_job,
+        trigger="interval",
+        hours=2,
+        id="auto_analysis",
+        replace_existing=True,
+    )
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduler started — update every 30min, recheck every 1h")
+    logger.info("Scheduler started — update every 30min, recheck every 1h, analysis every 2h")
 
     yield
 
