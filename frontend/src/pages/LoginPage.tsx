@@ -33,11 +33,11 @@ export default function LoginPage() {
       {/* Card */}
       <div className="relative w-full max-w-[420px] rounded-3xl p-12 text-center space-y-7 border"
            style={{
-             background: 'rgba(15, 15, 35, 0.6)',
+             background: 'rgba(30, 30, 60, 0.7)',
              backdropFilter: 'blur(24px) saturate(1.2)',
              WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
-             borderColor: 'rgba(255,255,255,0.08)',
-             boxShadow: '0 0 60px rgba(99,102,241,0.08), 0 8px 32px rgba(0,0,0,0.3)',
+             borderColor: 'rgba(255,255,255,0.14)',
+             boxShadow: '0 0 80px rgba(99,102,241,0.12), 0 8px 32px rgba(0,0,0,0.4)',
            }}>
 
         {/* Icon */}
