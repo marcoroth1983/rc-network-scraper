@@ -72,10 +72,19 @@ async def init_db() -> None:
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS attributes JSONB NOT NULL DEFAULT '{}'"
         ))
         await conn.execute(text(
-            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMPTZ"
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS llm_analyzed BOOLEAN NOT NULL DEFAULT false"
         ))
         await conn.execute(text(
-            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS analysis_retries INTEGER NOT NULL DEFAULT 0"
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_indicator VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS shipping_available BOOLEAN"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings DROP COLUMN IF EXISTS analyzed_at"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings DROP COLUMN IF EXISTS analysis_retries"
         ))
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"

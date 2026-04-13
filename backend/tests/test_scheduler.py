@@ -38,4 +38,4 @@ async def test_lifespan_registers_three_jobs_and_does_not_fire_on_startup():
 
             assert jobs["auto_update"].trigger.interval.total_seconds() == 30 * 60
             assert jobs["auto_recheck"].trigger.interval.total_seconds() == 3600
-            assert jobs["auto_analysis"].trigger.interval.total_seconds() == 2 * 3600
+            assert jobs["auto_analysis"].trigger.interval.total_seconds() == 2 * 60

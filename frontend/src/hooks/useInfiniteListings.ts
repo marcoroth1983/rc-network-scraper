@@ -43,6 +43,10 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     category: urlFilter.category,
     price_min: urlFilter.price_min,
     price_max: urlFilter.price_max,
+    drive_type: urlFilter.drive_type,
+    completeness: urlFilter.completeness,
+    shipping_available: urlFilter.shipping_available,
+    price_indicator: urlFilter.price_indicator,
   });
 
   // Detect filter dimension changes (anything except page).
@@ -56,7 +60,11 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     prevFilter.max_distance !== urlFilter.max_distance ||
     prevFilter.category !== urlFilter.category ||
     prevFilter.price_min !== urlFilter.price_min ||
-    prevFilter.price_max !== urlFilter.price_max;
+    prevFilter.price_max !== urlFilter.price_max ||
+    prevFilter.drive_type !== urlFilter.drive_type ||
+    prevFilter.completeness !== urlFilter.completeness ||
+    prevFilter.shipping_available !== urlFilter.shipping_available ||
+    prevFilter.price_indicator !== urlFilter.price_indicator;
 
   if (filterChanged) {
     filterRef.current = {
@@ -68,6 +76,10 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       category: urlFilter.category,
       price_min: urlFilter.price_min,
       price_max: urlFilter.price_max,
+      drive_type: urlFilter.drive_type,
+      completeness: urlFilter.completeness,
+      shipping_available: urlFilter.shipping_available,
+      price_indicator: urlFilter.price_indicator,
     };
     // Reset synchronously during render — safe because we haven't committed yet
     // and this is logically equivalent to getDerivedStateFromProps.
@@ -80,7 +92,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   }
 
   // Stable snapshot of filter dimensions for the fetch effect.
-  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max } = filterRef.current;
+  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator } = filterRef.current;
 
   useEffect(() => {
     // Fetch gate: no localStorage value means first visit — wait for modal selection.
@@ -116,6 +128,10 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       category: category !== 'all' ? category : undefined,
       price_min: price_min ? parseFloat(price_min) : null,
       price_max: price_max ? parseFloat(price_max) : null,
+      drive_type,
+      completeness,
+      shipping_available,
+      price_indicator,
     })
       .then((res) => {
         if (cancelled) return;
@@ -139,7 +155,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     };
     // `items.length` is intentionally included so hasMore calculation is correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max]);
+  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator]);
 
   const loadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -198,6 +214,10 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     category: urlFilter.category,
     price_min: urlFilter.price_min,
     price_max: urlFilter.price_max,
+    drive_type: urlFilter.drive_type,
+    completeness: urlFilter.completeness,
+    shipping_available: urlFilter.shipping_available,
+    price_indicator: urlFilter.price_indicator,
   };
 
   return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore };

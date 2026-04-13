@@ -26,7 +26,7 @@ interface PriceIndicatorBadgeProps {
 }
 
 function PriceIndicatorBadge({ indicator }: PriceIndicatorBadgeProps) {
-  if (indicator === 'bargain') {
+  if (indicator === 'deal') {
     return (
       <span
         className="text-xs font-semibold px-2 py-0.5 rounded-full"

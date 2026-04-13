@@ -1,170 +1,133 @@
 """Scheduled analysis job: extract structured product data from unanalyzed listings."""
 
 import asyncio
-import json
 import logging
-from datetime import datetime, timezone
 
+from sqlalchemy import select, update
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.extractor import ListingAnalysis, analyze_listing
+from app.analysis.extractor import analyze_listing
 from app.config import settings
 from app.db import AsyncSessionLocal
+from app.models import Listing
 
 logger = logging.getLogger(__name__)
 
-_BATCH_SIZE = 50
-_FREE_MODEL_DELAY_S = 3.0   # 20 req/min cap → 3s between requests
-_PAID_MODEL_DELAY_S = 0.1   # paid model, no strict rate limit
-_MAX_RETRIES = 3
-
-
-async def _fetch_unanalyzed(session: AsyncSession) -> list[dict]:
-    """Fetch up to _BATCH_SIZE listings that have not yet been analyzed."""
-    result = await session.execute(
-        text("""
-            SELECT id, title, description, price, condition, category
-            FROM listings
-            WHERE analyzed_at IS NULL
-              AND analysis_retries < :max_retries
-            ORDER BY scraped_at DESC
-            LIMIT :limit
-        """),
-        {"max_retries": _MAX_RETRIES, "limit": _BATCH_SIZE},
-    )
-    rows = result.mappings().all()
-    return [dict(r) for r in rows]
-
-
-async def _update_listing_analysis(
-    session: AsyncSession,
-    listing_id: int,
-    analysis: ListingAnalysis,
-) -> None:
-    """Persist extracted analysis fields and mark analyzed_at."""
-    await session.execute(
-        text("""
-            UPDATE listings SET
-                manufacturer    = :manufacturer,
-                model_name      = :model_name,
-                drive_type      = :drive_type,
-                model_type      = :model_type,
-                model_subtype   = :model_subtype,
-                completeness    = :completeness,
-                attributes      = :attributes,
-                analyzed_at     = :analyzed_at,
-                analysis_retries = 0
-            WHERE id = :id
-        """),
-        {
-            "id": listing_id,
-            "manufacturer": analysis.manufacturer,
-            "model_name": analysis.model_name,
-            "drive_type": analysis.drive_type,
-            "model_type": analysis.model_type,
-            "model_subtype": analysis.model_subtype,
-            "completeness": analysis.completeness,
-            "attributes": json.dumps(analysis.attributes),
-            "analyzed_at": datetime.now(timezone.utc),
-        },
-    )
-    await session.commit()
-
-
-async def _increment_retries(session: AsyncSession, listing_id: int) -> None:
-    """Increment analysis_retries counter so failing listings eventually get skipped."""
-    await session.execute(
-        text("UPDATE listings SET analysis_retries = analysis_retries + 1 WHERE id = :id"),
-        {"id": listing_id},
-    )
-    await session.commit()
+BATCH_SIZE = 3
+DELAY_SECONDS = 3.0  # respects ~20 req/min free tier limit
 
 
 async def run_analysis_job() -> None:
-    """Analyze unprocessed listings. Called on schedule by APScheduler.
-
-    Uses the free OpenRouter model with a 3-second delay between requests.
-    Falls back to the paid model once per listing if the free model fails.
-    Listings that fail both attempts have their analysis_retries counter
-    incremented; they are skipped after _MAX_RETRIES failures.
-    """
+    """Pick up to BATCH_SIZE unanalyzed listings, run LLM, update DB."""
     if not settings.OPENROUTER_API_KEY:
         logger.info("Analysis job: OPENROUTER_API_KEY not set — skipping")
         return
 
     async with AsyncSessionLocal() as session:
-        listings = await _fetch_unanalyzed(session)
+        rows = await session.execute(
+            select(Listing)
+            .where(Listing.llm_analyzed == False)  # noqa: E712
+            .order_by(Listing.scraped_at.desc())
+            .limit(BATCH_SIZE)
+        )
+        listings = rows.scalars().all()
 
     if not listings:
-        logger.info("Analysis job: no unanalyzed listings found")
+        logger.info("Analysis job: no unanalyzed listings")
         return
 
-    logger.info("Analysis job: starting batch of %d listings", len(listings))
-
-    analyzed = 0
-    failed = 0
+    logger.info("Analysis job: processing %d listings", len(listings))
 
     for listing in listings:
-        listing_id: int = listing["id"]
-        title: str = listing["title"]
-        description: str = listing["description"] or ""
-        price: str | None = listing["price"]
-        condition: str | None = listing["condition"]
-        category: str = listing["category"]
+        result = await analyze_listing(
+            title=listing.title,
+            description=listing.description or "",
+            price=listing.price,
+            condition=listing.condition,
+            category=listing.category or "",
+        )
+        update_vals: dict = {
+            "llm_analyzed": True,
+            "manufacturer": result.manufacturer,
+            "model_name": result.model_name,
+            "drive_type": result.drive_type,
+            "model_type": result.model_type,
+            "model_subtype": result.model_subtype,
+            "completeness": result.completeness,
+            "attributes": result.attributes,
+            "shipping_available": result.shipping_available,
+        }
+        if result.price_euros is not None:
+            update_vals["price_numeric"] = result.price_euros
 
-        # Attempt 1: free model
-        analysis: ListingAnalysis | None = None
-        try:
-            result = await analyze_listing(
-                title=title,
-                description=description,
-                price=price,
-                condition=condition,
-                category=category,
-                model=settings.OPENROUTER_MODEL,
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Listing).where(Listing.id == listing.id).values(**update_vals)
             )
-            # An all-None result (empty analysis) from a non-empty response is treated as failure
-            if result.manufacturer is not None or result.model_name is not None or result.model_type is not None:
-                analysis = result
-        except Exception as exc:
-            logger.warning(
-                "Analysis job: free model failed for listing %d (%s)", listing_id, exc
+            await session.commit()
+
+        await asyncio.sleep(DELAY_SECONDS)
+
+    await recalculate_price_indicators()
+    logger.info("Analysis job: price indicators recalculated")
+
+
+async def recalculate_price_indicators() -> None:
+    """Assign price bands to active non-sold listings using two-level grouping.
+
+    Level 1: manufacturer + model_name (min 5 listings)
+    Level 2: model_type + model_subtype + completeness (min 5 listings)
+    Bands: deal < median*0.75 <= fair <= median*1.25 < expensive
+    """
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("""
+            WITH medians_l1 AS (
+                SELECT manufacturer, model_name,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median
+                FROM listings
+                WHERE price_numeric IS NOT NULL
+                  AND is_sold = false
+                  AND manufacturer IS NOT NULL
+                  AND model_name IS NOT NULL
+                GROUP BY manufacturer, model_name
+                HAVING COUNT(*) >= 5
+            ),
+            medians_l2 AS (
+                SELECT model_type, model_subtype, completeness,
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median
+                FROM listings
+                WHERE price_numeric IS NOT NULL
+                  AND is_sold = false
+                  AND model_type IS NOT NULL
+                  AND model_subtype IS NOT NULL
+                  AND completeness IS NOT NULL
+                GROUP BY model_type, model_subtype, completeness
+                HAVING COUNT(*) >= 5
+            ),
+            new_indicators AS (
+                SELECT
+                    l.id,
+                    CASE
+                        WHEN m1.median IS NOT NULL AND l.price_numeric <= m1.median * 0.75 THEN 'deal'
+                        WHEN m1.median IS NOT NULL AND l.price_numeric >= m1.median * 1.25 THEN 'expensive'
+                        WHEN m1.median IS NOT NULL THEN 'fair'
+                        WHEN m2.median IS NOT NULL AND l.price_numeric <= m2.median * 0.75 THEN 'deal'
+                        WHEN m2.median IS NOT NULL AND l.price_numeric >= m2.median * 1.25 THEN 'expensive'
+                        WHEN m2.median IS NOT NULL THEN 'fair'
+                        ELSE NULL
+                    END AS indicator
+                FROM listings l
+                LEFT JOIN medians_l1 m1
+                    ON m1.manufacturer = l.manufacturer AND m1.model_name = l.model_name
+                LEFT JOIN medians_l2 m2
+                    ON m2.model_type = l.model_type
+                   AND m2.model_subtype = l.model_subtype
+                   AND m2.completeness = l.completeness
+                WHERE l.price_numeric IS NOT NULL AND l.is_sold = false
             )
-
-        if analysis is None:
-            # Attempt 2: paid fallback model
-            await asyncio.sleep(_PAID_MODEL_DELAY_S)
-            try:
-                result = await analyze_listing(
-                    title=title,
-                    description=description,
-                    price=price,
-                    condition=condition,
-                    category=category,
-                    model=settings.OPENROUTER_BATCH_MODEL,
-                )
-                if result.manufacturer is not None or result.model_name is not None or result.model_type is not None:
-                    analysis = result
-            except Exception as exc:
-                logger.warning(
-                    "Analysis job: paid fallback also failed for listing %d (%s)",
-                    listing_id,
-                    exc,
-                )
-
-        try:
-            async with AsyncSessionLocal() as session:
-                if analysis is not None:
-                    await _update_listing_analysis(session, listing_id, analysis)
-                    analyzed += 1
-                else:
-                    await _increment_retries(session, listing_id)
-                    failed += 1
-        except Exception as exc:
-            logger.error("Analysis job: DB error for listing %d: %s", listing_id, exc)
-            failed += 1
-
-        await asyncio.sleep(_FREE_MODEL_DELAY_S)
-
-    logger.info("Analysis job: analyzed=%d, failed=%d", analyzed, failed)
+            UPDATE listings
+            SET price_indicator = ni.indicator
+            FROM new_indicators ni
+            WHERE listings.id = ni.id
+        """))
+        await session.commit()

@@ -21,20 +21,25 @@ EXPECTED_ANALYSIS_COLUMNS = [
     "model_subtype",
     "completeness",
     "attributes",
+    "llm_analyzed",
+    "price_indicator",
+    "shipping_available",
+]
+
+REMOVED_COLUMNS = [
     "analyzed_at",
     "analysis_retries",
 ]
 
 
 class TestAnalysisColumnsExist:
-    """Verify the analysis columns were added to the listings table."""
+    """Verify the analysis columns were added/removed from the listings table."""
 
     @pytest.mark.integration
     async def test_all_analysis_columns_present(self, test_engine) -> None:
         """After init_db() the listings table must have all PLAN-014 columns."""
         from app.db import init_db  # noqa: PLC0415
 
-        # init_db() uses the global engine; override it with the test engine
         import app.db as db_module  # noqa: PLC0415
 
         original_engine = db_module.engine
@@ -54,6 +59,9 @@ class TestAnalysisColumnsExist:
 
         for col in EXPECTED_ANALYSIS_COLUMNS:
             assert col in column_names, f"Missing column on listings table: {col}"
+
+        for col in REMOVED_COLUMNS:
+            assert col not in column_names, f"Column should have been dropped: {col}"
 
     @pytest.mark.integration
     async def test_attributes_default_is_empty_object(self, db_session: AsyncSession) -> None:
@@ -75,39 +83,58 @@ class TestAnalysisColumnsExist:
         assert attributes == {}, f"Expected empty dict, got {attributes!r}"
 
     @pytest.mark.integration
-    async def test_analysis_retries_default_is_zero(self, db_session: AsyncSession) -> None:
-        """New rows must have analysis_retries default to 0."""
+    async def test_llm_analyzed_default_is_false(self, db_session: AsyncSession) -> None:
+        """New rows must have llm_analyzed default to false."""
         await db_session.execute(
             text("""
                 INSERT INTO listings (external_id, url, title, description, images, tags,
                     author, scraped_at)
-                VALUES ('test-retries-default', 'https://example.com/2', 'Test2', '',
+                VALUES ('test-llm-default', 'https://example.com/2', 'Test2', '',
                     '[]', '[]', 'tester', NOW())
             """)
         )
         await db_session.commit()
 
         row = await db_session.execute(
-            text("SELECT analysis_retries FROM listings WHERE external_id = 'test-retries-default'")
+            text("SELECT llm_analyzed FROM listings WHERE external_id = 'test-llm-default'")
         )
-        retries = row.scalar_one()
-        assert retries == 0, f"Expected 0, got {retries!r}"
+        llm_analyzed = row.scalar_one()
+        assert llm_analyzed is False, f"Expected False, got {llm_analyzed!r}"
 
     @pytest.mark.integration
-    async def test_analyzed_at_defaults_to_null(self, db_session: AsyncSession) -> None:
-        """New rows must have analyzed_at = NULL (not yet analyzed)."""
+    async def test_price_indicator_defaults_to_null(self, db_session: AsyncSession) -> None:
+        """New rows must have price_indicator = NULL (not yet computed)."""
         await db_session.execute(
             text("""
                 INSERT INTO listings (external_id, url, title, description, images, tags,
                     author, scraped_at)
-                VALUES ('test-analyzed-at', 'https://example.com/3', 'Test3', '',
+                VALUES ('test-price-indicator', 'https://example.com/3', 'Test3', '',
                     '[]', '[]', 'tester', NOW())
             """)
         )
         await db_session.commit()
 
         row = await db_session.execute(
-            text("SELECT analyzed_at FROM listings WHERE external_id = 'test-analyzed-at'")
+            text("SELECT price_indicator FROM listings WHERE external_id = 'test-price-indicator'")
         )
-        analyzed_at = row.scalar_one_or_none()
-        assert analyzed_at is None, f"Expected NULL, got {analyzed_at!r}"
+        price_indicator = row.scalar_one_or_none()
+        assert price_indicator is None, f"Expected NULL, got {price_indicator!r}"
+
+    @pytest.mark.integration
+    async def test_shipping_available_defaults_to_null(self, db_session: AsyncSession) -> None:
+        """New rows must have shipping_available = NULL (not yet analyzed)."""
+        await db_session.execute(
+            text("""
+                INSERT INTO listings (external_id, url, title, description, images, tags,
+                    author, scraped_at)
+                VALUES ('test-shipping-default', 'https://example.com/4', 'Test4', '',
+                    '[]', '[]', 'tester', NOW())
+            """)
+        )
+        await db_session.commit()
+
+        row = await db_session.execute(
+            text("SELECT shipping_available FROM listings WHERE external_id = 'test-shipping-default'")
+        )
+        shipping_available = row.scalar_one_or_none()
+        assert shipping_available is None, f"Expected NULL, got {shipping_available!r}"

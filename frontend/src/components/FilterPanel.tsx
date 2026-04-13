@@ -48,7 +48,9 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
   const hasValidPlz = !!filter.plz;
   const hasSecondaryFilters =
     filter.category !== 'all' || !!filter.max_distance || filter.sort !== 'date' ||
-    filter.sort_dir !== 'desc' || !!filter.price_min || !!filter.price_max;
+    filter.sort_dir !== 'desc' || !!filter.price_min || !!filter.price_max ||
+    filter.shipping_available === true || !!filter.price_indicator ||
+    !!filter.drive_type || !!filter.completeness;
 
   const inputClass =
     'placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition';
@@ -223,6 +225,48 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium pointer-events-none" style={{ color: 'rgba(248,250,252,0.3)' }}>€</span>
               </div>
+            </div>
+          </div>
+
+          {/* Versand */}
+          <div>
+            <div className={sectionLabel} style={sectionLabelColor}>Versand</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={`px-3 py-1.5 rounded-full text-sm transition ${
+                  filter.shipping_available === true
+                    ? 'bg-aurora-indigo text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+                onClick={() => onChange({
+                  ...filter,
+                  shipping_available: filter.shipping_available === true ? undefined : true,
+                  page: 1,
+                })}
+              >
+                Versand möglich
+              </button>
+            </div>
+          </div>
+
+          {/* Schnäppchen */}
+          <div>
+            <div className={sectionLabel} style={sectionLabelColor}>Preis-Bewertung</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={`px-3 py-1.5 rounded-full text-sm transition ${
+                  filter.price_indicator === 'deal'
+                    ? 'bg-aurora-indigo text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+                onClick={() => onChange({
+                  ...filter,
+                  price_indicator: filter.price_indicator === 'deal' ? undefined : 'deal',
+                  page: 1,
+                })}
+              >
+                Nur Schnäppchen
+              </button>
             </div>
           </div>
 

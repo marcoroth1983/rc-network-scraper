@@ -46,8 +46,9 @@ class Listing(Base):
     model_subtype: Mapped[str | None] = mapped_column(String(50), nullable=True)
     completeness: Mapped[str | None] = mapped_column(String(30), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
-    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    analysis_retries: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    llm_analyzed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    price_indicator: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    shipping_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class PlzGeodata(Base):

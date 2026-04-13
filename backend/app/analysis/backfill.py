@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import sys
-from datetime import datetime, timezone
 
 from sqlalchemy import text
 
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 100
 _REQUEST_DELAY_S = 0.1   # 100ms between paid model requests
-_MAX_RETRIES = 3
 
 
 async def _fetch_batch(offset: int, limit: int) -> list[dict]:
@@ -34,12 +32,11 @@ async def _fetch_batch(offset: int, limit: int) -> list[dict]:
             text("""
                 SELECT id, title, description, price, condition, category
                 FROM listings
-                WHERE analyzed_at IS NULL
-                  AND analysis_retries < :max_retries
+                WHERE llm_analyzed = false
                 ORDER BY scraped_at DESC
                 LIMIT :limit OFFSET :offset
             """),
-            {"max_retries": _MAX_RETRIES, "limit": limit, "offset": offset},
+            {"limit": limit, "offset": offset},
         )
         rows = result.mappings().all()
         return [dict(r) for r in rows]
@@ -48,11 +45,7 @@ async def _fetch_batch(offset: int, limit: int) -> list[dict]:
 async def _count_unanalyzed() -> int:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            text("""
-                SELECT COUNT(*) FROM listings
-                WHERE analyzed_at IS NULL AND analysis_retries < :max_retries
-            """),
-            {"max_retries": _MAX_RETRIES},
+            text("SELECT COUNT(*) FROM listings WHERE llm_analyzed = false")
         )
         return result.scalar_one()
 
@@ -62,15 +55,15 @@ async def _save_analysis(listing_id: int, analysis: ListingAnalysis) -> None:
         await session.execute(
             text("""
                 UPDATE listings SET
-                    manufacturer    = :manufacturer,
-                    model_name      = :model_name,
-                    drive_type      = :drive_type,
-                    model_type      = :model_type,
-                    model_subtype   = :model_subtype,
-                    completeness    = :completeness,
-                    attributes      = :attributes,
-                    analyzed_at     = :analyzed_at,
-                    analysis_retries = 0
+                    manufacturer       = :manufacturer,
+                    model_name         = :model_name,
+                    drive_type         = :drive_type,
+                    model_type         = :model_type,
+                    model_subtype      = :model_subtype,
+                    completeness       = :completeness,
+                    attributes         = :attributes,
+                    shipping_available = :shipping_available,
+                    llm_analyzed       = true
                 WHERE id = :id
             """),
             {
@@ -82,16 +75,17 @@ async def _save_analysis(listing_id: int, analysis: ListingAnalysis) -> None:
                 "model_subtype": analysis.model_subtype,
                 "completeness": analysis.completeness,
                 "attributes": json.dumps(analysis.attributes),
-                "analyzed_at": datetime.now(timezone.utc),
+                "shipping_available": analysis.shipping_available,
             },
         )
         await session.commit()
 
 
-async def _increment_retries(listing_id: int) -> None:
+async def _mark_analyzed(listing_id: int) -> None:
+    """Mark a listing as analyzed (even on failure) to avoid infinite retry loops."""
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text("UPDATE listings SET analysis_retries = analysis_retries + 1 WHERE id = :id"),
+            text("UPDATE listings SET llm_analyzed = true WHERE id = :id"),
             {"id": listing_id},
         )
         await session.commit()
@@ -136,12 +130,12 @@ async def run_backfill(limit: int) -> None:
                     await _save_analysis(listing_id, result)
                     analyzed += 1
                 else:
-                    logger.warning("Backfill: all-None result for listing %d — treating as failure", listing_id)
-                    await _increment_retries(listing_id)
+                    logger.warning("Backfill: all-None result for listing %d — marking analyzed", listing_id)
+                    await _mark_analyzed(listing_id)
                     failed += 1
             except Exception as exc:
                 logger.warning("Backfill: failed for listing %d (%s)", listing_id, exc)
-                await _increment_retries(listing_id)
+                await _mark_analyzed(listing_id)
                 failed += 1
 
             total_done = analyzed + failed

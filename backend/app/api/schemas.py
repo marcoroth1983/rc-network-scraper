@@ -35,10 +35,11 @@ class ListingSummary(BaseModel):
     model_name: str | None = None
     model_type: str | None = None
     model_subtype: str | None = None
-    # Price indicator (computed on-the-fly, not stored in DB)
+    drive_type: str | None = None
+    completeness: str | None = None
+    shipping_available: bool | None = None
+    # Price indicator (DB-stored, populated by recalculate_price_indicators)
     price_indicator: str | None = None
-    price_indicator_median: float | None = None
-    price_indicator_sample: int | None = None
 
 
 class ListingDetail(BaseModel):
@@ -74,10 +75,9 @@ class ListingDetail(BaseModel):
     drive_type: str | None = None
     completeness: str | None = None
     attributes: dict[str, str] = {}
-    # Price indicator (computed on-the-fly, not stored in DB)
+    shipping_available: bool | None = None
+    # Price indicator (DB-stored, populated by recalculate_price_indicators)
     price_indicator: str | None = None
-    price_indicator_median: float | None = None
-    price_indicator_sample: int | None = None
 
 
 class PlzResponse(BaseModel):

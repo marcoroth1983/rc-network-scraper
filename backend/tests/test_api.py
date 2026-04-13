@@ -730,33 +730,34 @@ class TestCategoryFilter:
 
 
 # ---------------------------------------------------------------------------
-# PLAN-014 Step 4: Price indicator
+# PLAN-014 Step 4: Price indicator (DB-stored)
 # ---------------------------------------------------------------------------
 
-async def _insert_listing_analyzed(
+async def _insert_listing_with_indicator(
     session: AsyncSession,
     *,
     external_id: str,
     title: str = "Test listing",
     price_numeric: float | None = None,
+    price_indicator: str | None = None,
     manufacturer: str | None = None,
     model_name: str | None = None,
     category: str = "flugmodelle",
     is_sold: bool = False,
 ) -> int:
-    """Insert a listing with analysis fields set, returning the auto-incremented id."""
+    """Insert a listing with optional price_indicator set, returning the auto-incremented id."""
     result = await session.execute(
         text("""
             INSERT INTO listings (
                 external_id, url, title, price, price_numeric, condition, shipping,
                 description, images, tags, author, posted_at, posted_at_raw, plz, city,
                 latitude, longitude, scraped_at, is_sold, category,
-                manufacturer, model_name, analyzed_at
+                manufacturer, model_name, llm_analyzed, price_indicator
             ) VALUES (
                 :eid, :url, :title, NULL, :price_numeric, NULL, NULL,
                 '', '[]', '[]', 'TestUser', NOW(), NULL, NULL, NULL,
                 NULL, NULL, NOW(), :is_sold, :category,
-                :manufacturer, :model_name, NOW()
+                :manufacturer, :model_name, true, :price_indicator
             ) RETURNING id
         """),
         {
@@ -768,6 +769,7 @@ async def _insert_listing_analyzed(
             "category": category,
             "manufacturer": manufacturer,
             "model_name": model_name,
+            "price_indicator": price_indicator,
         },
     )
     await session.commit()
@@ -777,133 +779,81 @@ async def _insert_listing_analyzed(
 @pytest.mark.asyncio
 @pytest.mark.integration
 class TestPriceIndicator:
-    async def test_bargain_indicator_when_price_below_p25(
+    """price_indicator is a DB-stored column, set by recalculate_price_indicators().
+
+    These tests verify that the value flows correctly from the DB through the API.
+    The computation logic itself is tested in test_analysis_job.py.
+    """
+
+    async def test_deal_indicator_returned_from_list_endpoint(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
-        """Listing priced below p25 of sold comparables gets price_indicator='bargain'."""
-        # Insert 3 sold comparables: 200, 300, 400 → p25=250, median=300, p75=350
-        for i, price in enumerate([200.0, 300.0, 400.0]):
-            await _insert_listing_analyzed(
-                db_session,
-                external_id=f"sold-{i}",
-                price_numeric=price,
-                manufacturer="Multiplex",
-                model_name="EasyStar 3",
-                category="flugmodelle",
-                is_sold=True,
-            )
-        # Active listing priced at 100 (below p25=250)
-        listing_id = await _insert_listing_analyzed(
+        """Listing with price_indicator='deal' in DB is returned correctly via list endpoint."""
+        await _insert_listing_with_indicator(
             db_session,
-            external_id="active-cheap",
+            external_id="deal-listing",
             price_numeric=100.0,
             manufacturer="Multiplex",
             model_name="EasyStar 3",
-            category="flugmodelle",
-            is_sold=False,
+            price_indicator="deal",
         )
 
-        # Test via list endpoint
         resp = await api_client.get("/api/listings")
         assert resp.status_code == 200
         items = resp.json()["items"]
-        active = next(i for i in items if i["external_id"] == "active-cheap")
-        assert active["price_indicator"] == "bargain"
-        assert active["price_indicator_median"] is not None
-        assert active["price_indicator_sample"] == 3
+        active = next(i for i in items if i["external_id"] == "deal-listing")
+        assert active["price_indicator"] == "deal"
 
-        # Test via detail endpoint
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        detail = resp.json()
-        assert detail["price_indicator"] == "bargain"
-        assert detail["price_indicator_sample"] == 3
-
-    async def test_expensive_indicator_when_price_above_p75(
+    async def test_expensive_indicator_returned_from_detail_endpoint(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
-        """Listing priced above p75 of sold comparables gets price_indicator='expensive'."""
-        for i, price in enumerate([200.0, 300.0, 400.0]):
-            await _insert_listing_analyzed(
-                db_session,
-                external_id=f"sold-{i}",
-                price_numeric=price,
-                manufacturer="Black Horse",
-                model_name="L-39",
-                category="flugmodelle",
-                is_sold=True,
-            )
-        listing_id = await _insert_listing_analyzed(
+        """Listing with price_indicator='expensive' in DB is returned by detail endpoint."""
+        listing_id = await _insert_listing_with_indicator(
             db_session,
-            external_id="active-expensive",
+            external_id="expensive-listing",
             price_numeric=999.0,
             manufacturer="Black Horse",
             model_name="L-39",
-            category="flugmodelle",
-            is_sold=False,
+            price_indicator="expensive",
         )
 
         resp = await api_client.get(f"/api/listings/{listing_id}")
         assert resp.status_code == 200
         assert resp.json()["price_indicator"] == "expensive"
 
-    async def test_fair_indicator_when_price_between_p25_and_p75(
+    async def test_fair_indicator_returned_from_detail_endpoint(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
-        """Listing priced between p25 and p75 gets price_indicator='fair'."""
-        for i, price in enumerate([200.0, 300.0, 400.0]):
-            await _insert_listing_analyzed(
-                db_session,
-                external_id=f"sold-{i}",
-                price_numeric=price,
-                manufacturer="FMS",
-                model_name="P-47",
-                category="flugmodelle",
-                is_sold=True,
-            )
-        listing_id = await _insert_listing_analyzed(
+        """Listing with price_indicator='fair' in DB is returned by detail endpoint."""
+        listing_id = await _insert_listing_with_indicator(
             db_session,
-            external_id="active-fair",
+            external_id="fair-listing",
             price_numeric=300.0,
             manufacturer="FMS",
             model_name="P-47",
-            category="flugmodelle",
-            is_sold=False,
+            price_indicator="fair",
         )
 
         resp = await api_client.get(f"/api/listings/{listing_id}")
         assert resp.status_code == 200
         assert resp.json()["price_indicator"] == "fair"
 
-    async def test_no_indicator_when_fewer_than_3_comparables(
+    async def test_no_indicator_when_not_set(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
-        """price_indicator is null when fewer than 3 sold comparables exist."""
-        # Only 2 sold comparables — below minimum
-        for i, price in enumerate([200.0, 400.0]):
-            await _insert_listing_analyzed(
-                db_session,
-                external_id=f"sold-{i}",
-                price_numeric=price,
-                manufacturer="Robbe",
-                model_name="Arcus",
-                category="flugmodelle",
-                is_sold=True,
-            )
-        listing_id = await _insert_listing_analyzed(
+        """price_indicator is null when not set in DB."""
+        listing_id = await _insert_listing_with_indicator(
             db_session,
-            external_id="active-few",
+            external_id="no-indicator",
             price_numeric=300.0,
             manufacturer="Robbe",
             model_name="Arcus",
-            category="flugmodelle",
-            is_sold=False,
+            price_indicator=None,
         )
 
         resp = await api_client.get(f"/api/listings/{listing_id}")
         assert resp.status_code == 200
         assert resp.json()["price_indicator"] is None
-        assert resp.json()["price_indicator_sample"] is None
 
     async def test_no_indicator_when_manufacturer_or_model_null(
         self, api_client: AsyncClient, db_session: AsyncSession
@@ -921,24 +871,13 @@ class TestPriceIndicator:
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
         """price_indicator is null when the listing itself has no price_numeric."""
-        for i, price in enumerate([200.0, 300.0, 400.0]):
-            await _insert_listing_analyzed(
-                db_session,
-                external_id=f"sold-{i}",
-                price_numeric=price,
-                manufacturer="Graupner",
-                model_name="ASK-21",
-                category="flugmodelle",
-                is_sold=True,
-            )
-        listing_id = await _insert_listing_analyzed(
+        listing_id = await _insert_listing_with_indicator(
             db_session,
             external_id="active-noprice",
             price_numeric=None,
             manufacturer="Graupner",
             model_name="ASK-21",
-            category="flugmodelle",
-            is_sold=False,
+            price_indicator=None,
         )
 
         resp = await api_client.get(f"/api/listings/{listing_id}")

@@ -17,10 +17,10 @@ function formatDate(iso: string | null): string {
   });
 }
 
-type PriceIndicator = 'bargain' | 'fair' | 'expensive' | null;
+type PriceIndicator = 'deal' | 'fair' | 'expensive' | null;
 
 function PriceIndicatorBadge({ indicator }: { indicator: PriceIndicator }) {
-  if (indicator === 'bargain') {
+  if (indicator === 'deal') {
     return (
       <span
         className="text-xs font-semibold px-2 py-0.5 rounded-full"
@@ -346,11 +346,6 @@ export default function DetailPage() {
                 </span>
                 <PriceIndicatorBadge indicator={listing.price_indicator} />
               </dd>
-              {listing.price_indicator_median != null && listing.price_indicator_sample != null && (
-                <p className="text-xs mt-1.5" style={{ color: 'rgba(248,250,252,0.4)' }}>
-                  Ø {listing.price_indicator_median.toLocaleString('de-DE', { maximumFractionDigits: 0 })}€ bei {listing.price_indicator_sample} Verkäufen
-                </p>
-              )}
             </div>
 
             <Field label="Zustand" value={listing.condition} />

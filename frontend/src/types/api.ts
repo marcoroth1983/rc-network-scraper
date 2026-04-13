@@ -29,10 +29,12 @@ export interface ListingSummary {
   model_name: string | null;
   model_type: string | null;
   model_subtype: string | null;
+  // LLM-extracted analysis fields
+  drive_type: string | null;
+  completeness: string | null;
+  shipping_available: boolean | null;
   // Price indicator
-  price_indicator: 'bargain' | 'fair' | 'expensive' | null;
-  price_indicator_median: number | null;
-  price_indicator_sample: number | null;
+  price_indicator: 'deal' | 'fair' | 'expensive' | null;
 }
 
 export interface ListingDetail {
@@ -67,9 +69,7 @@ export interface ListingDetail {
   completeness: string | null;
   attributes: Record<string, string>;
   // Price indicator
-  price_indicator: 'bargain' | 'fair' | 'expensive' | null;
-  price_indicator_median: number | null;
-  price_indicator_sample: number | null;
+  price_indicator: 'deal' | 'fair' | 'expensive' | null;
 }
 
 export interface PaginatedResponse {
@@ -128,6 +128,10 @@ export interface ListingsQueryParams {
   category?: string | null;
   price_min?: number | null;
   price_max?: number | null;
+  drive_type?: string;
+  completeness?: string;
+  shipping_available?: boolean;
+  price_indicator?: string;
 }
 
 export class ApiError extends Error {

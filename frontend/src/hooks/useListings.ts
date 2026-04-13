@@ -13,6 +13,10 @@ export interface ListingsFilter {
   category: string;     // "all" or a category key; stored in localStorage, not URL
   price_min: string;
   price_max: string;
+  drive_type?: string;
+  completeness?: string;
+  shipping_available?: boolean;
+  price_indicator?: string;
 }
 
 export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
@@ -23,6 +27,8 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
   const sort_dir: 'asc' | 'desc' = sortDirRaw === 'asc' ? 'asc' : 'desc';
   // Category is kept in localStorage (not URL) — "all" is the sentinel for no filter
   const category = localStorage.getItem('rcn_category') ?? 'all';
+  const shippingRaw = params.get('shipping_available');
+  const shipping_available = shippingRaw === 'true' ? true : shippingRaw === 'false' ? false : undefined;
   return {
     search: params.get('search') ?? '',
     plz: params.get('plz') ?? '',
@@ -33,6 +39,10 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     category,
     price_min: params.get('price_min') ?? '',
     price_max: params.get('price_max') ?? '',
+    drive_type: params.get('drive_type') ?? undefined,
+    completeness: params.get('completeness') ?? undefined,
+    shipping_available,
+    price_indicator: params.get('price_indicator') ?? undefined,
   };
 }
 
@@ -48,6 +58,10 @@ export function writeFiltersToParams(
   if (filter.max_distance) p.set('max_distance', filter.max_distance);
   if (filter.price_min) p.set('price_min', filter.price_min);
   if (filter.price_max) p.set('price_max', filter.price_max);
+  if (filter.drive_type) p.set('drive_type', filter.drive_type);
+  if (filter.completeness) p.set('completeness', filter.completeness);
+  if (filter.shipping_available != null) p.set('shipping_available', String(filter.shipping_available));
+  if (filter.price_indicator) p.set('price_indicator', filter.price_indicator);
   if (filter.page > 1) p.set('page', String(filter.page));
   setParams(p);
 }
@@ -94,6 +108,10 @@ export function useListings(): UseListingsResult {
       category: filter.category !== 'all' ? filter.category : undefined,
       price_min: filter.price_min ? parseFloat(filter.price_min) : null,
       price_max: filter.price_max ? parseFloat(filter.price_max) : null,
+      drive_type: filter.drive_type,
+      completeness: filter.completeness,
+      shipping_available: filter.shipping_available,
+      price_indicator: filter.price_indicator,
     })
       .then((res) => {
         if (!cancelled) {
@@ -121,6 +139,10 @@ export function useListings(): UseListingsResult {
     filter.category,
     filter.price_min,
     filter.price_max,
+    filter.drive_type,
+    filter.completeness,
+    filter.shipping_available,
+    filter.price_indicator,
   ]);
 
   return { data, loading, error, filter, setFilter };

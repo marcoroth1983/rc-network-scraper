@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0] - 2026-04-14
+
+### Added
+
+**LLM-Analyse & Preisindikator (PLAN-014)**
+- LLM-Hintergrundworker (alle 2 min, 3 Inserate/Lauf) mit OpenRouter: extrahiert Hersteller, Modell, Typ, Antrieb, Vollständigkeit, Versand-Verfügbarkeit
+- Preiskorrektur: LLM-geparster Preis überschreibt `price_numeric` bei deutschen Zahlenformaten (z.B. "VB. 4.500 Euro")
+- Preisindikator `deal` / `fair` / `expensive` — gespeichert in DB per SQL-Job (Median ±25%, min. 5 Vergleichsinserate)
+- Filter-Chips in der Suche: "Versand möglich" und "Nur Schnäppchen"
+- Neue API-Filter: `drive_type`, `completeness`, `model_subtype`, `shipping_available`, `price_indicator`
+- Preisindikator-Badge (Schnäppchen/Marktüblich/Hoch) auf Detailseite
+- `drive_type`, `completeness`, `shipping_available` in Listing-Karten sichtbar
+
+### Changed
+- LLM-Analyse: `analyzed_at`/`analysis_retries` (alter Ansatz) → `llm_analyzed` Boolean-Flag (einfacher, kein Retry-Counter)
+- Preisindikator-Wert `"bargain"` → `"deal"` (konsistent mit SQL-Berechnung)
+- Analyse-Interval von 2h auf 2min reduziert (3 Inserate pro Lauf, passend zum Free-Tier-Limit)
+
+---
+
 ## [1.1.0] - 2026-04-14
 
 ### Added

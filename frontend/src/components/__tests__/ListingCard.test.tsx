@@ -31,9 +31,10 @@ const base: ListingSummary = {
   model_name: null,
   model_type: null,
   model_subtype: null,
+  drive_type: null,
+  completeness: null,
+  shipping_available: null,
   price_indicator: null,
-  price_indicator_median: null,
-  price_indicator_sample: null,
 };
 
 function renderCard(props: Partial<ListingSummary> = {}) {

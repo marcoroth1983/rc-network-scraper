@@ -33,123 +33,6 @@ async def _get_favorite_listing_ids(user_id: int, session: AsyncSession) -> set[
     return {row for (row,) in result.all()}
 
 
-# ---------------------------------------------------------------------------
-# Price indicator helpers
-# ---------------------------------------------------------------------------
-
-# Minimum number of sold comparables required to compute an indicator.
-_MIN_SAMPLE_SIZE = 3
-
-
-async def _compute_price_indicators(
-    listings: list,
-    session: AsyncSession,
-) -> dict[tuple[str, str, str], dict]:
-    """Compute price indicator data for a batch of listings in one SQL round-trip.
-
-    Groups distinct (manufacturer, model_name, category) tuples from the listing
-    batch, runs a single percentile query over sold listings, and returns a dict
-    keyed by the same tuple.
-
-    Returns an empty dict if no listing in the batch has both manufacturer and model_name set.
-    """
-    groups: set[tuple[str, str, str]] = {
-        (lst.manufacturer, lst.model_name, lst.category)
-        for lst in listings
-        if lst.manufacturer is not None and lst.model_name is not None
-    }
-    if not groups:
-        return {}
-
-    # Build VALUES list for the IN clause
-    group_list = list(groups)
-
-    # Use unnest with arrays to avoid dynamic SQL construction
-    manufacturers = [g[0] for g in group_list]
-    model_names = [g[1] for g in group_list]
-    categories = [g[2] for g in group_list]
-
-    result = await session.execute(
-        text("""
-            SELECT
-                l.manufacturer,
-                l.model_name,
-                l.category,
-                percentile_cont(0.25) WITHIN GROUP (ORDER BY l.price_numeric) AS p25,
-                percentile_cont(0.50) WITHIN GROUP (ORDER BY l.price_numeric) AS median,
-                percentile_cont(0.75) WITHIN GROUP (ORDER BY l.price_numeric) AS p75,
-                COUNT(*)::int AS sample_size
-            FROM listings l
-            JOIN unnest(
-                CAST(:manufacturers AS text[]),
-                CAST(:model_names AS text[]),
-                CAST(:categories AS text[])
-            ) AS g(manufacturer, model_name, category)
-              ON l.manufacturer = g.manufacturer
-             AND l.model_name   = g.model_name
-             AND l.category     = g.category
-            WHERE l.price_numeric IS NOT NULL
-              AND l.is_sold = TRUE
-            GROUP BY l.manufacturer, l.model_name, l.category
-        """),
-        {
-            "manufacturers": manufacturers,
-            "model_names": model_names,
-            "categories": categories,
-        },
-    )
-
-    indicator_map: dict[tuple[str, str, str], dict] = {}
-    for row in result.mappings():
-        key = (row["manufacturer"], row["model_name"], row["category"])
-        indicator_map[key] = {
-            "p25": float(row["p25"]) if row["p25"] is not None else None,
-            "median": float(row["median"]) if row["median"] is not None else None,
-            "p75": float(row["p75"]) if row["p75"] is not None else None,
-            "sample_size": int(row["sample_size"]),
-        }
-    return indicator_map
-
-
-def _apply_price_indicator(
-    summary: ListingSummary | ListingDetail,
-    indicator_map: dict[tuple[str, str, str], dict],
-) -> ListingSummary | ListingDetail:
-    """Return a copy of the summary/detail with price_indicator fields set."""
-    if summary.manufacturer is None or summary.model_name is None:
-        return summary
-
-    key = (summary.manufacturer, summary.model_name, summary.category)
-    stats = indicator_map.get(key)
-    if stats is None or stats["sample_size"] < _MIN_SAMPLE_SIZE:
-        return summary
-
-    price = summary.price_numeric
-    if price is None:
-        return summary
-
-    p25 = stats["p25"]
-    p75 = stats["p75"]
-    median = stats["median"]
-    sample_size = stats["sample_size"]
-
-    if p25 is None or p75 is None:
-        return summary
-
-    if price <= p25:
-        indicator = "bargain"
-    elif price <= p75:
-        indicator = "fair"
-    else:
-        indicator = "expensive"
-
-    return summary.model_copy(update={
-        "price_indicator": indicator,
-        "price_indicator_median": median,
-        "price_indicator_sample": sample_size,
-    })
-
-
 @router.post("/scrape", status_code=202)
 async def start_scrape(_: User = Depends(get_current_user)) -> dict:
     """Trigger a background update job (Phase 1). Returns 409 if already running."""
@@ -237,6 +120,11 @@ async def list_listings(
     category: str | None = Query(default=None),
     price_min: float | None = Query(default=None, ge=0),
     price_max: float | None = Query(default=None, ge=0),
+    drive_type: str | None = Query(default=None),
+    completeness: str | None = Query(default=None),
+    model_subtype: str | None = Query(default=None),
+    shipping_available: bool | None = Query(default=None),
+    price_indicator: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
@@ -268,6 +156,16 @@ async def list_listings(
         stmt = stmt.where(Listing.price_numeric >= price_min)
     if price_max is not None:
         stmt = stmt.where(Listing.price_numeric <= price_max)
+    if drive_type:
+        stmt = stmt.where(Listing.drive_type == drive_type)
+    if completeness:
+        stmt = stmt.where(Listing.completeness == completeness)
+    if model_subtype:
+        stmt = stmt.where(Listing.model_subtype == model_subtype)
+    if shipping_available is not None:
+        stmt = stmt.where(Listing.shipping_available == shipping_available)
+    if price_indicator:
+        stmt = stmt.where(Listing.price_indicator == price_indicator)
 
     if sort == "date" and max_distance is None:
         # SQL-side sort and count
@@ -303,10 +201,6 @@ async def list_listings(
                 if row.id in fav_ids:
                     summary = summary.model_copy(update={"is_favorite": True})
                 items.append(summary)
-
-        # Attach price indicators (one batch query for all items on this page)
-        indicator_map = await _compute_price_indicators(items, session)
-        items = [_apply_price_indicator(item, indicator_map) for item in items]
 
         return PaginatedResponse(total=total, page=page, per_page=per_page, items=items)
 
@@ -354,10 +248,6 @@ async def list_listings(
         summary = summary.model_copy(update={"distance_km": dist})
         items.append(summary)
 
-    # Attach price indicators (one batch query for all items on this page)
-    indicator_map = await _compute_price_indicators(items, session)
-    items = [_apply_price_indicator(item, indicator_map) for item in items]
-
     return PaginatedResponse(total=total, page=page, per_page=per_page, items=items)
 
 
@@ -402,8 +292,7 @@ async def get_listing(
     detail = ListingDetail.model_validate(listing)
     if listing.id in fav_ids:
         detail = detail.model_copy(update={"is_favorite": True})
-    indicator_map = await _compute_price_indicators([detail], session)
-    return _apply_price_indicator(detail, indicator_map)
+    return detail
 
 
 @router.patch("/listings/{listing_id}/sold")

@@ -57,13 +57,13 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         run_analysis_job,
         trigger="interval",
-        hours=2,
+        minutes=2,
         id="auto_analysis",
         replace_existing=True,
     )
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduler started — update every 30min, recheck every 1h, analysis every 2h")
+    logger.info("Scheduler started — update every 30min, recheck every 1h, analysis every 2min")
 
     yield
 
