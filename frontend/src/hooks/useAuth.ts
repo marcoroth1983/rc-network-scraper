@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export type AuthUser = { id: number; email: string; name: string | null }
+export type AuthUser = { id: number; email: string; name: string | null; role: 'member' | 'admin' }
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null)

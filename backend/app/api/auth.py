@@ -127,7 +127,7 @@ async def auth_google_callback(
 @router.get("/auth/me")
 async def auth_me(user: User = Depends(get_current_user)):
     """Return current authenticated user. 401 if not authenticated."""
-    return {"id": user.id, "email": user.email, "name": user.name}
+    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
 
 
 @router.post("/auth/logout")

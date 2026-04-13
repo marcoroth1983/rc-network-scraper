@@ -103,7 +103,7 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
       <button
         onClick={handleRemove}
         aria-label="Von Merkliste entfernen"
-        className="absolute top-0 right-0 z-20 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200"
+        className="absolute top-3 right-0 z-20 flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200"
         style={{
           border: '1px solid rgba(255,255,255,0.1)',
           background: 'rgba(255,255,255,0.06)',
