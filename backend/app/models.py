@@ -36,6 +36,7 @@ class Listing(Base):
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     is_sold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    category: Mapped[str] = mapped_column(String(50), nullable=False, server_default="flugmodelle", index=True)
 
 
 class PlzGeodata(Base):
@@ -82,6 +83,7 @@ class SavedSearch(Base):
     sort: Mapped[str] = mapped_column(String(20), server_default="date")
     sort_dir: Mapped[str] = mapped_column(String(4), server_default="desc")
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

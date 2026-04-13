@@ -37,6 +37,15 @@ async def init_db() -> None:
         ))
         # price_numeric is populated on each upsert via _parse_price_numeric() in orchestrator.py.
         # Existing rows will receive the correct value on their next scrape cycle.
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'flugmodelle'"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_listings_category ON listings (category)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS category VARCHAR(50)"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

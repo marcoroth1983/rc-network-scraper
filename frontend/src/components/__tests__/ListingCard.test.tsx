@@ -26,6 +26,7 @@ const base: ListingSummary = {
   images: [],
   is_sold: false,
   is_favorite: false,
+  category: 'flugmodelle',
 };
 
 function renderCard(props: Partial<ListingSummary> = {}) {

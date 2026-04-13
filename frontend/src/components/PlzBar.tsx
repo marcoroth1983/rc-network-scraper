@@ -13,9 +13,17 @@ interface Props {
   onOpenFavorites: () => void;
   totalUnread: number;
   suppressPlzRestore: boolean;
+  activeCategoryLabel: string;
+  onOpenCategoryModal: () => void;
 }
 
-export default function PlzBar({ onOpenFavorites, totalUnread, suppressPlzRestore }: Props) {
+export default function PlzBar({
+  onOpenFavorites,
+  totalUnread,
+  suppressPlzRestore,
+  activeCategoryLabel,
+  onOpenCategoryModal,
+}: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = readFiltersFromParams(searchParams);
 
@@ -157,6 +165,52 @@ export default function PlzBar({ onOpenFavorites, totalUnread, suppressPlzRestor
             <span className="text-xs font-medium text-aurora-pink/80">{plzError}</span>
           )}
         </div>
+
+        {/* Category chip — shows active category, click opens modal */}
+        <button
+          type="button"
+          onClick={onOpenCategoryModal}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition"
+          style={{
+            color: '#C4B5FD',
+            background: 'rgba(167, 139, 250, 0.06)',
+            border: '1px solid rgba(167, 139, 250, 0.2)',
+          }}
+          aria-label={`Kategorie: ${activeCategoryLabel} — wechseln`}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167, 139, 250, 0.14)';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167, 139, 250, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167, 139, 250, 0.06)';
+            (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(167, 139, 250, 0.2)';
+          }}
+        >
+          <svg
+            className="w-3.5 h-3.5 flex-shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span className="max-w-[140px] truncate">{activeCategoryLabel}</span>
+          <svg
+            className="w-3 h-3 flex-shrink-0 opacity-50"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
 
         {/* Merkliste button with unread badge */}
         <div className="relative inline-flex">

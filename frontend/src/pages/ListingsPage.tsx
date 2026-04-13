@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
+import CategoryModal from '../components/CategoryModal';
 import { useInfiniteListings } from '../hooks/useInfiniteListings';
-import type { SavedSearch, SearchCriteria } from '../types/api';
+import type { Category, SavedSearch, SearchCriteria } from '../types/api';
 
 interface Props {
   activeSavedSearchId: number | null;
@@ -10,6 +11,8 @@ interface Props {
   onSaveSearch: (criteria: SearchCriteria) => Promise<void>;
   onUpdateSearch: (id: number, criteria: SearchCriteria) => Promise<void>;
   onClearActiveSavedSearch: () => void;
+  categories: Category[];
+  onOpenCategoryModal: () => void;
 }
 
 function Spinner() {
@@ -78,10 +81,22 @@ export default function ListingsPage({
   onSaveSearch,
   onUpdateSearch,
   onClearActiveSavedSearch,
+  categories,
+  onOpenCategoryModal,
 }: Props) {
-  const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, loadMore } =
+  const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore } =
     useInfiniteListings();
   const [fabFeedback, setFabFeedback] = useState<'saved' | 'updated' | null>(null);
+
+  // First-visit modal: show when no category has been chosen yet
+  const [firstVisitModalOpen, setFirstVisitModalOpen] = useState(
+    () => localStorage.getItem('rcn_category') === null,
+  );
+
+  function handleFirstVisitSelect(key: string) {
+    setCategory(key);
+    setFirstVisitModalOpen(false);
+  }
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sentinel ref for IntersectionObserver-based infinite scroll trigger
@@ -137,6 +152,8 @@ export default function ListingsPage({
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
       sort: filter.sort,
       sort_dir: filter.sort_dir,
+      // Pass undefined (not "all") when no specific category — backend stores NULL for "all"
+      category: filter.category !== 'all' ? filter.category : undefined,
     });
     showFeedback('saved');
   }
@@ -149,14 +166,71 @@ export default function ListingsPage({
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
       sort: filter.sort,
       sort_dir: filter.sort_dir,
+      category: filter.category !== 'all' ? filter.category : undefined,
     });
     showFeedback('updated');
   }
 
   const showFab = showSaveNew || showUpdate;
 
+  const activeCategoryLabel = (() => {
+    if (filter.category === 'all') return 'Alle Kategorien';
+    return categories.find((c) => c.key === filter.category)?.label ?? 'Alle Kategorien';
+  })();
+
   return (
     <div>
+      {/* First-visit category modal — not closeable until a choice is made */}
+      <CategoryModal
+        open={firstVisitModalOpen}
+        categories={categories}
+        closeable={false}
+        onSelect={handleFirstVisitSelect}
+        onClose={() => {/* blocked on first visit */}}
+      />
+
+      {/* Mobile category chip — visible only on small screens (PlzBar is desktop-only) */}
+      <div className="sm:hidden mb-3">
+        <button
+          type="button"
+          onClick={onOpenCategoryModal}
+          className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition"
+          style={{
+            background: 'rgba(167, 139, 250, 0.07)',
+            border: '1px solid rgba(167, 139, 250, 0.2)',
+            color: '#C4B5FD',
+          }}
+          aria-label={`Kategorie: ${activeCategoryLabel} — wechseln`}
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-3.5 h-3.5 flex-shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span>{activeCategoryLabel}</span>
+          </div>
+          <svg
+            className="w-3.5 h-3.5 opacity-50"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
+
       <FilterPanel filter={filter} onChange={setFilter} />
 
       {/* Full-page spinner: only on the very first load before any items exist */}

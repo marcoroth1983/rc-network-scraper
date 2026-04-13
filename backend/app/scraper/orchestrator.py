@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy import select, text, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import CATEGORIES, Category, settings
 from app.scraper.crawler import _build_page_url, fetch_listings, fetch_page
 from app.scraper.parser import parse_detail
 
@@ -66,17 +66,16 @@ def _parse_price_numeric(price: str | None) -> float | None:
 
 
 _USER_AGENT = "rc-markt-scout/0.1 (personal hobby project)"
-_START_URL = "https://www.rc-network.de/forums/biete-flugmodelle.132/"
 
 _UPSERT_SQL = text("""
     INSERT INTO listings (
         external_id, url, title, price, price_numeric, condition, shipping,
         description, images, tags, author, posted_at, posted_at_raw,
-        plz, city, latitude, longitude, scraped_at, is_sold
+        plz, city, latitude, longitude, scraped_at, is_sold, category
     ) VALUES (
         :external_id, :url, :title, :price, :price_numeric, :condition, :shipping,
         :description, :images, :tags, :author, :posted_at, :posted_at_raw,
-        :plz, :city, :latitude, :longitude, :scraped_at, :is_sold
+        :plz, :city, :latitude, :longitude, :scraped_at, :is_sold, :category
     )
     ON CONFLICT (external_id) DO UPDATE SET
         url           = EXCLUDED.url,
@@ -96,7 +95,8 @@ _UPSERT_SQL = text("""
         latitude      = EXCLUDED.latitude,
         longitude     = EXCLUDED.longitude,
         scraped_at    = EXCLUDED.scraped_at,
-        is_sold       = EXCLUDED.is_sold OR listings.is_sold
+        is_sold       = EXCLUDED.is_sold OR listings.is_sold,
+        category      = EXCLUDED.category
     RETURNING id, (xmax = 0) AS is_insert
 """)
 
@@ -267,6 +267,7 @@ async def _upsert_listing(
     latitude: float | None,
     longitude: float | None,
     scraped_at: datetime,
+    category: str,
 ) -> tuple[bool, int]:
     """Upsert a listing and return (is_new, listing_id).
 
@@ -295,24 +296,26 @@ async def _upsert_listing(
             "longitude": longitude,
             "scraped_at": scraped_at,
             "is_sold": parsed.get("is_sold", False),
+            "category": category,
         },
     )
     row = result.fetchone()
     return (bool(row[1]), int(row[0])) if row else (False, 0)
 
 
-async def _phase1_new_listings(
+async def _phase1_category(
     session: AsyncSession,
+    cat: Category,
     update_progress: Callable[[str], None],
     delay: float,
 ) -> dict:
-    """Phase 1: crawl overview pages and upsert new/changed listings.
+    """Phase 1 inner loop for a single category.
 
-    Stops pagination when a full page contains no new external_ids
-    (rc-network.de overview is ordered newest-first).
+    Crawls overview pages for cat.url and upserts new/changed listings.
+    Stops when a full page is fully known (ordered newest-first).
     Hard cap at MAX_PAGES as a safety net against parser regressions.
 
-    Returns: {pages_crawled, new, updated}
+    Returns: {pages_crawled, new, updated, new_ids}
     """
     new_count = 0
     updated_count = 0
@@ -322,12 +325,12 @@ async def _phase1_new_listings(
     headers = {"User-Agent": _USER_AGENT}
     async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         for page in range(1, MAX_PAGES + 1):
-            update_progress(f"Seite {page} scannen…")
-            url = _build_page_url(_START_URL, page)
+            update_progress(f"{cat.label}: Seite {page} scannen…")
+            url = _build_page_url(cat.url, page)
             page_listings = await fetch_page(url, client)
 
             if not page_listings:
-                logger.info("Phase 1: empty page %d — stopping", page)
+                logger.info("Phase 1 [%s]: empty page %d — stopping", cat.key, page)
                 return {"pages_crawled": page, "new": new_count, "updated": updated_count, "new_ids": new_ids}
 
             ids = [item["external_id"] for item in page_listings]
@@ -336,14 +339,15 @@ async def _phase1_new_listings(
 
             if not new_on_page:
                 logger.info(
-                    "Phase 1: page %d fully known — stopping after %d pages", page, page
+                    "Phase 1 [%s]: page %d fully known — stopping after %d pages",
+                    cat.key, page, page,
                 )
                 return {"pages_crawled": page, "new": new_count, "updated": updated_count, "new_ids": new_ids}
 
-            logger.info("Phase 1: page %d has %d new listings", page, len(new_on_page))
+            logger.info("Phase 1 [%s]: page %d has %d new listings", cat.key, page, len(new_on_page))
 
             for idx, item in enumerate(new_on_page):
-                update_progress(f"Seite {page}: {idx + 1}/{len(new_on_page)} neue Inserate")
+                update_progress(f"{cat.label}: Seite {page}: {idx + 1}/{len(new_on_page)} neue Inserate")
                 external_id: str = item["external_id"]
                 url_detail: str = item["url"]
 
@@ -352,13 +356,13 @@ async def _phase1_new_listings(
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:
                     logger.warning(
-                        "Phase 1: HTTP %s for %s — skipping",
-                        exc.response.status_code, external_id,
+                        "Phase 1 [%s]: HTTP %s for %s — skipping",
+                        cat.key, exc.response.status_code, external_id,
                     )
                     continue
                 except httpx.RequestError as exc:
                     logger.warning(
-                        "Phase 1: request error for %s: %s — skipping", external_id, exc
+                        "Phase 1 [%s]: request error for %s: %s — skipping", cat.key, external_id, exc
                     )
                     continue
 
@@ -376,6 +380,7 @@ async def _phase1_new_listings(
                     latitude=latitude,
                     longitude=longitude,
                     scraped_at=scraped_at,
+                    category=cat.key,
                 )
                 await session.commit()
 
@@ -383,7 +388,8 @@ async def _phase1_new_listings(
                     new_count += 1
                     new_ids.append(listing_id)
                     logger.info(
-                        "Phase 1: NEW   [%s] %s | %s",
+                        "Phase 1 [%s]: NEW   [%s] %s | %s",
+                        cat.key,
                         external_id,
                         parsed.get("title", "—")[:60],
                         parsed.get("price", "—"),
@@ -391,7 +397,8 @@ async def _phase1_new_listings(
                 else:
                     updated_count += 1
                     logger.info(
-                        "Phase 1: UPD   [%s] %s",
+                        "Phase 1 [%s]: UPD   [%s] %s",
+                        cat.key,
                         external_id,
                         parsed.get("title", "—")[:60],
                     )
@@ -402,8 +409,32 @@ async def _phase1_new_listings(
             if page < MAX_PAGES:
                 await asyncio.sleep(delay)
 
-    logger.warning("Phase 1: reached MAX_PAGES cap (%d)", MAX_PAGES)
+    logger.warning("Phase 1 [%s]: reached MAX_PAGES cap (%d)", cat.key, MAX_PAGES)
     return {"pages_crawled": MAX_PAGES, "new": new_count, "updated": updated_count, "new_ids": new_ids}
+
+
+async def _phase1_new_listings(
+    session: AsyncSession,
+    update_progress: Callable[[str], None],
+    delay: float,
+) -> dict:
+    """Phase 1: crawl all categories sequentially and upsert new/changed listings.
+
+    Iterates over all CATEGORIES in order. Each category runs its own stop-early
+    pagination loop independently. No parallelism — intentional to avoid hammering
+    the forum.
+
+    Returns: {pages_crawled, new, updated, new_ids}
+    """
+    total: dict = {"pages_crawled": 0, "new": 0, "updated": 0, "new_ids": []}
+    for cat in CATEGORIES:
+        update_progress(f"Kategorie: {cat.label}…")
+        stats = await _phase1_category(session, cat, update_progress, delay)
+        total["pages_crawled"] += stats["pages_crawled"]
+        total["new"] += stats["new"]
+        total["updated"] += stats["updated"]
+        total["new_ids"] += stats["new_ids"]
+    return total
 
 
 _RECHECK_SQL = text("""

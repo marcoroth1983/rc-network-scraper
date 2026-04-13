@@ -11,6 +11,7 @@ const defaultFilter: ListingsFilter = {
   sort_dir: 'desc',
   max_distance: '',
   page: 1,
+  category: 'all',
 };
 
 function renderPanel(filter = defaultFilter, onChange = vi.fn()) {

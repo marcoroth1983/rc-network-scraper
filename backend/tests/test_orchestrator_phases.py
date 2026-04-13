@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.scraper.orchestrator import (
+    _phase1_category,
     _phase1_new_listings,
     _phase2_sold_recheck,
     _phase3_cleanup,
@@ -20,6 +21,7 @@ from app.scraper.orchestrator import (
 @pytest.mark.integration
 async def test_phase1_stops_when_page_fully_known(db_session: AsyncSession):
     """Phase 1 stops after page 1 when all IDs on that page already exist in DB."""
+    from app.config import Category
     from app.models import Listing
     from datetime import datetime, timezone
 
@@ -41,7 +43,10 @@ async def test_phase1_stops_when_page_fully_known(db_session: AsyncSession):
         fetch_calls.append(url)
         return page1_listings  # always returns same page (would loop without stop-early)
 
-    with patch("app.scraper.orchestrator.fetch_page", side_effect=mock_fetch_page):
+    single_cat = [Category(key="flugmodelle", label="Flugmodelle", url="https://www.rc-network.de/forums/biete-flugmodelle.132/")]
+
+    with patch("app.scraper.orchestrator.fetch_page", side_effect=mock_fetch_page), \
+         patch("app.scraper.orchestrator.CATEGORIES", single_cat):
         result = await _phase1_new_listings(
             db_session,
             update_progress=lambda p: None,
@@ -58,7 +63,8 @@ async def test_phase1_stops_when_page_fully_known(db_session: AsyncSession):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_phase1_respects_max_pages_cap(db_session: AsyncSession):
-    """Phase 1 stops at MAX_PAGES even if new listings keep appearing."""
+    """Phase 1 stops at MAX_PAGES per category even if new listings keep appearing."""
+    from app.config import Category
     from app.scraper.orchestrator import MAX_PAGES
     fetch_calls = []
 
@@ -68,9 +74,12 @@ async def test_phase1_respects_max_pages_cap(db_session: AsyncSession):
         page_num = len(fetch_calls)
         return [{"external_id": str(page_num * 100), "url": f"https://rc-network.de/t/{page_num * 100}/"}]
 
+    single_cat = [Category(key="flugmodelle", label="Flugmodelle", url="https://www.rc-network.de/forums/biete-flugmodelle.132/")]
+
     with patch("app.scraper.orchestrator.fetch_page", side_effect=mock_fetch_page), \
          patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls, \
-         patch("app.scraper.orchestrator.parse_detail") as mock_parse:
+         patch("app.scraper.orchestrator.parse_detail") as mock_parse, \
+         patch("app.scraper.orchestrator.CATEGORIES", single_cat):
 
         mock_parse.return_value = {
             "title": "X", "price": None, "condition": None, "shipping": None,
@@ -94,6 +103,98 @@ async def test_phase1_respects_max_pages_cap(db_session: AsyncSession):
 
     assert len(fetch_calls) == MAX_PAGES
     assert result["pages_crawled"] == MAX_PAGES
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase1_category_tags_listing_with_correct_category(db_session: AsyncSession):
+    """_phase1_category tags each inserted listing with the category key of the crawled category."""
+    from app.config import Category
+
+    cat = Category(key="rc-cars", label="RC-Cars", url="https://www.rc-network.de/forums/biete-rc-cars-funktionsmodelle.146/")
+    new_listing = {"external_id": "car-001", "url": "https://rc-network.de/threads/t.car-001/"}
+
+    async def mock_fetch_page(url, client):
+        return [new_listing]
+
+    with patch("app.scraper.orchestrator.fetch_page", side_effect=mock_fetch_page), \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.scraper.orchestrator.parse_detail") as mock_parse:
+
+        mock_parse.return_value = {
+            "title": "RC Buggy", "price": None, "condition": None, "shipping": None,
+            "plz": None, "city": None, "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": False,
+        }
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html></html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        result = await _phase1_category(
+            db_session,
+            cat,
+            update_progress=lambda p: None,
+            delay=0.0,
+        )
+
+    assert result["new"] == 1
+
+    row = await db_session.execute(
+        text("SELECT category FROM listings WHERE external_id = 'car-001'")
+    )
+    assert row.fetchone()[0] == "rc-cars"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase1_new_listings_loops_all_categories(db_session: AsyncSession):
+    """_phase1_new_listings iterates over all CATEGORIES and tags each listing correctly."""
+    from app.config import CATEGORIES, Category
+
+    # Use a single-category patch to keep the test fast
+    single_cat = [Category(key="verschenken", label="Zu verschenken", url="https://www.rc-network.de/forums/zu-verschenken.11779439/")]
+
+    new_listing = {"external_id": "gift-001", "url": "https://rc-network.de/threads/t.gift-001/"}
+
+    async def mock_fetch_page(url, client):
+        return [new_listing]
+
+    with patch("app.scraper.orchestrator.CATEGORIES", single_cat), \
+         patch("app.scraper.orchestrator.fetch_page", side_effect=mock_fetch_page), \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.scraper.orchestrator.parse_detail") as mock_parse:
+
+        mock_parse.return_value = {
+            "title": "Freebie", "price": None, "condition": None, "shipping": None,
+            "plz": None, "city": None, "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": False,
+        }
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html></html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        result = await _phase1_new_listings(
+            db_session,
+            update_progress=lambda p: None,
+            delay=0.0,
+        )
+
+    assert result["new"] == 1
+
+    row = await db_session.execute(
+        text("SELECT category FROM listings WHERE external_id = 'gift-001'")
+    )
+    assert row.fetchone()[0] == "verschenken"
 
 
 @pytest.mark.asyncio

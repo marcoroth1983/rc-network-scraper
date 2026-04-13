@@ -14,6 +14,7 @@ from app.api.schemas import (
     SavedSearchCreate, SavedSearchResponse, SavedSearchUpdate,
     ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
 )
+from app.config import CATEGORIES, CATEGORY_KEYS
 from app.db import get_session
 from app.models import Listing, PlzGeodata, SavedSearch, SearchNotification, User
 from app.scrape_runner import get_state, get_log, start_update_job
@@ -83,6 +84,22 @@ async def resolve_plz(
     return PlzResponse.model_validate(row)
 
 
+@router.get("/categories")
+async def get_categories(
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return all categories with their listing counts."""
+    counts_result = await session.execute(
+        select(Listing.category, func.count()).group_by(Listing.category)
+    )
+    count_map = dict(counts_result.all())
+    return [
+        {"key": c.key, "label": c.label, "count": count_map.get(c.key, 0)}
+        for c in CATEGORIES
+    ]
+
+
 @router.get("/listings", response_model=PaginatedResponse)
 async def list_listings(
     page: int = Query(default=1, ge=1),
@@ -92,6 +109,7 @@ async def list_listings(
     sort_dir: Literal["asc", "desc"] = Query(default="desc"),
     plz: str | None = Query(default=None),
     max_distance: int | None = Query(default=None, ge=1),
+    category: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> PaginatedResponse:
@@ -101,14 +119,18 @@ async def list_listings(
         raise HTTPException(status_code=400, detail="plz is required when sort=distance")
     if max_distance is not None and plz is None:
         raise HTTPException(status_code=400, detail="plz is required when max_distance is set")
+    if category is not None and category != "all" and category not in CATEGORY_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
 
     offset = (page - 1) * per_page
     asc = sort_dir == "asc"
 
-    # Base statement with optional search filter
+    # Base statement with optional search filter and optional category filter
     stmt = select(Listing)
     for clause in build_text_filter(search):
         stmt = stmt.where(clause)
+    if category and category != "all":
+        stmt = stmt.where(Listing.category == category)
 
     if sort == "date" and max_distance is None:
         # SQL-side sort and count
@@ -337,6 +359,7 @@ async def create_search(
         max_distance=body.max_distance,
         sort=body.sort,
         sort_dir=body.sort_dir,
+        category=body.category,
     )
     session.add(saved)
     await session.commit()
@@ -387,6 +410,7 @@ async def update_search(
     saved.max_distance = body.max_distance
     saved.sort = body.sort
     saved.sort_dir = body.sort_dir
+    saved.category = body.category
     saved.name = _generate_search_name(body.search, body.plz, body.max_distance)
     await session.commit()
     await session.refresh(saved)

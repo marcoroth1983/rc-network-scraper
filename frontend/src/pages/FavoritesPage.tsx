@@ -254,6 +254,7 @@ export function FavoritesPage() {
           sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
           max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
           page: 1,
+          category: localStorage.getItem('rcn_category') ?? 'all',
         },
         setSearchParams,
       );

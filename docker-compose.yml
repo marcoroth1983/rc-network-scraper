@@ -26,7 +26,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://rcscout:rcscout_dev@db:5432/rcscout
-      SCRAPE_DELAY: 1.0
+      SCRAPE_DELAY: 2.0
+      RECHECK_BATCH_SIZE: 250
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       JWT_SECRET: ${JWT_SECRET}

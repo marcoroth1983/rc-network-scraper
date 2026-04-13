@@ -2,8 +2,8 @@
 
 | Approval | Status | Date |
 |----------|--------|------|
-| Reviewer | pending | — |
-| Human | pending | — |
+| Reviewer | approved | 2026-04-13 |
+| Human | approved | 2026-04-13 |
 
 ---
 

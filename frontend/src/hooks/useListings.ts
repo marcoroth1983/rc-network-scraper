@@ -10,6 +10,7 @@ export interface ListingsFilter {
   sort_dir: 'asc' | 'desc';
   max_distance: string; // stored as string in URL; convert to int before API call
   page: number;
+  category: string;     // "all" or a category key; stored in localStorage, not URL
 }
 
 export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
@@ -18,6 +19,8 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     sortRaw === 'price' || sortRaw === 'distance' ? sortRaw : 'date';
   const sortDirRaw = params.get('sort_dir');
   const sort_dir: 'asc' | 'desc' = sortDirRaw === 'asc' ? 'asc' : 'desc';
+  // Category is kept in localStorage (not URL) — "all" is the sentinel for no filter
+  const category = localStorage.getItem('rcn_category') ?? 'all';
   return {
     search: params.get('search') ?? '',
     plz: params.get('plz') ?? '',
@@ -25,6 +28,7 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     sort_dir,
     max_distance: params.get('max_distance') ?? '',
     page: parseInt(params.get('page') ?? '1', 10) || 1,
+    category,
   };
 }
 
@@ -80,6 +84,7 @@ export function useListings(): UseListingsResult {
       sort_dir: filter.sort_dir,
       plz: filter.plz || null,
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
+      category: filter.category !== 'all' ? filter.category : undefined,
     })
       .then((res) => {
         if (!cancelled) {
@@ -104,6 +109,7 @@ export function useListings(): UseListingsResult {
     filter.sort,
     filter.sort_dir,
     filter.max_distance,
+    filter.category,
   ]);
 
   return { data, loading, error, filter, setFilter };

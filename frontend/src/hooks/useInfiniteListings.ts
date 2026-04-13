@@ -13,6 +13,7 @@ export interface UseInfiniteListingsResult {
   error: string | null;
   filter: ListingsFilter;
   setFilter: (next: Omit<ListingsFilter, 'page'>) => void;
+  setCategory: (key: string) => void;
   loadMore: () => void;
 }
 
@@ -20,6 +21,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Read filter from URL but ignore the `page` param — page is internal state.
+  // Category is read from localStorage inside readFiltersFromParams.
   const urlFilter = readFiltersFromParams(searchParams);
 
   const [items, setItems] = useState<ListingSummary[]>([]);
@@ -38,6 +40,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     sort: urlFilter.sort,
     sort_dir: urlFilter.sort_dir,
     max_distance: urlFilter.max_distance,
+    category: urlFilter.category,
   });
 
   // Detect filter dimension changes (anything except page).
@@ -48,7 +51,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     prevFilter.plz !== urlFilter.plz ||
     prevFilter.sort !== urlFilter.sort ||
     prevFilter.sort_dir !== urlFilter.sort_dir ||
-    prevFilter.max_distance !== urlFilter.max_distance;
+    prevFilter.max_distance !== urlFilter.max_distance ||
+    prevFilter.category !== urlFilter.category;
 
   if (filterChanged) {
     filterRef.current = {
@@ -57,6 +61,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       sort: urlFilter.sort,
       sort_dir: urlFilter.sort_dir,
       max_distance: urlFilter.max_distance,
+      category: urlFilter.category,
     };
     // Reset synchronously during render — safe because we haven't committed yet
     // and this is logically equivalent to getDerivedStateFromProps.
@@ -69,9 +74,16 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   }
 
   // Stable snapshot of filter dimensions for the fetch effect.
-  const { search, plz, sort, sort_dir, max_distance } = filterRef.current;
+  const { search, plz, sort, sort_dir, max_distance, category } = filterRef.current;
 
   useEffect(() => {
+    // Fetch gate: no localStorage value means first visit — wait for modal selection.
+    // readFiltersFromParams falls back to "all" when localStorage is null, but we
+    // distinguish "explicitly set to all" from "not yet chosen" here.
+    if (localStorage.getItem('rcn_category') === null) {
+      return;
+    }
+
     // Guard: distance-related params require PLZ (backend returns 400 otherwise)
     if ((sort === 'distance' || max_distance) && !plz) {
       return;
@@ -95,6 +107,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       sort_dir,
       plz: plz || null,
       max_distance: max_distance ? parseInt(max_distance, 10) : null,
+      category: category !== 'all' ? category : undefined,
     })
       .then((res) => {
         if (cancelled) return;
@@ -118,7 +131,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     };
     // `items.length` is intentionally included so hasMore calculation is correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, plz, sort, sort_dir, max_distance]);
+  }, [page, search, plz, sort, sort_dir, max_distance, category]);
 
   const loadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -134,6 +147,36 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     [setSearchParams],
   );
 
+  // setCategory: write to localStorage, reset accumulated state, and nudge the URL
+  // so React re-reads filters (which picks up the new localStorage value).
+  const setCategory = useCallback(
+    (key: string) => {
+      localStorage.setItem('rcn_category', key);
+      setItems([]);
+      setTotal(null);
+      setHasMore(true);
+      setPage(1);
+      // Nudge search params so readFiltersFromParams re-runs and picks up new localStorage value
+      setSearchParams((prev) => new URLSearchParams(prev));
+    },
+    [setSearchParams],
+  );
+
+  // Also respond to category changes dispatched from App (when header modal is used)
+  useEffect(() => {
+    const handler = () => {
+      setItems([]);
+      setTotal(null);
+      setHasMore(true);
+      setPage(1);
+      setSearchParams((prev) => new URLSearchParams(prev));
+    };
+    window.addEventListener('rcn_category_changed', handler);
+    return () => window.removeEventListener('rcn_category_changed', handler);
+  // setSearchParams is stable; no other deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Expose the filter with the internal page for consumers that read filter.page
   // (e.g. criteriaChanged helper). Page in the returned filter reflects the
   // URL's page param, which we intentionally keep absent — so it will be 1.
@@ -144,7 +187,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     sort_dir: urlFilter.sort_dir,
     max_distance: urlFilter.max_distance,
     page: 1,
+    category: urlFilter.category,
   };
 
-  return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, loadMore };
+  return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore };
 }
