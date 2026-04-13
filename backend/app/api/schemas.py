@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from app.config import CATEGORY_KEYS
 
 
 class ListingSummary(BaseModel):
@@ -27,6 +29,7 @@ class ListingSummary(BaseModel):
     images: list[str] = []
     is_sold: bool = False
     is_favorite: bool = False
+    category: str = "flugmodelle"
 
 
 class ListingDetail(BaseModel):
@@ -53,6 +56,7 @@ class ListingDetail(BaseModel):
     scraped_at: datetime
     is_sold: bool
     is_favorite: bool = False
+    category: str = "flugmodelle"
 
 
 class PlzResponse(BaseModel):
@@ -105,6 +109,14 @@ class SavedSearchCreate(BaseModel):
     max_distance: int | None = None
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
+    category: str | None = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str | None) -> str | None:
+        if v is not None and v not in CATEGORY_KEYS:
+            raise ValueError(f"Unknown category: '{v}'")
+        return v
 
     @model_validator(mode="after")
     def validate_distance_requires_plz(self) -> "SavedSearchCreate":
@@ -119,6 +131,14 @@ class SavedSearchUpdate(BaseModel):
     max_distance: int | None = None
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
+    category: str | None = None
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str | None) -> str | None:
+        if v is not None and v not in CATEGORY_KEYS:
+            raise ValueError(f"Unknown category: '{v}'")
+        return v
 
     @model_validator(mode="after")
     def validate_distance_requires_plz(self) -> "SavedSearchUpdate":
@@ -139,6 +159,7 @@ class SavedSearchResponse(BaseModel):
     sort: str
     sort_dir: str
     is_active: bool
+    category: str | None = None
     last_checked_at: datetime | None
     last_viewed_at: datetime | None
     created_at: datetime

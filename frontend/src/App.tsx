@@ -1,5 +1,5 @@
 import { Routes, Route, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
 import LoginPage from './pages/LoginPage';
@@ -7,13 +7,15 @@ import { ProfilePage } from './pages/ProfilePage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import ScrapeLog from './components/ScrapeLog';
 import FavoritesModal from './components/FavoritesModal';
+import CategoryModal from './components/CategoryModal';
 import { MobileFooter } from './components/MobileFooter';
 import { InstallPrompt } from './components/InstallPrompt';
 import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
 import { useSavedSearches } from './hooks/useSavedSearches';
-import type { SearchCriteria, SavedSearch } from './types/api';
+import type { Category, SearchCriteria, SavedSearch } from './types/api';
+import { getCategories } from './api/client';
 import { writeFiltersToParams } from './hooks/useListings';
 
 function PlaneIcon() {
@@ -35,9 +37,32 @@ function PlaneIcon() {
 // Inner component so useSearchParams and useNavigate work inside the Router context
 function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () => void }) {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [activeSavedSearchId, setActiveSavedSearchId] = useState<number | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>(
+    localStorage.getItem('rcn_category') ?? 'all',
+  );
   const { searches, totalUnread, load, save, update, remove, toggleActive, markViewed } =
     useSavedSearches();
+
+  // Fetch categories once on mount
+  useEffect(() => {
+    getCategories()
+      .then(setCategories)
+      .catch(() => {
+        // Non-fatal — modal will just show no counts
+      });
+  }, []);
+
+  // Keep activeCategory in sync when CategoryModal writes to localStorage
+  useEffect(() => {
+    function handleCategoryChanged() {
+      setActiveCategory(localStorage.getItem('rcn_category') ?? 'all');
+    }
+    window.addEventListener('rcn_category_changed', handleCategoryChanged);
+    return () => window.removeEventListener('rcn_category_changed', handleCategoryChanged);
+  }, []);
 
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
@@ -65,6 +90,8 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             sort_dir: (criteria.sort_dir as 'asc' | 'desc') ?? 'desc',
             max_distance: criteria.max_distance != null ? String(criteria.max_distance) : '',
             page: 1,
+            // Preserve the currently active category — saved searches don't override it
+            category: localStorage.getItem('rcn_category') ?? 'all',
           },
           setSearchParams,
         );
@@ -101,18 +128,32 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             </div>
             RC-Network Scraper
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <ScrapeLog />
-            <div className="flex items-center gap-3 text-sm">
-              <span style={{ color: 'rgba(248, 250, 252, 0.5)' }}>{user.email}</span>
-              <button
-                onClick={logout}
-                className="hover:underline transition-colors"
-                style={{ color: '#A78BFA' }}
-              >
-                Abmelden
-              </button>
-            </div>
+            <button
+              onClick={() => setFavoritesOpen(true)}
+              className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150"
+              style={{
+                background: 'rgba(167,139,250,0.08)',
+                border: '1px solid rgba(167,139,250,0.25)',
+                color: '#A78BFA',
+              }}
+              aria-label="Merkliste öffnen"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} fill="none" aria-hidden="true">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <span>Merkliste</span>
+              {totalUnread > 0 && (
+                <span
+                  className="ml-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ background: '#EC4899', color: '#F8FAFC' }}
+                  aria-label={`${totalUnread > 99 ? '99+' : totalUnread} neue Treffer`}
+                >
+                  {totalUnread > 99 ? '99+' : totalUnread}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -120,8 +161,16 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         onOpenFavorites={() => setFavoritesOpen(true)}
         totalUnread={totalUnread}
         suppressPlzRestore={activeSavedSearchId != null}
+        activeCategoryLabel={
+          activeCategory === 'all'
+            ? 'Alle Kategorien'
+            : (categories.find((c) => c.key === activeCategory)?.label ?? 'Alle Kategorien')
+        }
+        onOpenCategoryModal={() => setCategoryModalOpen(true)}
+        onLogout={logout}
+        userEmail={user.email}
       />
-      <main className="max-w-6xl mx-auto px-3 py-4 sm:px-4 sm:py-6 pb-20 sm:pb-0">
+      <main className="max-w-6xl mx-auto px-3 pt-0 pb-20 sm:px-4 sm:py-6 sm:pb-0">
         <Routes>
           <Route
             path="/"
@@ -132,6 +181,8 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
                 onSaveSearch={save}
                 onUpdateSearch={update}
                 onClearActiveSavedSearch={handleClearActiveSavedSearch}
+                categories={categories}
+                onOpenCategoryModal={() => setCategoryModalOpen(true)}
               />
             }
           />
@@ -149,6 +200,22 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         onToggleSearchActive={toggleActive}
         onMarkViewed={markViewed}
         onActivateSearch={handleActivateSearch}
+        categories={categories}
+      />
+      <CategoryModal
+        open={categoryModalOpen}
+        categories={categories}
+        closeable={activeCategory !== 'all' || localStorage.getItem('rcn_category') !== null}
+        onSelect={(key) => {
+          // CategoryModal already wrote to localStorage.
+          // Update local state so activeCategoryLabel re-renders immediately.
+          setActiveCategory(key);
+          // Notify ListingsPage that the category changed via the window custom event.
+          // useInfiniteListings listens for this to pick up the new value.
+          window.dispatchEvent(new Event('rcn_category_changed'));
+          setCategoryModalOpen(false);
+        }}
+        onClose={() => setCategoryModalOpen(false)}
       />
       <InstallPrompt />
       <MobileFooter totalUnread={totalUnread} />

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import React from 'react';
 import { getFavorites } from '../api/client';
-import type { ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
+import type { Category, ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
 import FavoriteCard from './FavoriteCard';
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   onToggleSearchActive: (id: number) => Promise<void>;
   onMarkViewed: () => Promise<void>;
   onActivateSearch: (id: number, criteria: SearchCriteria) => void;
+  categories: Category[];
 }
 
 function TrashIcon() {
@@ -36,12 +37,13 @@ function TrashIcon() {
 
 interface SavedSearchCardProps {
   search: SavedSearch;
+  categoryLabel: string | null;
   onActivate: () => void;
   onToggle: () => void;
   onRemove: () => void;
 }
 
-function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearchCardProps) {
+function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove }: SavedSearchCardProps) {
   const displayName = search.name ?? search.search ?? 'Alle Anzeigen';
   const hasPlzInfo = search.plz != null;
   const hasDistance = search.max_distance != null;
@@ -78,6 +80,20 @@ function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearch
             >
               {displayName}
             </span>
+            {/* Category badge */}
+            {categoryLabel && (
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium"
+                style={{
+                  background: 'rgba(167,139,250,0.12)',
+                  border: '1px solid rgba(167,139,250,0.3)',
+                  color: '#C4B5FD',
+                  flexShrink: 0,
+                }}
+              >
+                {categoryLabel}
+              </span>
+            )}
             {/* Match count badge */}
             {search.match_count > 0 && (
               <span
@@ -173,6 +189,7 @@ export default function FavoritesModal({
   onToggleSearchActive,
   onMarkViewed,
   onActivateSearch,
+  categories,
 }: Props) {
   const [favorites, setFavorites] = useState<ListingSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -365,6 +382,11 @@ export default function FavoritesModal({
                   <SavedSearchCard
                     key={search.id}
                     search={search}
+                    categoryLabel={
+                      search.category
+                        ? (categories.find((c) => c.key === search.category)?.label ?? search.category)
+                        : null
+                    }
                     onActivate={() => {
                       onActivateSearch(search.id, {
                         search: search.search,

@@ -547,3 +547,134 @@ class TestFavorites:
         resp = await api_client.get("/api/favorites")
         assert resp.status_code == 200
         assert resp.json()[0]["is_sold"] is True
+
+
+# ---------------------------------------------------------------------------
+# Step 13 (Plan 013): Categories endpoint + category filter
+# ---------------------------------------------------------------------------
+
+async def _insert_listing_with_category(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    title: str,
+    category: str,
+) -> None:
+    """Insert a minimal test listing with an explicit category."""
+    await session.execute(
+        text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags,
+                author, scraped_at, is_sold, category)
+            VALUES (:eid, :url, :title, '', '[]', '[]', 'TestUser', NOW(), FALSE, :category)
+        """),
+        {
+            "eid": external_id,
+            "url": f"https://example.com/{external_id}",
+            "title": title,
+            "category": category,
+        },
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestCategoriesEndpoint:
+    async def test_get_categories_returns_all_seven(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/categories returns all 7 categories."""
+        resp = await api_client.get("/api/categories")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 7
+        keys = {item["key"] for item in data}
+        assert keys == {
+            "flugmodelle", "schiffsmodelle", "antriebstechnik",
+            "rc-elektronik", "rc-cars", "einzelteile", "verschenken",
+        }
+
+    async def test_get_categories_counts_reflect_db_state(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """Category counts match the actual DB contents."""
+        await _insert_listing_with_category(db_session, external_id="f1", title="Flugmodell 1", category="flugmodelle")
+        await _insert_listing_with_category(db_session, external_id="f2", title="Flugmodell 2", category="flugmodelle")
+        await _insert_listing_with_category(db_session, external_id="r1", title="RC-Car 1", category="rc-cars")
+
+        resp = await api_client.get("/api/categories")
+        assert resp.status_code == 200
+        data = resp.json()
+        count_by_key = {item["key"]: item["count"] for item in data}
+        assert count_by_key["flugmodelle"] == 2
+        assert count_by_key["rc-cars"] == 1
+        assert count_by_key["schiffsmodelle"] == 0
+
+    async def test_get_categories_has_label_field(
+        self, api_client: AsyncClient
+    ) -> None:
+        """Each category entry has key, label, and count fields."""
+        resp = await api_client.get("/api/categories")
+        assert resp.status_code == 200
+        for item in resp.json():
+            assert "key" in item
+            assert "label" in item
+            assert "count" in item
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestCategoryFilter:
+    async def test_filter_by_category_returns_matching_listings(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings?category=flugmodelle only returns flugmodelle listings."""
+        await _insert_listing_with_category(db_session, external_id="fly1", title="Segler", category="flugmodelle")
+        await _insert_listing_with_category(db_session, external_id="car1", title="Buggy", category="rc-cars")
+
+        resp = await api_client.get("/api/listings?category=flugmodelle")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["external_id"] == "fly1"
+
+    async def test_filter_by_category_all_returns_all_listings(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings?category=all returns all listings regardless of category."""
+        await _insert_listing_with_category(db_session, external_id="fly1", title="Segler", category="flugmodelle")
+        await _insert_listing_with_category(db_session, external_id="car1", title="Buggy", category="rc-cars")
+
+        resp = await api_client.get("/api/listings?category=all")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+
+    async def test_filter_by_unknown_category_returns_400(
+        self, api_client: AsyncClient
+    ) -> None:
+        """GET /api/listings?category=unknown returns 400."""
+        resp = await api_client.get("/api/listings?category=unknown")
+        assert resp.status_code == 400
+
+    async def test_no_category_param_returns_all_listings(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings without category param returns all listings."""
+        await _insert_listing_with_category(db_session, external_id="fly1", title="Segler", category="flugmodelle")
+        await _insert_listing_with_category(db_session, external_id="ship1", title="Yacht", category="schiffsmodelle")
+
+        resp = await api_client.get("/api/listings")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+
+    async def test_listing_response_includes_category_field(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """Listing items in response include the category field."""
+        await _insert_listing_with_category(
+            db_session, external_id="fly1", title="Segler", category="flugmodelle"
+        )
+        resp = await api_client.get("/api/listings")
+        assert resp.status_code == 200
+        item = resp.json()["items"][0]
+        assert item["category"] == "flugmodelle"

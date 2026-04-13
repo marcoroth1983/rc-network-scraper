@@ -1,3 +1,9 @@
+export interface Category {
+  key: string;
+  label: string;
+  count: number;
+}
+
 export interface ListingSummary {
   id: number;
   external_id: string;
@@ -17,6 +23,7 @@ export interface ListingSummary {
   images: string[];
   is_sold: boolean;
   is_favorite: boolean;
+  category: string;
 }
 
 export interface ListingDetail {
@@ -41,6 +48,7 @@ export interface ListingDetail {
   tags: string[];
   is_sold: boolean;
   is_favorite: boolean;
+  category: string;
 }
 
 export interface PaginatedResponse {
@@ -96,6 +104,9 @@ export interface ListingsQueryParams {
   sort_dir?: 'asc' | 'desc';
   plz?: string | null;
   max_distance?: number | null;
+  category?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
 }
 
 export class ApiError extends Error {
@@ -113,6 +124,7 @@ export interface SearchCriteria {
   max_distance?: number | null;
   sort?: 'date' | 'price' | 'distance';
   sort_dir?: 'asc' | 'desc';
+  category?: string;  // undefined = all categories; never send "all" to the backend
 }
 
 export interface SavedSearch {
@@ -129,4 +141,5 @@ export interface SavedSearch {
   last_viewed_at: string | null;   // ISO 8601
   created_at: string;              // ISO 8601
   match_count: number;
+  category?: string | null;  // null = all categories
 }

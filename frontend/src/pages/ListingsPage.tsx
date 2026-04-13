@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
+import CategoryModal from '../components/CategoryModal';
 import { useInfiniteListings } from '../hooks/useInfiniteListings';
-import type { SavedSearch, SearchCriteria } from '../types/api';
+import type { Category, SavedSearch, SearchCriteria } from '../types/api';
 
 interface Props {
   activeSavedSearchId: number | null;
@@ -10,6 +11,8 @@ interface Props {
   onSaveSearch: (criteria: SearchCriteria) => Promise<void>;
   onUpdateSearch: (id: number, criteria: SearchCriteria) => Promise<void>;
   onClearActiveSavedSearch: () => void;
+  categories: Category[];
+  onOpenCategoryModal: () => void;
 }
 
 function Spinner() {
@@ -78,10 +81,22 @@ export default function ListingsPage({
   onSaveSearch,
   onUpdateSearch,
   onClearActiveSavedSearch,
+  categories,
+  onOpenCategoryModal,
 }: Props) {
-  const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, loadMore } =
+  const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore } =
     useInfiniteListings();
   const [fabFeedback, setFabFeedback] = useState<'saved' | 'updated' | null>(null);
+
+  // First-visit modal: show when no category has been chosen yet
+  const [firstVisitModalOpen, setFirstVisitModalOpen] = useState(
+    () => localStorage.getItem('rcn_category') === null,
+  );
+
+  function handleFirstVisitSelect(key: string) {
+    setCategory(key);
+    setFirstVisitModalOpen(false);
+  }
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sentinel ref for IntersectionObserver-based infinite scroll trigger
@@ -137,6 +152,8 @@ export default function ListingsPage({
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
       sort: filter.sort,
       sort_dir: filter.sort_dir,
+      // Pass undefined (not "all") when no specific category — backend stores NULL for "all"
+      category: filter.category !== 'all' ? filter.category : undefined,
     });
     showFeedback('saved');
   }
@@ -149,15 +166,35 @@ export default function ListingsPage({
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
       sort: filter.sort,
       sort_dir: filter.sort_dir,
+      category: filter.category !== 'all' ? filter.category : undefined,
     });
     showFeedback('updated');
   }
 
   const showFab = showSaveNew || showUpdate;
 
+  const activeCategoryLabel = (() => {
+    if (filter.category === 'all') return 'Alle Kategorien';
+    return categories.find((c) => c.key === filter.category)?.label ?? 'Alle Kategorien';
+  })();
+
   return (
     <div>
-      <FilterPanel filter={filter} onChange={setFilter} />
+      {/* First-visit category modal — not closeable until a choice is made */}
+      <CategoryModal
+        open={firstVisitModalOpen}
+        categories={categories}
+        closeable={false}
+        onSelect={handleFirstVisitSelect}
+        onClose={() => {/* blocked on first visit */}}
+      />
+
+      <FilterPanel
+        filter={filter}
+        onChange={setFilter}
+        activeCategoryLabel={activeCategoryLabel}
+        onOpenCategoryModal={onOpenCategoryModal}
+      />
 
       {/* Full-page spinner: only on the very first load before any items exist */}
       {loading && items.length === 0 && <Spinner />}

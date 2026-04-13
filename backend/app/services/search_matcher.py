@@ -59,10 +59,12 @@ async def _match_search(
 
     Returns the number of new notification rows inserted.
     """
-    # Build SQL query: WHERE id IN (new_ids) + text filter clauses
+    # Build SQL query: WHERE id IN (new_ids) + text filter clauses + optional category filter
     stmt = select(Listing).where(Listing.id.in_(new_ids))
     for clause in build_text_filter(saved_search.search):
         stmt = stmt.where(clause)
+    if saved_search.category:
+        stmt = stmt.where(Listing.category == saved_search.category)
 
     candidates_result = await session.execute(stmt)
     candidates = list(candidates_result.scalars().all())

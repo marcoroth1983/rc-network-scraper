@@ -5,20 +5,21 @@
 
 ## Vision
 
-A web application that scrapes RC model airplane listings from rc-network.de, enriches them with geolocation data, and presents them in a clean, Kleinanzeigen-style interface with distance-based filtering.
+A web application that scrapes RC model listings from rc-network.de, enriches them with geolocation data, and presents them in a clean, Kleinanzeigen-style interface with distance-based filtering and category selection.
 
 ## Problem
 
-Browsing rc-network.de/forums/biete-flugmodelle is tedious: listings don't show location in the overview, forcing users to open each one individually and manually look up distances via Google Maps.
+Browsing rc-network.de "Biete" forums is tedious: listings don't show location in the overview, forcing users to open each one individually and manually look up distances via Google Maps.
 
 ## Target User
 
-The project owner — a single RC model enthusiast looking for used airplanes within a reasonable travel distance.
+The project owner — a single RC model enthusiast looking for used RC equipment within a reasonable travel distance.
 
 ## Core Features
 
 ### F1: Listing Scraper
-- Scrape listing overview pages from `rc-network.de/forums/biete-flugmodelle.132/page-X` (currently ~97 pages)
+- Scrape listing overview pages from all 7 "Biete" categories on rc-network.de (sequentially, 2s delay between requests)
+- Supported categories: Flugmodelle, Schiffsmodelle, Antriebstechnik, RC-Elektronik & Zubehör, RC-Cars & Funktionsmodelle, Einzelteile & Sonstiges, Zu verschenken
 - For each listing, fetch the detail page and extract:
   - Title
   - Price (`Preis:` field)
@@ -45,6 +46,7 @@ The project owner — a single RC model enthusiast looking for used airplanes wi
 
 ### F4: Search & Filter
 - Filter by maximum distance (km radius)
+- Filter by category (on first visit: category picker modal; persisted in localStorage)
 - Sort by: distance, price, date
 - Text search across title and description
 
@@ -54,15 +56,16 @@ The project owner — a single RC model enthusiast looking for used airplanes wi
 
 ## Scope Boundaries
 
-- **In scope:** German listings from the "Biete Flugmodelle" subforum only
-- **Out of scope:** Other rc-network.de subforums, other marketplaces, user accounts/auth on our side, buying/messaging through our app
+- **In scope:** All 7 "Biete" category subforums on rc-network.de
+- **Out of scope:** Other rc-network.de sections (e.g. "Suche"), other marketplaces, user accounts/auth on our side, buying/messaging through our app
 - **Scraping ethics:** Respect robots.txt, rate-limit requests, cache aggressively, include User-Agent identification
 
 ## Entities
 
 ### Listing
 - `id` (internal)
-- `external_id` (thread ID from rc-network.de)
+- `external_id` (thread ID from rc-network.de — globally unique across all forums)
+- `category` (one of the 7 category keys)
 - `url` (original listing URL)
 - `title`
 - `price` (nullable — not all listings have a price)

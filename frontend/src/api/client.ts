@@ -1,4 +1,5 @@
 import type {
+  Category,
   ListingsQueryParams,
   ListingDetail,
   ListingSummary,
@@ -25,6 +26,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function getCategories(): Promise<Category[]> {
+  const res = await fetch('/api/categories');
+  return handleResponse<Category[]>(res);
+}
+
 export async function getListings(params: ListingsQueryParams): Promise<PaginatedResponse> {
   const qs = new URLSearchParams();
   if (params.page != null) qs.set('page', String(params.page));
@@ -34,6 +40,10 @@ export async function getListings(params: ListingsQueryParams): Promise<Paginate
   if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
   if (params.plz) qs.set('plz', params.plz);
   if (params.max_distance != null) qs.set('max_distance', String(params.max_distance));
+  if (params.price_min != null) qs.set('price_min', String(params.price_min));
+  if (params.price_max != null) qs.set('price_max', String(params.price_max));
+  // Omit the category param entirely when it is "all" or absent — backend treats absence as "all"
+  if (params.category && params.category !== 'all') qs.set('category', params.category);
 
   const res = await fetch(`/api/listings?${qs.toString()}`);
   return handleResponse<PaginatedResponse>(res);

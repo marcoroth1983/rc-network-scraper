@@ -12,7 +12,7 @@ const makeListing = (overrides = {}) => ({
   plz: '80331', city: 'München', latitude: 48.1, longitude: 11.6,
   author: 'seller1', posted_at: '2026-03-01T10:00:00Z',
   scraped_at: '2026-04-01T10:00:00Z', distance_km: null,
-  images: [], is_sold: false, is_favorite: true,
+  images: [], is_sold: false, is_favorite: true, category: 'flugmodelle',
   ...overrides,
 });
 
@@ -28,7 +28,7 @@ const defaultSearchProps = {
 function renderModal(props: { open: boolean; onClose?: () => void }) {
   return render(
     <MemoryRouter>
-      <FavoritesModal open={props.open} onClose={props.onClose ?? vi.fn()} {...defaultSearchProps} />
+      <FavoritesModal open={props.open} onClose={props.onClose ?? vi.fn()} categories={[]} {...defaultSearchProps} />
     </MemoryRouter>
   );
 }
@@ -173,25 +173,25 @@ describe('FavoritesModal', () => {
     vi.mocked(client.getFavorites).mockResolvedValue([]);
     const { rerender } = render(
       <MemoryRouter>
-        <FavoritesModal open={false} onClose={vi.fn()} {...defaultSearchProps} />
+        <FavoritesModal open={false} onClose={vi.fn()} categories={[]} {...defaultSearchProps} />
       </MemoryRouter>
     );
 
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={true} onClose={vi.fn()} {...defaultSearchProps} />
+        <FavoritesModal open={true} onClose={vi.fn()} categories={[]} {...defaultSearchProps} />
       </MemoryRouter>
     );
     await waitFor(() => expect(client.getFavorites).toHaveBeenCalledTimes(1));
 
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={false} onClose={vi.fn()} {...defaultSearchProps} />
+        <FavoritesModal open={false} onClose={vi.fn()} categories={[]} {...defaultSearchProps} />
       </MemoryRouter>
     );
     rerender(
       <MemoryRouter>
-        <FavoritesModal open={true} onClose={vi.fn()} {...defaultSearchProps} />
+        <FavoritesModal open={true} onClose={vi.fn()} categories={[]} {...defaultSearchProps} />
       </MemoryRouter>
     );
     await waitFor(() => expect(client.getFavorites).toHaveBeenCalledTimes(2));

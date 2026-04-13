@@ -27,6 +27,7 @@ def _make_listing(
     plz: str | None = None,
     lat: float | None = None,
     lon: float | None = None,
+    category: str = "flugmodelle",
 ) -> Listing:
     """Build a Listing ORM object (not yet flushed)."""
     now = datetime.now(timezone.utc)
@@ -42,6 +43,7 @@ def _make_listing(
         latitude=lat,
         longitude=lon,
         scraped_at=now,
+        category=category,
     )
     session.add(listing)
     return listing
@@ -56,6 +58,7 @@ def _make_saved_search(
     max_distance: int | None = None,
     is_active: bool = True,
     name: str = "Test Suche",
+    category: str | None = None,
 ) -> SavedSearch:
     """Build a SavedSearch ORM object (not yet flushed)."""
     saved = SavedSearch(
@@ -65,6 +68,7 @@ def _make_saved_search(
         plz=plz,
         max_distance=max_distance,
         is_active=is_active,
+        category=category,
     )
     session.add(saved)
     return saved
@@ -258,6 +262,51 @@ async def test_run_update_job_calls_matcher_when_new_ids():
     mock_matcher.assert_called_once()
     call_args = mock_matcher.call_args
     assert call_args[0][1] == [1, 2]  # new_ids positional arg
+
+
+@pytest.mark.asyncio
+async def test_category_filter_excludes_wrong_category(db_session: AsyncSession):
+    """Saved search with category='rc-cars' does not match a listing with category='flugmodelle'."""
+    user_id = await _seed_user(db_session)
+
+    flug_listing = _make_listing(
+        db_session, external_id="L001", title="Segler", category="flugmodelle"
+    )
+    car_listing = _make_listing(
+        db_session, external_id="L002", title="Buggy", category="rc-cars"
+    )
+    saved = _make_saved_search(db_session, user_id=user_id, category="rc-cars")
+    await db_session.flush()
+    await db_session.commit()
+
+    matches = await check_new_matches(db_session, [flug_listing.id, car_listing.id])
+    assert matches == 1
+
+    notif_result = await db_session.execute(
+        text("SELECT listing_id FROM search_notifications")
+    )
+    notified_ids = {row[0] for row in notif_result.fetchall()}
+    assert flug_listing.id not in notified_ids
+    assert car_listing.id in notified_ids
+
+
+@pytest.mark.asyncio
+async def test_category_filter_none_matches_all_categories(db_session: AsyncSession):
+    """Saved search with category=None matches listings from any category."""
+    user_id = await _seed_user(db_session)
+
+    flug_listing = _make_listing(
+        db_session, external_id="L001", title="Segler", category="flugmodelle"
+    )
+    car_listing = _make_listing(
+        db_session, external_id="L002", title="Buggy", category="rc-cars"
+    )
+    saved = _make_saved_search(db_session, user_id=user_id, category=None)
+    await db_session.flush()
+    await db_session.commit()
+
+    matches = await check_new_matches(db_session, [flug_listing.id, car_listing.id])
+    assert matches == 2
 
 
 @pytest.mark.asyncio

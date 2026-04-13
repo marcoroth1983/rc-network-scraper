@@ -191,6 +191,7 @@ async def run_recheck_job() -> None:
                 session,
                 update_progress=lambda p: _update(phase="phase2", progress=p),
                 delay=settings.RECHECK_DELAY,
+                batch_size=settings.RECHECK_BATCH_SIZE,
             )
         summary.update(result)
         logger.info("Phase 2 done: %s", result)
