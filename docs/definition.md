@@ -46,6 +46,7 @@ The project owner — a single RC model enthusiast looking for used RC equipment
 
 ### F4: Search & Filter
 - Filter by maximum distance (km radius)
+- Filter by category (on first visit: category picker modal; persisted in localStorage)
 - Sort by: distance, price, date
 - Text search across title and description
 
@@ -55,15 +56,16 @@ The project owner — a single RC model enthusiast looking for used RC equipment
 
 ## Scope Boundaries
 
-- **In scope:** German listings from the "Biete Flugmodelle" subforum only
-- **Out of scope:** Other rc-network.de subforums, other marketplaces, user accounts/auth on our side, buying/messaging through our app
+- **In scope:** All 7 "Biete" category subforums on rc-network.de
+- **Out of scope:** Other rc-network.de sections (e.g. "Suche"), other marketplaces, user accounts/auth on our side, buying/messaging through our app
 - **Scraping ethics:** Respect robots.txt, rate-limit requests, cache aggressively, include User-Agent identification
 
 ## Entities
 
 ### Listing
 - `id` (internal)
-- `external_id` (thread ID from rc-network.de)
+- `external_id` (thread ID from rc-network.de — globally unique across all forums)
+- `category` (one of the 7 category keys)
 - `url` (original listing URL)
 - `title`
 - `price` (nullable — not all listings have a price)

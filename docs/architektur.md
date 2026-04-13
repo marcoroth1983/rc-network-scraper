@@ -63,8 +63,9 @@ rc-markt-scout/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/listings` | List listings with filters (distance, price, search, sort) |
+| GET | `/api/listings` | List listings with filters (distance, price, search, sort, category) |
 | GET | `/api/listings/{id}` | Single listing detail |
+| GET | `/api/categories` | All 7 categories with listing counts |
 | POST | `/api/scrape` | Trigger a scrape run (admin) |
 | GET | `/api/scrape/status` | Current scrape job status |
 | GET | `/api/geo/plz/{plz}` | Resolve PLZ to coordinates |
@@ -79,11 +80,12 @@ rc-markt-scout/
 
 ## Scraping Strategy
 
-1. **Crawl phase:** Iterate overview pages (`/page-1` through `/page-N`), collect thread URLs and external IDs
-2. **Parse phase:** For each new/updated thread, fetch detail page and extract structured fields
-3. **Rate limiting:** Max 1 request per second, respect `robots.txt`
-4. **Deduplication:** Use `external_id` (thread ID) as unique key, update existing records on re-scrape
-5. **Incremental:** Track `scraped_at`, only re-scrape listings older than configurable threshold
+1. **Crawl phase:** Iterate over all 7 "Biete" categories sequentially; for each, paginate through overview pages collecting thread URLs and external IDs
+2. **Parse phase:** For each new/updated thread, fetch detail page and extract structured fields; tag each listing with its source category
+3. **Rate limiting:** 2 seconds between requests; no parallelism across categories (intentional — polite to the forum)
+4. **Deduplication:** Use `external_id` (globally unique XenForo thread ID) as unique key; update existing records on re-scrape
+5. **Incremental:** Stop-early per category when a full overview page contains only known IDs (listings are newest-first); hard cap of 40 pages per category
+6. **Sold recheck:** Phase 2 re-fetches the 250 oldest non-sold listings per hourly run to detect sold status
 
 ## Geodata
 
