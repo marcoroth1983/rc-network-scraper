@@ -105,6 +105,8 @@ export interface ListingsQueryParams {
   plz?: string | null;
   max_distance?: number | null;
   category?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
 }
 
 export class ApiError extends Error {

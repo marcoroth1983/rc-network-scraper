@@ -189,49 +189,12 @@ export default function ListingsPage({
         onClose={() => {/* blocked on first visit */}}
       />
 
-      {/* Mobile category chip — visible only on small screens (PlzBar is desktop-only) */}
-      <div className="sm:hidden mb-3">
-        <button
-          type="button"
-          onClick={onOpenCategoryModal}
-          className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition"
-          style={{
-            background: 'rgba(167, 139, 250, 0.07)',
-            border: '1px solid rgba(167, 139, 250, 0.2)',
-            color: '#C4B5FD',
-          }}
-          aria-label={`Kategorie: ${activeCategoryLabel} — wechseln`}
-        >
-          <div className="flex items-center gap-2">
-            <svg
-              className="w-3.5 h-3.5 flex-shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              aria-hidden="true"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-            <span>{activeCategoryLabel}</span>
-          </div>
-          <svg
-            className="w-3.5 h-3.5 opacity-50"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      </div>
-
-      <FilterPanel filter={filter} onChange={setFilter} />
+      <FilterPanel
+        filter={filter}
+        onChange={setFilter}
+        activeCategoryLabel={activeCategoryLabel}
+        onOpenCategoryModal={onOpenCategoryModal}
+      />
 
       {/* Full-page spinner: only on the very first load before any items exist */}
       {loading && items.length === 0 && <Spinner />}

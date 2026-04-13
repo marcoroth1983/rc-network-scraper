@@ -11,6 +11,8 @@ export interface ListingsFilter {
   max_distance: string; // stored as string in URL; convert to int before API call
   page: number;
   category: string;     // "all" or a category key; stored in localStorage, not URL
+  price_min: string;
+  price_max: string;
 }
 
 export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
@@ -29,6 +31,8 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     max_distance: params.get('max_distance') ?? '',
     page: parseInt(params.get('page') ?? '1', 10) || 1,
     category,
+    price_min: params.get('price_min') ?? '',
+    price_max: params.get('price_max') ?? '',
   };
 }
 
@@ -42,6 +46,8 @@ export function writeFiltersToParams(
   if (filter.sort !== 'date') p.set('sort', filter.sort);
   if (filter.sort_dir !== 'desc') p.set('sort_dir', filter.sort_dir);
   if (filter.max_distance) p.set('max_distance', filter.max_distance);
+  if (filter.price_min) p.set('price_min', filter.price_min);
+  if (filter.price_max) p.set('price_max', filter.price_max);
   if (filter.page > 1) p.set('page', String(filter.page));
   setParams(p);
 }
@@ -85,6 +91,8 @@ export function useListings(): UseListingsResult {
       plz: filter.plz || null,
       max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
       category: filter.category !== 'all' ? filter.category : undefined,
+      price_min: filter.price_min ? parseFloat(filter.price_min) : null,
+      price_max: filter.price_max ? parseFloat(filter.price_max) : null,
     })
       .then((res) => {
         if (!cancelled) {
@@ -110,6 +118,8 @@ export function useListings(): UseListingsResult {
     filter.sort_dir,
     filter.max_distance,
     filter.category,
+    filter.price_min,
+    filter.price_max,
   ]);
 
   return { data, loading, error, filter, setFilter };

@@ -199,7 +199,7 @@ export function FavoritesPage() {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
 
-  const { searches, load: loadSearches, remove: removeSearch, toggleActive, markViewed } =
+  const { searches, totalUnread, load: loadSearches, remove: removeSearch, toggleActive, markViewed } =
     useSavedSearches();
 
   const [favorites, setFavorites] = useState<ListingSummary[]>([]);
@@ -224,13 +224,19 @@ export function FavoritesPage() {
     if (tab === 'merkliste') {
       loadFavorites();
     } else {
-      loadSearches().then(() => {
-        markViewed();
-      });
+      loadSearches();
     }
-    // loadSearches and markViewed are stable references from useSavedSearches
+    // loadSearches is a stable reference from useSavedSearches
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  // Mark searches as viewed when the user leaves this page — not on enter,
+  // so the unread badge stays visible for the duration of their visit.
+  useEffect(() => {
+    return () => { markViewed(); };
+    // markViewed is a stable reference
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleRemoveFavorite(id: number) {
     setFavorites((prev) => prev.filter((f) => f.id !== id));
@@ -305,6 +311,18 @@ export function FavoritesPage() {
                 style={{ color: 'rgba(248,250,252,0.35)' }}
               >
                 ({searches.length})
+              </span>
+            )}
+            {totalUnread > 0 && (
+              <span
+                className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold"
+                style={{
+                  background: 'rgba(236,72,153,0.15)',
+                  border: '1px solid rgba(236,72,153,0.4)',
+                  color: '#EC4899',
+                }}
+              >
+                {totalUnread > 99 ? '99+' : totalUnread}
               </span>
             )}
           </button>

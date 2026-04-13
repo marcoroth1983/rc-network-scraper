@@ -40,6 +40,8 @@ export async function getListings(params: ListingsQueryParams): Promise<Paginate
   if (params.sort_dir) qs.set('sort_dir', params.sort_dir);
   if (params.plz) qs.set('plz', params.plz);
   if (params.max_distance != null) qs.set('max_distance', String(params.max_distance));
+  if (params.price_min != null) qs.set('price_min', String(params.price_min));
+  if (params.price_max != null) qs.set('price_max', String(params.price_max));
   // Omit the category param entirely when it is "all" or absent — backend treats absence as "all"
   if (params.category && params.category !== 'all') qs.set('category', params.category);
 

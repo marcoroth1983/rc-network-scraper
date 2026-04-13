@@ -118,27 +118,19 @@ export function MobileFooter({ totalUnread }: Props) {
           <StarIcon />
           {totalUnread > 0 && (
             <span
-              aria-label={`${totalUnread > 99 ? '99+' : totalUnread} neue Treffer`}
+              aria-label="Neue Treffer in Merkliste"
               style={{
                 position: 'absolute',
-                top: -4,
-                right: -6,
-                minWidth: '16px',
-                height: '16px',
-                padding: '0 3px',
-                borderRadius: '8px',
+                top: -2,
+                right: -4,
+                width: '9px',
+                height: '9px',
+                borderRadius: '50%',
                 background: '#EC4899',
-                color: '#F8FAFC',
-                fontSize: '9px',
-                fontWeight: 700,
-                lineHeight: '16px',
-                textAlign: 'center',
                 pointerEvents: 'none',
                 boxShadow: '0 0 0 2px rgba(15,15,35,0.88)',
               }}
-            >
-              {totalUnread > 99 ? '99+' : totalUnread}
-            </span>
+            />
           )}
         </div>
         <span className="text-[11px] font-medium leading-none">Merkliste</span>

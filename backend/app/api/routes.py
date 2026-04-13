@@ -110,6 +110,8 @@ async def list_listings(
     plz: str | None = Query(default=None),
     max_distance: int | None = Query(default=None, ge=1),
     category: str | None = Query(default=None),
+    price_min: float | None = Query(default=None, ge=0),
+    price_max: float | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> PaginatedResponse:
@@ -121,6 +123,8 @@ async def list_listings(
         raise HTTPException(status_code=400, detail="plz is required when max_distance is set")
     if category is not None and category != "all" and category not in CATEGORY_KEYS:
         raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
+    if price_min is not None and price_max is not None and price_min > price_max:
+        raise HTTPException(status_code=400, detail="price_min must be <= price_max")
 
     offset = (page - 1) * per_page
     asc = sort_dir == "asc"
@@ -131,6 +135,12 @@ async def list_listings(
         stmt = stmt.where(clause)
     if category and category != "all":
         stmt = stmt.where(Listing.category == category)
+    if price_min is not None or price_max is not None:
+        stmt = stmt.where(Listing.price_numeric.is_not(None))
+    if price_min is not None:
+        stmt = stmt.where(Listing.price_numeric >= price_min)
+    if price_max is not None:
+        stmt = stmt.where(Listing.price_numeric <= price_max)
 
     if sort == "date" and max_distance is None:
         # SQL-side sort and count

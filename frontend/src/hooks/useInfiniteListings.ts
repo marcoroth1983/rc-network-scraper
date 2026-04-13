@@ -41,6 +41,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     sort_dir: urlFilter.sort_dir,
     max_distance: urlFilter.max_distance,
     category: urlFilter.category,
+    price_min: urlFilter.price_min,
+    price_max: urlFilter.price_max,
   });
 
   // Detect filter dimension changes (anything except page).
@@ -52,7 +54,9 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     prevFilter.sort !== urlFilter.sort ||
     prevFilter.sort_dir !== urlFilter.sort_dir ||
     prevFilter.max_distance !== urlFilter.max_distance ||
-    prevFilter.category !== urlFilter.category;
+    prevFilter.category !== urlFilter.category ||
+    prevFilter.price_min !== urlFilter.price_min ||
+    prevFilter.price_max !== urlFilter.price_max;
 
   if (filterChanged) {
     filterRef.current = {
@@ -62,6 +66,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       sort_dir: urlFilter.sort_dir,
       max_distance: urlFilter.max_distance,
       category: urlFilter.category,
+      price_min: urlFilter.price_min,
+      price_max: urlFilter.price_max,
     };
     // Reset synchronously during render — safe because we haven't committed yet
     // and this is logically equivalent to getDerivedStateFromProps.
@@ -74,7 +80,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   }
 
   // Stable snapshot of filter dimensions for the fetch effect.
-  const { search, plz, sort, sort_dir, max_distance, category } = filterRef.current;
+  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max } = filterRef.current;
 
   useEffect(() => {
     // Fetch gate: no localStorage value means first visit — wait for modal selection.
@@ -108,6 +114,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       plz: plz || null,
       max_distance: max_distance ? parseInt(max_distance, 10) : null,
       category: category !== 'all' ? category : undefined,
+      price_min: price_min ? parseFloat(price_min) : null,
+      price_max: price_max ? parseFloat(price_max) : null,
     })
       .then((res) => {
         if (cancelled) return;
@@ -131,7 +139,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     };
     // `items.length` is intentionally included so hasMore calculation is correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, plz, sort, sort_dir, max_distance, category]);
+  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max]);
 
   const loadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -188,6 +196,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     max_distance: urlFilter.max_distance,
     page: 1,
     category: urlFilter.category,
+    price_min: urlFilter.price_min,
+    price_max: urlFilter.price_max,
   };
 
   return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore };

@@ -19,21 +19,6 @@ function getInitials(email: string): string {
   return local.slice(0, 2).toUpperCase();
 }
 
-function ChevronLeftIcon() {
-  return (
-    <svg
-      className="w-5 h-5"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden="true"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-    </svg>
-  );
-}
-
 export function ProfilePage({ user, onLogout }: Props) {
   const navigate = useNavigate();
 
@@ -102,38 +87,6 @@ export function ProfilePage({ user, onLogout }: Props) {
 
   return (
     <div className="flex flex-col" style={{ color: '#F8FAFC' }}>
-      {/* Top bar with back button */}
-      <div
-        className="flex items-center px-4"
-        style={{
-          height: '56px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-          background: 'rgba(15, 15, 35, 0.5)',
-          backdropFilter: 'blur(12px)',
-        }}
-      >
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Zurück"
-          className="flex items-center justify-center rounded-full transition-all duration-150"
-          style={{
-            width: '36px',
-            height: '36px',
-            background: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            color: 'rgba(248, 250, 252, 0.7)',
-          }}
-        >
-          <ChevronLeftIcon />
-        </button>
-        <span
-          className="ml-3 text-sm font-medium"
-          style={{ color: 'rgba(248, 250, 252, 0.85)' }}
-        >
-          Profil
-        </span>
-      </div>
-
       {/* Centered card */}
       <div className="flex-1 flex items-start justify-center px-4 pt-10">
         <div
