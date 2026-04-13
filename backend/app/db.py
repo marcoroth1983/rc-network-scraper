@@ -46,6 +46,12 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS category VARCHAR(50)"
         ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'member'"
+        ))
+        await conn.execute(text(
+            "UPDATE users SET role = 'admin' WHERE email = 'marco.roth1983@googlemail.com' AND role = 'member'"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

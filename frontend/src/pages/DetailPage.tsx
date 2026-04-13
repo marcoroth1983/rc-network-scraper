@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
-import { getListing, toggleSold, toggleFavorite } from '../api/client';
-import type { ListingDetail } from '../types/api';
+import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
+import ListingCard from '../components/ListingCard';
+import type { ListingDetail, ListingSummary } from '../types/api';
 import { formatPrice } from '../utils/format';
 
 function formatDate(iso: string | null): string {
@@ -77,21 +79,27 @@ export default function DetailPage() {
   // Freeze backTo at mount time — PlzBar later calls setSearchParams on the detail page URL,
   // which pushes a new history entry without router state, losing state.from on re-renders.
   const backTo = useRef('/' + ((routerLocation.state as { from?: string } | null)?.from ?? '')).current;
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [soldPending, setSoldPending] = useState(false);
   const [favoritePending, setFavoritePending] = useState(false);
+  const [authorListings, setAuthorListings] = useState<ListingSummary[]>([]);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
+    setAuthorListings([]);
     getListing(Number(id))
       .then((data) => {
         setListing(data);
         setLoading(false);
+        return getListingsByAuthor(data.author, data.id);
       })
+      .then(setAuthorListings)
       .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
@@ -164,7 +172,7 @@ export default function DetailPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto pt-3 pb-6 sm:pt-0 sm:pb-10">
       {/* Back button */}
       <Link
         to={backTo}
@@ -177,6 +185,22 @@ export default function DetailPage() {
       >
         ← Zurück zur Liste
       </Link>
+
+      {/* Hero image */}
+      {listing.images.length > 0 && (() => {
+        const src = listing.images[0];
+        const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
+        return (
+          <a href={abs} target="_blank" rel="noopener noreferrer" className="block mb-4">
+            <img
+              src={abs}
+              alt={listing.title}
+              className="w-full rounded-2xl object-cover"
+              style={{ maxHeight: '360px', border: '1px solid rgba(255,255,255,0.08)' }}
+            />
+          </a>
+        );
+      })()}
 
       {/* Main content card */}
       <div
@@ -219,8 +243,8 @@ export default function DetailPage() {
                 </svg>
               </button>
 
-              {/* Sold toggle */}
-              <button
+              {/* Sold toggle — admin only */}
+              {isAdmin && <button
                 onClick={handleToggleSold}
                 disabled={soldPending}
                 className="text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 disabled:opacity-50"
@@ -239,7 +263,7 @@ export default function DetailPage() {
                 }
               >
                 {listing.is_sold ? 'Verkauft ✓' : 'Als verkauft markieren'}
-              </button>
+              </button>}
             </div>
           </div>
 
@@ -332,8 +356,8 @@ export default function DetailPage() {
             )}
           </dl>
 
-          {/* Image gallery */}
-          {listing.images.length > 0 && (
+          {/* Image gallery — remaining images after hero */}
+          {listing.images.length > 1 && (
             <div className="mb-6">
               <h2
                 className="text-xs font-semibold uppercase tracking-wider mb-3"
@@ -341,15 +365,15 @@ export default function DetailPage() {
               >
                 Bilder
               </h2>
-              <div className="flex overflow-x-auto flex-nowrap sm:flex-wrap gap-2">
-                {listing.images.map((src, i) => {
+              <div className="flex overflow-x-auto flex-nowrap sm:flex-wrap gap-2 pb-1">
+                {listing.images.slice(1).map((src, i) => {
                   const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
                   return (
-                    <a key={i} href={abs} target="_blank" rel="noopener noreferrer">
+                    <a key={i} href={abs} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
                       <img
                         src={abs}
-                        alt={`Bild ${i + 1}`}
-                        className="h-32 w-auto rounded-xl object-cover hover:opacity-90 transition-opacity"
+                        alt={`Bild ${i + 2}`}
+                        className="h-28 w-auto rounded-xl object-cover hover:opacity-90 transition-opacity"
                         style={{ border: '1px solid rgba(255,255,255,0.1)' }}
                         loading="lazy"
                       />
@@ -379,6 +403,32 @@ export default function DetailPage() {
           )}
         </div>
       </div>
+
+      {/* More listings from same author */}
+      {authorListings.length > 0 && (
+        <div className="mt-6">
+          <h2
+            className="text-xs font-semibold uppercase tracking-wider mb-3 px-1"
+            style={{ color: 'rgba(248,250,252,0.35)' }}
+          >
+            Weitere von {listing.author}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {authorListings.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: 'rgba(15, 15, 35, 0.6)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                <ListingCard listing={item} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

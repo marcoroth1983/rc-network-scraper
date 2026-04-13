@@ -11,8 +11,6 @@ const PLZ_LAT_KEY = 'rcn_ref_lat';
 const PLZ_LON_KEY = 'rcn_ref_lon';
 
 interface Props {
-  onOpenFavorites: () => void;
-  totalUnread: number;
   suppressPlzRestore: boolean;
   activeCategoryLabel: string;
   onOpenCategoryModal: () => void;
@@ -21,8 +19,6 @@ interface Props {
 }
 
 export default function PlzBar({
-  onOpenFavorites: _onOpenFavorites,
-  totalUnread: _totalUnread,
   suppressPlzRestore,
   activeCategoryLabel,
   onOpenCategoryModal,

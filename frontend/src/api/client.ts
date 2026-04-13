@@ -86,6 +86,12 @@ export async function toggleFavorite(id: number, isFavorite: boolean): Promise<v
   return handleResponse<void>(res);
 }
 
+export async function getListingsByAuthor(author: string, excludeId: number): Promise<ListingSummary[]> {
+  const qs = new URLSearchParams({ author, exclude_id: String(excludeId) });
+  const res = await fetch(`/api/listings/by-author?${qs.toString()}`);
+  return handleResponse<ListingSummary[]>(res);
+}
+
 export async function getFavorites(): Promise<ListingSummary[]> {
   const plz = localStorage.getItem('rcn_ref_plz');
   const url = plz ? `/api/favorites?plz=${encodeURIComponent(plz)}` : '/api/favorites';

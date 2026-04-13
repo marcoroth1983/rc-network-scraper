@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getScrapeLog } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import type { ScrapeLogEntry } from '../types/api';
 
 const POLL_MS = 60_000;
@@ -26,6 +27,7 @@ function formatTime(iso: string): string {
 }
 
 export default function ScrapeLog() {
+  const { user } = useAuth();
   const [entries, setEntries] = useState<ScrapeLogEntry[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -40,6 +42,7 @@ export default function ScrapeLog() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLog();
     const id = setInterval(fetchLog, POLL_MS);
     return () => clearInterval(id);
@@ -55,6 +58,8 @@ export default function ScrapeLog() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  if (user?.role !== 'admin') return null;
 
   return (
     <div className="relative" ref={ref}>

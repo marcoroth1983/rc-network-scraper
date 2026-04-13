@@ -217,6 +217,23 @@ async def list_listings(
     return PaginatedResponse(total=total, page=page, per_page=per_page, items=items)
 
 
+@router.get("/listings/by-author", response_model=list[ListingSummary])
+async def get_listings_by_author(
+    author: str,
+    exclude_id: int | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> list[ListingSummary]:
+    """Return up to 10 listings from the same author, excluding the given listing."""
+    q = select(Listing).where(Listing.author == author)
+    if exclude_id is not None:
+        q = q.where(Listing.id != exclude_id)
+    q = q.order_by(Listing.posted_at.desc()).limit(10)
+    result = await session.execute(q)
+    rows = result.scalars().all()
+    return [ListingSummary.model_validate(row) for row in rows]
+
+
 @router.get("/listings/{listing_id}", response_model=ListingDetail)
 async def get_listing(
     listing_id: int,

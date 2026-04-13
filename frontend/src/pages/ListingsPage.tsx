@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
 import CategoryModal from '../components/CategoryModal';
@@ -111,7 +111,7 @@ export default function ListingsPage({
 
   // Stable loadMore ref so the observer effect doesn't re-run on every render
   const loadMoreRef = useRef(loadMore);
-  loadMoreRef.current = loadMore;
+  useLayoutEffect(() => { loadMoreRef.current = loadMore; });
 
   useEffect(() => {
     const el = sentinelRef.current;
