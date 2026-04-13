@@ -8,6 +8,7 @@ import { FavoritesPage } from './pages/FavoritesPage';
 import ScrapeLog from './components/ScrapeLog';
 import FavoritesModal from './components/FavoritesModal';
 import { MobileFooter } from './components/MobileFooter';
+import { InstallPrompt } from './components/InstallPrompt';
 import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
@@ -149,6 +150,7 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
         onMarkViewed={markViewed}
         onActivateSearch={handleActivateSearch}
       />
+      <InstallPrompt />
       <MobileFooter totalUnread={totalUnread} />
     </AuroraBackground>
   );
