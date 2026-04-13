@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 function GoogleIcon() {
@@ -15,10 +16,12 @@ export default function LoginPage() {
   const [params] = useSearchParams()
   const error = params.get('error')
   const email = params.get('email')
+  const [privacyOpen, setPrivacyOpen] = useState(false)
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden"
          style={{ background: '#0f0f23' }}>
+
 
       {/* Aurora gradient blobs */}
       <div className="absolute inset-0 pointer-events-none">
@@ -110,6 +113,84 @@ export default function LoginPage() {
           Zugang nur für freigeschaltete Mitglieder.
         </p>
       </div>
+
+      {/* Footer */}
+      <div
+        className="fixed bottom-0 left-0 right-0 flex items-center justify-center py-3"
+        style={{
+          background: 'rgba(15,15,35,0.85)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setPrivacyOpen(true)}
+          className="text-xs transition-colors"
+          style={{ color: 'rgba(248,250,252,0.3)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.6)' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.3)' }}
+        >
+          Datenschutzerklärung
+        </button>
+      </div>
+
+      {/* Privacy modal */}
+      {privacyOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-50"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setPrivacyOpen(false)}
+          />
+          <div
+            className="fixed inset-x-4 top-12 bottom-12 z-50 max-w-xl mx-auto rounded-2xl flex flex-col overflow-hidden"
+            style={{
+              background: 'rgba(18,18,40,0.98)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+            }}
+          >
+            {/* Modal header */}
+            <div
+              className="flex items-center justify-between px-6 py-4 flex-shrink-0"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              <h2 className="text-sm font-semibold" style={{ color: '#F8FAFC' }}>Datenschutzerklärung</h2>
+              <button
+                type="button"
+                onClick={() => setPrivacyOpen(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-full transition-colors"
+                style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(248,250,252,0.5)' }}
+                aria-label="Schließen"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 text-sm space-y-4" style={{ color: 'rgba(248,250,252,0.65)', lineHeight: '1.7' }}>
+              <p>
+                Diese Anwendung ist ein privates Hobby-Projekt und nicht öffentlich zugänglich. Der Zugang ist ausschließlich auf freigeschaltete Personen beschränkt.
+              </p>
+              <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Erhobene Daten</h3>
+              <p>
+                Bei der Anmeldung über Google OAuth werden folgende Daten gespeichert: Google-ID, E-Mail-Adresse und Name. Diese Daten werden ausschließlich zur Authentifizierung verwendet und nicht an Dritte weitergegeben.
+              </p>
+              <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Hosting & Betrieb</h3>
+              <p>
+                Die Anwendung wird auf einem privaten VPS betrieben, der ausschließlich dem Betreiber zugänglich ist. Es werden keine Nutzerdaten zu Werbezwecken verarbeitet oder verkauft.
+              </p>
+              <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Kontakt</h3>
+              <p>
+                Bei Fragen zur Datenschutzerklärung wenden Sie sich an den Betreiber dieser Anwendung.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
