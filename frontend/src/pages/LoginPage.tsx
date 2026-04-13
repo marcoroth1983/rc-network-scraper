@@ -17,6 +17,7 @@ export default function LoginPage() {
   const error = params.get('error')
   const email = params.get('email')
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const [loggingIn, setLoggingIn] = useState(false)
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 overflow-hidden"
@@ -90,15 +91,17 @@ export default function LoginPage() {
         <a href="/api/auth/google"
            className="flex items-center justify-center gap-3 w-full rounded-xl px-4 py-3.5 text-sm font-semibold no-underline border transition-all duration-200"
            style={{
-             background: 'rgba(255,255,255,0.08)',
+             background: loggingIn ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
              borderColor: 'rgba(255,255,255,0.12)',
-             color: '#E2E8F0',
+             color: loggingIn ? 'rgba(226,232,240,0.4)' : '#E2E8F0',
+             pointerEvents: loggingIn ? 'none' : 'auto',
            }}
-           onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(99,102,241,0.15)'; }}
-           onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none'; }}
+           onClick={() => setLoggingIn(true)}
+           onMouseOver={e => { if (!loggingIn) { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(99,102,241,0.15)'; } }}
+           onMouseOut={e => { if (!loggingIn) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none'; } }}
         >
           <GoogleIcon />
-          {error === 'not_approved' ? 'Mit anderem Account anmelden' : 'Mit Google anmelden'}
+          {loggingIn ? 'Weiterleitung…' : error === 'not_approved' ? 'Mit anderem Account anmelden' : 'Mit Google anmelden'}
         </a>
 
         <div className="flex items-center gap-3">

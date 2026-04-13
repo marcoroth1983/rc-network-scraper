@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import text
+from sqlalchemy import func, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -61,27 +61,33 @@ async def auth_google_callback(
     # Validate CSRF state
     stored_state = request.cookies.get("oauth_state")
     if not stored_state or not secrets.compare_digest(stored_state, state):
-        raise HTTPException(400, "Invalid OAuth state")
+        return RedirectResponse(f"{settings.FRONTEND_URL}/login?error=denied")
 
     # Exchange code for access token
     redirect_uri = f"{settings.PUBLIC_BASE_URL}/api/auth/google/callback"
-    async with httpx.AsyncClient() as client:
-        token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
-            "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-        })
-        token_resp.raise_for_status()
-        access_token = token_resp.json()["access_token"]
+    try:
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(_GOOGLE_TOKEN_URL, data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            })
+            token_resp.raise_for_status()
+            access_token = token_resp.json()["access_token"]
 
-        userinfo_resp = await client.get(
-            _GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        userinfo_resp.raise_for_status()
-        userinfo = userinfo_resp.json()
+            userinfo_resp = await client.get(
+                _GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            userinfo_resp.raise_for_status()
+            userinfo = userinfo_resp.json()
+    except httpx.HTTPStatusError:
+        # Code already used or Google rejected the exchange (e.g. duplicate callback)
+        resp = RedirectResponse(f"{settings.FRONTEND_URL}/login?error=denied")
+        resp.delete_cookie("oauth_state")
+        return resp
 
     google_id = userinfo["id"]
     email = userinfo["email"]
@@ -125,8 +131,16 @@ async def auth_google_callback(
 
 
 @router.get("/auth/me")
-async def auth_me(user: User = Depends(get_current_user)):
+async def auth_me(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
     """Return current authenticated user. 401 if not authenticated."""
+    await session.execute(
+        text("UPDATE users SET last_seen_at = now() WHERE id = :uid"),
+        {"uid": user.id},
+    )
+    await session.commit()
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
 
 

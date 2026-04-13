@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
+
 class Base(DeclarativeBase):
     pass
 
@@ -36,7 +37,19 @@ class Listing(Base):
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     is_sold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     is_favorite: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    favorited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, server_default="flugmodelle", index=True)
+
+    # --- LLM-extracted analysis fields (Step 014) ---
+    manufacturer: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    drive_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    model_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model_subtype: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    completeness: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
+    analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    analysis_retries: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
 
 class PlzGeodata(Base):
@@ -70,6 +83,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SavedSearch(Base):

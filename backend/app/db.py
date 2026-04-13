@@ -52,6 +52,40 @@ async def init_db() -> None:
         await conn.execute(text(
             "UPDATE users SET role = 'admin' WHERE email = 'marco.roth1983@googlemail.com' AND role = 'member'"
         ))
+        # PLAN-014: LLM analysis fields
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(100)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS model_name VARCHAR(200)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS drive_type VARCHAR(30)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS model_type VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS model_subtype VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS completeness VARCHAR(30)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS attributes JSONB NOT NULL DEFAULT '{}'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS analysis_retries INTEGER NOT NULL DEFAULT 0"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS favorited_at TIMESTAMPTZ"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

@@ -214,14 +214,20 @@ export default function FavoritesModal({
     if (tab === 'merkliste') {
       loadFavorites();
     } else {
-      // Reload searches, then mark them as viewed
-      onLoadSearches().then(() => {
-        onMarkViewed();
-      });
+      onLoadSearches();
     }
-  // onLoadSearches and onMarkViewed are stable references from useSavedSearches
+  // onLoadSearches is a stable reference from useSavedSearches
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tab]);
+
+  // Mark searches as viewed when the modal closes — not on open,
+  // so the unread badges stay visible for the duration of the visit.
+  useEffect(() => {
+    if (!open) return;
+    return () => { onMarkViewed(); };
+  // onMarkViewed is a stable reference
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Lock body scroll while modal is open
   useEffect(() => {
