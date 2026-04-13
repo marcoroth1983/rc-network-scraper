@@ -263,11 +263,16 @@ export function FavoritesPage() {
   const soldCount = favorites.filter((f) => f.is_sold).length;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ color: '#F8FAFC' }}>
+    <div className="flex flex-col" style={{ color: '#F8FAFC' }}>
       {/* Tab bar */}
       <div
-        className="px-4 flex-shrink-0"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        className="px-4 flex-shrink-0 sticky top-0 z-10"
+        style={{
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(15, 15, 35, 0.85)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
       >
         <div className="flex" role="tablist">
           <button

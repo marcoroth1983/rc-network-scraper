@@ -101,7 +101,7 @@ export function ProfilePage({ user, onLogout }: Props) {
   const initials = getInitials(user.email);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ color: '#F8FAFC' }}>
+    <div className="flex flex-col" style={{ color: '#F8FAFC' }}>
       {/* Top bar with back button */}
       <div
         className="flex items-center px-4"
