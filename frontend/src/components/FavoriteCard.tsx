@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { ListingSummary } from '../types/api';
+import { getBackground } from '../lib/modalLocation';
 import { toggleFavorite } from '../api/client';
 import { formatPrice, formatDate } from '../utils/format';
 
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export default function FavoriteCard({ listing, onRemove }: Props) {
+  const routerLocation = useLocation();
+  const background = getBackground(routerLocation) ?? routerLocation;
   const location = [listing.plz, listing.city].filter(Boolean).join(' ');
 
   async function handleRemove(e: React.MouseEvent) {
@@ -54,6 +57,7 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
         {/* Row 1: title — stretched link covers the whole article, pr-8 reserves space for trash button */}
         <Link
           to={`/listings/${listing.id}`}
+          state={{ background }}
           className="block text-sm font-semibold leading-snug line-clamp-2 pr-8 after:absolute after:inset-0 transition-colors"
           style={{ color: '#F8FAFC' }}
         >

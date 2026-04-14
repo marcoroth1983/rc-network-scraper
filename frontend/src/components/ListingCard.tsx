@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ListingSummary } from '../types/api';
+import { getBackground } from '../lib/modalLocation';
 import { toggleFavorite } from '../api/client';
 import { formatPrice, formatDate } from '../utils/format';
 
@@ -23,30 +24,50 @@ function PinIcon() {
 
 interface PriceIndicatorBadgeProps {
   indicator: ListingSummary['price_indicator'];
+  median?: number | null;
+  count?: number | null;
 }
 
-function PriceIndicatorBadge({ indicator }: PriceIndicatorBadgeProps) {
+function buildTooltip(label: string, median: number | null | undefined, count: number | null | undefined): string {
+  if (median == null || count == null) return label;
+  const medianStr = median.toLocaleString('de-DE', { maximumFractionDigits: 0 });
+  return `${label} · Ø ${medianStr} € bei ${count} Inseraten`;
+}
+
+function PriceIndicatorBadge({ indicator, median, count }: PriceIndicatorBadgeProps) {
   if (indicator === 'deal') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
         style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+        title={buildTooltip('Günstig', median, count)}
       >
-        Schnäppchen
+        Günstig
+      </span>
+    );
+  }
+  if (indicator === 'fair') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        style={{ background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
+        title={buildTooltip('Gut', median, count)}
+      >
+        Gut
       </span>
     );
   }
   if (indicator === 'expensive') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
         style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
+        title={buildTooltip('Teuer', median, count)}
       >
-        Über Durchschnitt
+        Teuer
       </span>
     );
   }
-  // "fair" and null → no badge
   return null;
 }
 
@@ -68,6 +89,7 @@ function isToday(dateStr: string | null): boolean {
 
 export default function ListingCard({ listing, onFavoriteChange }: Props) {
   const routerLocation = useLocation();
+  const background = getBackground(routerLocation) ?? routerLocation;
   const location = listing.city ?? listing.plz ?? null;
   const hasDistance = listing.distance_km != null;
   const isNew = isToday(listing.posted_at);
@@ -164,7 +186,7 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         {/* Title — stretched link covers the whole card */}
         <Link
           to={`/listings/${listing.id}`}
-          state={{ from: routerLocation.search }}
+          state={{ background }}
           className="font-semibold text-sm leading-snug mb-2 line-clamp-2 transition-colors after:absolute after:inset-0"
           style={{ color: '#F8FAFC' }}
         >
@@ -173,23 +195,23 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
 
         {/* Price + condition row */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              data-testid="price"
-              className="text-lg sm:text-xl font-bold"
-              style={{ color: '#FDE68A' }}
-            >
-              {formatPrice(listing.price_numeric, listing.price)}
-            </span>
-            <PriceIndicatorBadge indicator={listing.price_indicator} />
-          </div>
           <span
-            data-testid="condition"
-            className="text-xs font-medium px-2 py-0.5 rounded-full"
-            style={{ color: 'rgba(248,250,252,0.5)', background: 'rgba(255,255,255,0.07)' }}
+            data-testid="price"
+            className="text-lg sm:text-xl font-bold"
+            style={{ color: '#FDE68A' }}
           >
-            {listing.condition ?? '–'}
+            {formatPrice(listing.price_numeric, listing.price)}
           </span>
+          <div className="flex items-center gap-2">
+            <PriceIndicatorBadge indicator={listing.price_indicator} median={listing.price_indicator_median} count={listing.price_indicator_count} />
+            <span
+              data-testid="condition"
+              className="text-xs font-medium px-2 py-0.5 rounded-full"
+              style={{ color: 'rgba(248,250,252,0.5)', background: 'rgba(255,255,255,0.07)' }}
+            >
+              {listing.condition ?? '–'}
+            </span>
+          </div>
         </div>
 
         {/* Location + distance + date row */}

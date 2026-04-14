@@ -1,0 +1,75 @@
+import { useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { isDirectHit } from '../lib/modalLocation';
+
+interface Props { children: ReactNode }
+
+export default function ListingDetailModal({ children }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const directHit = isDirectHit(location);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const close = useCallback(() => {
+    if (directHit) {
+      // No (or unreliable) history behind us — drop the modal and land on `/`.
+      navigate('/', { replace: true });
+    } else {
+      navigate(-1);
+    }
+  }, [navigate, directHit]);
+
+  // Scroll-lock on mount, restore previous value on unmount.
+  // Empty deps — effect runs once per modal lifetime so that mid-modal
+  // pathname changes (nested A → B) do NOT toggle overflow between renders.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Close on Escape.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close]);
+
+  // When the modal's pathname changes (nested card navigation), reset the
+  // modal's own scroll position to the top so detail B does not open half-scrolled.
+  useEffect(() => {
+    if (wrapperRef.current) wrapperRef.current.scrollTop = 0;
+  }, [location.pathname]);
+
+  return (
+    <div
+      ref={wrapperRef}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[60] overflow-y-auto"
+      style={{ background: '#0F0F23', overscrollBehavior: 'contain' }}
+    >
+      <button
+        type="button"
+        onClick={close}
+        aria-label="Detailansicht schließen"
+        className="fixed top-3 right-3 z-[61] w-10 h-10 rounded-full flex items-center justify-center"
+        style={{
+          background: 'rgba(15,15,35,0.85)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          color: '#F8FAFC',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+          <path d="M6 6l12 12M6 18L18 6" strokeLinecap="round" />
+        </svg>
+      </button>
+      <div className="max-w-screen-2xl mx-auto px-3 pt-14 pb-20 sm:px-4 lg:px-6">
+        {children}
+      </div>
+    </div>
+  );
+}

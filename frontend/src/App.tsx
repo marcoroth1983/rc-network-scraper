@@ -1,4 +1,6 @@
-import { Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import ListingDetailModal from './components/ListingDetailModal';
+import { getBackground } from './lib/modalLocation';
 import { useState, useCallback, useEffect } from 'react';
 import ListingsPage from './pages/ListingsPage';
 import DetailPage from './pages/DetailPage';
@@ -64,6 +66,10 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
   }, []);
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const background = getBackground(location);
+  const effectiveLocation = background ?? location;
+  const isListingsPage = effectiveLocation.pathname === '/';
 
   // Derive the active saved search criteria object from the searches array
   const activeSavedSearchCriteria: SavedSearch | undefined = activeSavedSearchId != null
@@ -146,19 +152,21 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
           </div>
         </div>
       </header>
-      <PlzBar
-        suppressPlzRestore={activeSavedSearchId != null}
-        activeCategoryLabel={
-          activeCategory === 'all'
-            ? 'Alle Kategorien'
-            : (categories.find((c) => c.key === activeCategory)?.label ?? 'Alle Kategorien')
-        }
-        onOpenCategoryModal={() => setCategoryModalOpen(true)}
-        onLogout={logout}
-        userEmail={user.email}
-      />
+      {isListingsPage && (
+        <PlzBar
+          suppressPlzRestore={activeSavedSearchId != null}
+          activeCategoryLabel={
+            activeCategory === 'all'
+              ? 'Alle Kategorien'
+              : (categories.find((c) => c.key === activeCategory)?.label ?? 'Alle Kategorien')
+          }
+          onOpenCategoryModal={() => setCategoryModalOpen(true)}
+          onLogout={logout}
+          userEmail={user.email}
+        />
+      )}
       <main className="max-w-6xl mx-auto px-3 pt-0 pb-20 sm:px-4 sm:py-6 sm:pb-0">
-        <Routes>
+        <Routes location={effectiveLocation}>
           <Route
             path="/"
             element={
@@ -173,10 +181,22 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
               />
             }
           />
-          <Route path="/listings/:id" element={<DetailPage />} />
+          <Route path="/listings/:id" element={<DirectHitDetailRedirect />} />
           <Route path="/profile" element={<ProfilePage user={user} onLogout={logout} />} />
           <Route path="/favorites" element={<FavoritesPage />} />
         </Routes>
+        {background && (
+          <Routes>
+            <Route
+              path="/listings/:id"
+              element={
+                <ListingDetailModal>
+                  <DetailPage />
+                </ListingDetailModal>
+              }
+            />
+          </Routes>
+        )}
       </main>
       <FavoritesModal
         open={favoritesOpen}
@@ -207,6 +227,26 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
       <InstallPrompt />
       <MobileFooter totalUnread={totalUnread} />
     </AuroraBackground>
+  );
+}
+
+function DirectHitDetailRedirect() {
+  const location = useLocation();
+  // Synthesize a background of "/" and flag this entry as a direct hit.
+  // The modal close handler reads `isDirectHit` to decide between navigate(-1)
+  // (normal in-app navigation, has history) and navigate('/', { replace: true })
+  // (cold-open share link, no history to go back to).
+  // `key: ''` satisfies the Location type; this synthesized object is only
+  // consumed by route matching, never pushed into the history stack.
+  return (
+    <Navigate
+      to={location.pathname + location.search}
+      replace
+      state={{
+        background: { pathname: '/', search: '', hash: '', state: null, key: '' },
+        isDirectHit: true,
+      }}
+    />
   );
 }
 

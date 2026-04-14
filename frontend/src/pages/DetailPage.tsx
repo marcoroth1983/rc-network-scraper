@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
@@ -19,24 +19,43 @@ function formatDate(iso: string | null): string {
 
 type PriceIndicator = 'deal' | 'fair' | 'expensive' | null;
 
-function PriceIndicatorBadge({ indicator }: { indicator: PriceIndicator }) {
+function buildTooltip(label: string, median: number | null | undefined, count: number | null | undefined): string {
+  if (median == null || count == null) return label;
+  const medianStr = median.toLocaleString('de-DE', { maximumFractionDigits: 0 });
+  return `${label} · Ø ${medianStr} € bei ${count} Inseraten`;
+}
+
+function PriceIndicatorBadge({ indicator, median, count }: { indicator: PriceIndicator; median?: number | null; count?: number | null }) {
   if (indicator === 'deal') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
         style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+        title={buildTooltip('Günstig', median, count)}
       >
-        Schnäppchen
+        Günstig
+      </span>
+    );
+  }
+  if (indicator === 'fair') {
+    return (
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        style={{ background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
+        title={buildTooltip('Gut', median, count)}
+      >
+        Gut
       </span>
     );
   }
   if (indicator === 'expensive') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full"
+        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
         style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
+        title={buildTooltip('Teuer', median, count)}
       >
-        Über Durchschnitt
+        Teuer
       </span>
     );
   }
@@ -101,6 +120,38 @@ function Spinner() {
   );
 }
 
+interface AuthorListingsSectionProps {
+  heading: string;
+  items: ListingSummary[];
+}
+
+function AuthorListingsSection({ heading, items }: AuthorListingsSectionProps) {
+  return (
+    <div className="mt-6">
+      <h2
+        className="text-xs font-semibold uppercase tracking-wider mb-3 px-1"
+        style={{ color: 'rgba(248,250,252,0.35)' }}
+      >
+        {heading}
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: 'rgba(15, 15, 35, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <ListingCard listing={item} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const PLZ_LAT_KEY = 'rcn_ref_lat';
 const PLZ_LON_KEY = 'rcn_ref_lon';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -120,10 +171,6 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
-  const routerLocation = useLocation();
-  // Freeze backTo at mount time — PlzBar later calls setSearchParams on the detail page URL,
-  // which pushes a new history entry without router state, losing state.from on re-renders.
-  const backTo = useRef('/' + ((routerLocation.state as { from?: string } | null)?.from ?? '')).current;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [listing, setListing] = useState<ListingDetail | null>(null);
@@ -132,6 +179,7 @@ export default function DetailPage() {
   const [soldPending, setSoldPending] = useState(false);
   const [favoritePending, setFavoritePending] = useState(false);
   const [authorListings, setAuthorListings] = useState<ListingSummary[]>([]);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -155,24 +203,15 @@ export default function DetailPage() {
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <Link
-          to={backTo}
-          className="text-sm mb-4 inline-block transition-colors"
-          style={{ color: '#A78BFA' }}
-        >
-          ← Zurück zur Liste
-        </Link>
-        <div
-          className="rounded-xl p-4"
-          style={{
-            background: 'rgba(236,72,153,0.08)',
-            border: '1px solid rgba(236,72,153,0.3)',
-            color: '#EC4899',
-          }}
-        >
-          Fehler: {error}
-        </div>
+      <div
+        className="rounded-xl p-4"
+        style={{
+          background: 'rgba(236,72,153,0.08)',
+          border: '1px solid rgba(236,72,153,0.3)',
+          color: '#EC4899',
+        }}
+      >
+        Fehler: {error}
       </div>
     );
   }
@@ -216,55 +255,31 @@ export default function DetailPage() {
     }
   }
 
+  async function handleShare() {
+    if (!listing) return;
+    const url = `${window.location.origin}/listings/${listing.id}`;
+    const title = listing.title ?? 'RC-Network Inserat';
+
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ url, title });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        // Other errors fall through to clipboard fallback.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable — no UI fallback for this hobby scope.
+    }
+  }
+
   return (
-    <div className="max-w-2xl mx-auto pt-3 pb-6 sm:pt-0 sm:pb-10">
-      {/* Back button */}
-      <Link
-        to={backTo}
-        className="text-sm mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all duration-200"
-        style={{
-          color: '#A78BFA',
-          background: 'rgba(167,139,250,0.08)',
-          border: '1px solid rgba(167,139,250,0.2)',
-        }}
-      >
-        ← Zurück zur Liste
-      </Link>
-
-      {/* Hero image */}
-      {listing.images.length > 0 ? (() => {
-        const src = listing.images[0];
-        const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
-        return (
-          <a href={abs} target="_blank" rel="noopener noreferrer" className="block mb-4">
-            <img
-              src={abs}
-              alt={listing.title}
-              className="w-full rounded-2xl object-cover"
-              style={{ maxHeight: '360px', border: '1px solid rgba(255,255,255,0.08)' }}
-            />
-          </a>
-        );
-      })() : listing.is_sold ? (
-        <div
-          className="w-full rounded-2xl mb-4 flex items-center justify-center"
-          style={{
-            height: '200px',
-            background: 'rgba(15, 15, 35, 0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-          }}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <svg className="w-10 h-10" style={{ color: 'rgba(248,250,252,0.12)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-            <span className="text-xs font-medium" style={{ color: 'rgba(248,250,252,0.25)' }}>Bild nicht mehr verfügbar</span>
-          </div>
-        </div>
-      ) : null}
-
+    <div className="w-full pt-3 pb-6 sm:pt-0 sm:pb-10">
       {/* Main content card */}
       <div
         className="rounded-2xl overflow-hidden"
@@ -306,6 +321,31 @@ export default function DetailPage() {
                 </svg>
               </button>
 
+              {/* Share button */}
+              <button
+                onClick={handleShare}
+                aria-label="Link zu diesem Inserat teilen"
+                className="p-1.5 rounded-full transition-all duration-200"
+                style={{
+                  background: shareCopied ? 'rgba(45,212,191,0.15)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${shareCopied ? 'rgba(45,212,191,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                }}
+              >
+                {shareCopied ? (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" strokeWidth={2} aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="rgba(248,250,252,0.6)" strokeWidth={2} aria-hidden="true">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                )}
+              </button>
+
               {/* Sold toggle — admin only */}
               {isAdmin && <button
                 onClick={handleToggleSold}
@@ -330,109 +370,154 @@ export default function DetailPage() {
             </div>
           </div>
 
-          {/* Metadata grid */}
-          <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6 pb-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            {/* Price — highlighted yellow, spans full width on small */}
-            <div
-              className="col-span-2 md:col-span-1 p-3 rounded-xl"
-              style={{ background: 'rgba(253,230,138,0.06)', border: '1px solid rgba(253,230,138,0.12)' }}
-            >
-              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
-                Preis
-              </dt>
-              <dd className="flex flex-wrap items-center gap-2">
-                <span className="text-lg font-bold" style={{ color: '#FDE68A' }}>
-                  {formatPrice(listing.price_numeric, listing.price)}
-                </span>
-                <PriceIndicatorBadge indicator={listing.price_indicator} />
-              </dd>
-            </div>
+          {/* 3-column hero row: primary metadata | hero image | secondary metadata */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 mb-6 pb-6"
+               style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
 
-            <Field label="Zustand" value={listing.condition} />
-            <Field label="Versand" value={listing.shipping} />
+            {/* Column 1: primary metadata */}
+            <dl className="lg:col-span-3 flex flex-col gap-3">
+              {/* Price — highlighted yellow */}
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: 'rgba(253,230,138,0.06)', border: '1px solid rgba(253,230,138,0.12)' }}
+              >
+                <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                  Preis
+                </dt>
+                <dd className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg font-bold" style={{ color: '#FDE68A' }}>
+                    {formatPrice(listing.price_numeric, listing.price)}
+                  </span>
+                  <PriceIndicatorBadge indicator={listing.price_indicator} median={listing.price_indicator_median} count={listing.price_indicator_count} />
+                </dd>
+              </div>
 
-            {/* Location with Maps link */}
-            <div
-              className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.03)' }}
-            >
-              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
-                Ort
-              </dt>
-              <dd className="mt-0.5 flex items-center gap-2">
-                <span className="text-sm font-medium" style={{ color: '#F8FAFC' }}>{location}</span>
-                {location !== '–' && (
-                  <a
-                    href={mapsHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Route in Google Maps"
-                    className="transition-colors"
-                    style={{ color: '#6366F1' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <circle cx="12" cy="11" r="3" />
-                    </svg>
-                  </a>
-                )}
-              </dd>
-            </div>
+              <Field label="Zustand" value={listing.condition} />
+              <Field label="Versand" value={listing.shipping} />
 
-            {/* Original link */}
-            <div
-              className="p-3 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.03)' }}
-            >
-              <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
-                Original
-              </dt>
-              <dd className="mt-0.5">
-                <a
-                  href={listing.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm transition-colors"
-                  style={{ color: '#6366F1' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
-                >
-                  rc-network.de →
-                </a>
-              </dd>
-            </div>
-
-            <Field label="Inserent" value={listing.author} />
-            <Field label="Datum" value={formatDate(listing.posted_at)} />
-
-            {distanceKm != null && (
+              {/* Location with Maps link */}
               <div
                 className="p-3 rounded-xl"
                 style={{ background: 'rgba(255,255,255,0.03)' }}
               >
                 <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
-                  Entfernung
+                  Ort
                 </dt>
-                <dd className="mt-0.5 text-sm font-semibold" style={{ color: '#A78BFA' }}>
-                  {distanceKm.toFixed(1)} km{refCity ? ` von ${refCity}` : ''}
+                <dd className="mt-0.5 flex items-center gap-2">
+                  <span className="text-sm font-medium" style={{ color: '#F8FAFC' }}>{location}</span>
+                  {location !== '–' && (
+                    <a
+                      href={mapsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Route in Google Maps"
+                      className="transition-colors"
+                      style={{ color: '#6366F1' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <circle cx="12" cy="11" r="3" />
+                      </svg>
+                    </a>
+                  )}
                 </dd>
               </div>
-            )}
 
-            {/* LLM-extracted product fields — only rendered when present */}
-            {listing.manufacturer && <Field label="Hersteller" value={listing.manufacturer} />}
-            {listing.model_name && <Field label="Modell" value={listing.model_name} />}
-            {listing.model_type && <Field label="Typ" value={listing.model_type} />}
-            {listing.drive_type && <Field label="Antrieb" value={listing.drive_type} />}
-            {listing.completeness && <Field label="Vollständigkeit" value={listing.completeness} />}
+              {/* Distance — only when reference location is set */}
+              {distanceKm != null && (
+                <div
+                  className="p-3 rounded-xl"
+                  style={{ background: 'rgba(255,255,255,0.03)' }}
+                >
+                  <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                    Entfernung
+                  </dt>
+                  <dd className="mt-0.5 text-sm font-semibold" style={{ color: '#A78BFA' }}>
+                    {distanceKm.toFixed(1)} km{refCity ? ` von ${refCity}` : ''}
+                  </dd>
+                </div>
+              )}
+            </dl>
 
-            {/* Dynamic attributes from LLM extraction */}
-            {Object.entries(listing.attributes).map(([key, val]) => (
-              <Field key={key} label={humanizeAttributeKey(key)} value={val} />
-            ))}
-          </dl>
+            {/* Column 2: hero image — order-first keeps it at the top on mobile */}
+            <div className="lg:col-span-6 order-first lg:order-none">
+              {listing.images.length > 0 ? (() => {
+                const src = listing.images[0];
+                const abs = src.startsWith('/') ? `https://www.rc-network.de${src}` : src;
+                return (
+                  <a href={abs} target="_blank" rel="noopener noreferrer" className="block">
+                    <img
+                      src={abs}
+                      alt={listing.title}
+                      className="w-full h-full rounded-2xl object-cover"
+                      style={{ maxHeight: '360px', minHeight: '220px', border: '1px solid rgba(255,255,255,0.08)' }}
+                    />
+                  </a>
+                );
+              })() : listing.is_sold ? (
+                <div
+                  className="w-full rounded-2xl flex items-center justify-center"
+                  style={{
+                    height: '200px',
+                    background: 'rgba(15, 15, 35, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <svg className="w-10 h-10" style={{ color: 'rgba(248,250,252,0.12)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                    <span className="text-xs font-medium" style={{ color: 'rgba(248,250,252,0.25)' }}>Bild nicht mehr verfügbar</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Column 3: secondary metadata */}
+            <dl className="lg:col-span-3 flex flex-col gap-3">
+              {/* Original link */}
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: 'rgba(255,255,255,0.03)' }}
+              >
+                <dt className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                  Original
+                </dt>
+                <dd className="mt-0.5">
+                  <a
+                    href={listing.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm transition-colors"
+                    style={{ color: '#6366F1' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#818CF8'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = '#6366F1'; }}
+                  >
+                    rc-network.de →
+                  </a>
+                </dd>
+              </div>
+
+              <Field label="Inserent" value={listing.author} />
+              <Field label="Datum" value={formatDate(listing.posted_at)} />
+
+              {/* LLM-extracted product fields — only rendered when present */}
+              {listing.manufacturer && <Field label="Hersteller" value={listing.manufacturer} />}
+              {listing.model_name && <Field label="Modell" value={listing.model_name} />}
+              {listing.model_type && <Field label="Typ" value={listing.model_type} />}
+              {listing.drive_type && <Field label="Antrieb" value={listing.drive_type} />}
+              {listing.completeness && <Field label="Vollständigkeit" value={listing.completeness} />}
+
+              {/* Dynamic attributes from LLM extraction */}
+              {Object.entries(listing.attributes).map(([key, val]) => (
+                <Field key={key} label={humanizeAttributeKey(key)} value={val} />
+              ))}
+            </dl>
+          </div>
 
           {/* Image gallery — remaining images after hero */}
           {listing.images.length > 1 && (
@@ -482,31 +567,27 @@ export default function DetailPage() {
         </div>
       </div>
 
-      {/* More listings from same author */}
-      {authorListings.length > 0 && (
-        <div className="mt-6">
-          <h2
-            className="text-xs font-semibold uppercase tracking-wider mb-3 px-1"
-            style={{ color: 'rgba(248,250,252,0.35)' }}
-          >
-            Weitere von {listing.author}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {authorListings.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl overflow-hidden"
-                style={{
-                  background: 'rgba(15, 15, 35, 0.6)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                }}
-              >
-                <ListingCard listing={item} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Author listings — split into aktuell and vergangen */}
+      {authorListings.length > 0 && (() => {
+        const aktuell = authorListings.filter((l) => !l.is_sold);
+        const vergangen = authorListings.filter((l) => l.is_sold);
+        return (
+          <>
+            {aktuell.length > 0 && (
+              <AuthorListingsSection
+                heading={`Weitere aktuelle Inserate von ${listing.author}`}
+                items={aktuell}
+              />
+            )}
+            {vergangen.length > 0 && (
+              <AuthorListingsSection
+                heading={`Vergangene Inserate von ${listing.author}`}
+                items={vergangen}
+              />
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
