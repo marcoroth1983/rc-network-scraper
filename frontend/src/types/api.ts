@@ -33,8 +33,9 @@ export interface ListingSummary {
   drive_type: string | null;
   completeness: string | null;
   shipping_available: boolean | null;
-  // Price indicator
   price_indicator: 'deal' | 'fair' | 'expensive' | null;
+  price_indicator_median: number | null;
+  price_indicator_count: number | null;
 }
 
 export interface ListingDetail {
@@ -68,8 +69,9 @@ export interface ListingDetail {
   drive_type: string | null;
   completeness: string | null;
   attributes: Record<string, string>;
-  // Price indicator
   price_indicator: 'deal' | 'fair' | 'expensive' | null;
+  price_indicator_median: number | null;
+  price_indicator_count: number | null;
 }
 
 export interface PaginatedResponse {

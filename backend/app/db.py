@@ -87,6 +87,12 @@ async def init_db() -> None:
             "ALTER TABLE listings DROP COLUMN IF EXISTS analysis_retries"
         ))
         await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_indicator_median NUMERIC"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS price_indicator_count INTEGER"
+        ))
+        await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"
         ))
         # PLAN-015: user-specific favorites

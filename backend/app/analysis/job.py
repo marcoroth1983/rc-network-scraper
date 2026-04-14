@@ -19,6 +19,9 @@ DELAY_SECONDS = 3.0  # respects ~20 req/min free tier limit
 
 async def run_analysis_job() -> None:
     """Pick up to BATCH_SIZE unanalyzed listings, run LLM, update DB."""
+    if not settings.LLM_ANALYSIS_ENABLED:
+        logger.info("Analysis job: LLM_ANALYSIS_ENABLED=false — skipping")
+        return
     if not settings.OPENROUTER_API_KEY:
         logger.info("Analysis job: OPENROUTER_API_KEY not set — skipping")
         return
@@ -83,7 +86,8 @@ async def recalculate_price_indicators() -> None:
         await session.execute(text("""
             WITH medians_l1 AS (
                 SELECT manufacturer, model_name,
-                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median,
+                    COUNT(*) AS cnt
                 FROM listings
                 WHERE price_numeric IS NOT NULL
                   AND is_sold = false
@@ -94,7 +98,8 @@ async def recalculate_price_indicators() -> None:
             ),
             medians_l2 AS (
                 SELECT model_type, model_subtype, completeness,
-                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median,
+                    COUNT(*) AS cnt
                 FROM listings
                 WHERE price_numeric IS NOT NULL
                   AND is_sold = false
@@ -115,7 +120,9 @@ async def recalculate_price_indicators() -> None:
                         WHEN m2.median IS NOT NULL AND l.price_numeric >= m2.median * 1.25 THEN 'expensive'
                         WHEN m2.median IS NOT NULL THEN 'fair'
                         ELSE NULL
-                    END AS indicator
+                    END AS indicator,
+                    COALESCE(m1.median, m2.median) AS median,
+                    COALESCE(m1.cnt, m2.cnt)::integer AS cnt
                 FROM listings l
                 LEFT JOIN medians_l1 m1
                     ON m1.manufacturer = l.manufacturer AND m1.model_name = l.model_name
@@ -126,7 +133,9 @@ async def recalculate_price_indicators() -> None:
                 WHERE l.price_numeric IS NOT NULL AND l.is_sold = false
             )
             UPDATE listings
-            SET price_indicator = ni.indicator
+            SET price_indicator = ni.indicator,
+                price_indicator_median = ni.median,
+                price_indicator_count = ni.cnt
             FROM new_indicators ni
             WHERE listings.id = ni.id
         """))

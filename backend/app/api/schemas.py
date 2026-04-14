@@ -38,8 +38,9 @@ class ListingSummary(BaseModel):
     drive_type: str | None = None
     completeness: str | None = None
     shipping_available: bool | None = None
-    # Price indicator (DB-stored, populated by recalculate_price_indicators)
     price_indicator: str | None = None
+    price_indicator_median: float | None = None
+    price_indicator_count: int | None = None
 
 
 class ListingDetail(BaseModel):
@@ -76,8 +77,9 @@ class ListingDetail(BaseModel):
     completeness: str | None = None
     attributes: dict[str, str] = {}
     shipping_available: bool | None = None
-    # Price indicator (DB-stored, populated by recalculate_price_indicators)
     price_indicator: str | None = None
+    price_indicator_median: float | None = None
+    price_indicator_count: int | None = None
 
 
 class PlzResponse(BaseModel):
