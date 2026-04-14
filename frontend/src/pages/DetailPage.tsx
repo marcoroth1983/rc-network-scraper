@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
@@ -171,6 +171,10 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 export default function DetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const routerLocation = useLocation();
+  const locationState = routerLocation.state as { from?: string; isDirectHit?: boolean } | null;
+  const isDirectHit = locationState?.isDirectHit === true;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [listing, setListing] = useState<ListingDetail | null>(null);
@@ -280,6 +284,26 @@ export default function DetailPage() {
 
   return (
     <div className="w-full pt-3 pb-6 sm:pt-0 sm:pb-10">
+      {/* Back button — right-aligned above card */}
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={() => isDirectHit ? navigate('/', { replace: true }) : navigate(-1)}
+          className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full transition-all duration-200"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'rgba(248,250,252,0.6)',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#F8FAFC'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.2)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.6)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.1)'; }}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+          Zurück
+        </button>
+      </div>
+
       {/* Main content card */}
       <div
         className="rounded-2xl overflow-hidden"
@@ -509,6 +533,7 @@ export default function DetailPage() {
               {listing.manufacturer && <Field label="Hersteller" value={listing.manufacturer} />}
               {listing.model_name && <Field label="Modell" value={listing.model_name} />}
               {listing.model_type && <Field label="Typ" value={listing.model_type} />}
+              {listing.model_subtype && <Field label="Subtyp" value={listing.model_subtype} />}
               {listing.drive_type && <Field label="Antrieb" value={listing.drive_type} />}
               {listing.completeness && <Field label="Vollständigkeit" value={listing.completeness} />}
 
@@ -543,6 +568,29 @@ export default function DetailPage() {
                     </a>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {listing.tags.length > 0 && (
+            <div className="mb-6">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'rgba(248,250,252,0.35)' }}
+              >
+                Tags
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {listing.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(248,250,252,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    {tag}
+                  </span>
+                ))}
               </div>
             </div>
           )}

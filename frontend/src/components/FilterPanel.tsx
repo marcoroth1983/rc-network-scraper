@@ -265,7 +265,7 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
                   page: 1,
                 })}
               >
-                Nur Schnäppchen
+                Nur Günstige
               </button>
             </div>
           </div>

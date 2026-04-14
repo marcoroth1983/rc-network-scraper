@@ -51,23 +51,7 @@ export default function ListingDetailModal({ children }: Props) {
       className="fixed inset-0 z-[60] overflow-y-auto"
       style={{ background: '#0F0F23', overscrollBehavior: 'contain' }}
     >
-      <button
-        type="button"
-        onClick={close}
-        aria-label="Detailansicht schließen"
-        className="fixed top-3 right-3 z-[61] w-10 h-10 rounded-full flex items-center justify-center"
-        style={{
-          background: 'rgba(15,15,35,0.85)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          color: '#F8FAFC',
-          backdropFilter: 'blur(8px)',
-        }}
-      >
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-          <path d="M6 6l12 12M6 18L18 6" strokeLinecap="round" />
-        </svg>
-      </button>
-      <div className="max-w-screen-2xl mx-auto px-3 pt-14 pb-20 sm:px-4 lg:px-6">
+      <div className="max-w-screen-2xl mx-auto px-3 pt-3 pb-20 sm:px-4 lg:px-6">
         {children}
       </div>
     </div>
