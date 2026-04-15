@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:www.rc-network.de)"
+      "WebFetch(domain:www.rc-network.de)",
+      "WebFetch(domain:openrouter.ai)"
     ]
   }
 }

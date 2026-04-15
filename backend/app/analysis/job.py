@@ -39,15 +39,17 @@ async def run_analysis_job() -> None:
         logger.info("Analysis job: no unanalyzed listings")
         return
 
-    logger.info("Analysis job: processing %d listings", len(listings))
+    logger.info("Analysis job: processing %d listings [ids=%s]", len(listings), [l.id for l in listings])
 
     for listing in listings:
+        logger.info("Analysis job: analyzing id=%d \"%s\"", listing.id, listing.title[:60])
         result = await analyze_listing(
             title=listing.title,
             description=listing.description or "",
             price=listing.price,
             condition=listing.condition,
             category=listing.category or "",
+            listing_id=listing.id,
         )
         update_vals: dict = {
             "llm_analyzed": True,
@@ -68,6 +70,15 @@ async def run_analysis_job() -> None:
                 update(Listing).where(Listing.id == listing.id).values(**update_vals)
             )
             await session.commit()
+
+        any_data = any(v for v in [result.model_type, result.drive_type, result.completeness, result.manufacturer])
+        if any_data:
+            logger.info(
+                "Analysis job: id=%d saved — type=%s drive=%s completeness=%s manufacturer=%s",
+                listing.id, result.model_type, result.drive_type, result.completeness, result.manufacturer,
+            )
+        else:
+            logger.warning("Analysis job: id=%d saved with EMPTY result (LLM returned no data)", listing.id)
 
         await asyncio.sleep(DELAY_SECONDS)
 

@@ -91,10 +91,11 @@ async def _try_analyze(client: AsyncOpenAI, model: str, user_message: str) -> Li
         )
         parsed = response.choices[0].message.parsed
         if parsed is not None:
+            logger.info("LLM [%s] structured-output: OK", model)
             return parsed
-        logger.warning("analyze_listing[%s]: structured output returned None, trying JSON fallback", model)
+        logger.warning("LLM [%s] structured-output: returned None — trying JSON fallback", model)
     except Exception as exc:
-        logger.warning("analyze_listing[%s]: structured output failed (%s), trying JSON fallback", model, exc)
+        logger.warning("LLM [%s] structured-output: FAIL (%s) — trying JSON fallback", model, exc)
 
     # Attempt 2: plain completion + manual JSON parsing
     try:
@@ -114,9 +115,11 @@ async def _try_analyze(client: AsyncOpenAI, model: str, user_message: str) -> Li
         content = content.strip()
         content = re.sub(r"^```[a-z]*\n?", "", content, flags=re.MULTILINE)
         content = re.sub(r"```$", "", content.strip()).strip()
-        return ListingAnalysis.model_validate_json(content)
+        result = ListingAnalysis.model_validate_json(content)
+        logger.info("LLM [%s] json-fallback: OK", model)
+        return result
     except Exception as exc:
-        logger.warning("analyze_listing[%s]: JSON fallback also failed (%s)", model, exc)
+        logger.warning("LLM [%s] json-fallback: FAIL (%s)", model, exc)
         return None
 
 
@@ -126,6 +129,7 @@ async def analyze_listing(
     price: str | None,
     condition: str | None,
     category: str,
+    listing_id: int | None = None,
     model: str | None = None,
 ) -> ListingAnalysis:
     """Send listing data to LLM via OpenRouter, return structured analysis.
@@ -136,20 +140,24 @@ async def analyze_listing(
     if not settings.OPENROUTER_API_KEY:
         return ListingAnalysis()
 
+    id_tag = f"id={listing_id} " if listing_id is not None else ""
+    title_short = title[:60]
     primary = model or settings.OPENROUTER_MODEL
     user_message = _build_user_message(title, description, price, condition, category)
     client = _make_client()
 
+    logger.info("LLM analyze: %s\"%s\" — primary=%s", id_tag, title_short, primary)
     result = await _try_analyze(client, primary, user_message)
     if result is not None:
+        logger.info("LLM SUCCESS [%s]: %s\"%s\"", primary, id_tag, title_short)
         return result
 
-    # Primary failed — retry with fallback model
     fallback = settings.OPENROUTER_FALLBACK_MODEL
-    logger.warning("analyze_listing: primary model %s failed, retrying with fallback %s", primary, fallback)
+    logger.warning("LLM primary [%s] exhausted — trying fallback [%s] for %s\"%s\"", primary, fallback, id_tag, title_short)
     result = await _try_analyze(client, fallback, user_message)
     if result is not None:
+        logger.info("LLM SUCCESS [%s] (fallback): %s\"%s\"", fallback, id_tag, title_short)
         return result
 
-    logger.error("analyze_listing: both %s and fallback %s failed, returning empty", primary, fallback)
+    logger.error("LLM FAIL: both [%s] and [%s] failed for %s\"%s\" — returning empty", primary, fallback, id_tag, title_short)
     return ListingAnalysis()
