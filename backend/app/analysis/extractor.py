@@ -134,30 +134,54 @@ async def analyze_listing(
 ) -> ListingAnalysis:
     """Send listing data to LLM via OpenRouter, return structured analysis.
 
+    Strategy per call:
+      1. Iterate through OPENROUTER_FREE_MODELS in order. First one that succeeds wins.
+      2. If ALL free models fail, fall back to OPENROUTER_FALLBACK_MODEL (paid).
+      3. If that also fails, return an empty ListingAnalysis.
+
+    When `model` is passed explicitly (e.g. from the backfill script), the free-tier
+    cascade is bypassed — that single model is tried, then the paid fallback.
+
     Returns an empty ListingAnalysis if OPENROUTER_API_KEY is not configured.
-    Tries the primary model first; on failure retries with OPENROUTER_FALLBACK_MODEL.
     """
     if not settings.OPENROUTER_API_KEY:
         return ListingAnalysis()
 
     id_tag = f"id={listing_id} " if listing_id is not None else ""
     title_short = title[:60]
-    primary = model or settings.OPENROUTER_MODEL
     user_message = _build_user_message(title, description, price, condition, category)
     client = _make_client()
 
-    logger.info("LLM analyze: %s\"%s\" — primary=%s", id_tag, title_short, primary)
-    result = await _try_analyze(client, primary, user_message)
-    if result is not None:
-        logger.info("LLM SUCCESS [%s]: %s\"%s\"", primary, id_tag, title_short)
-        return result
+    # Build the ordered model list: explicit override OR the configured free cascade.
+    if model is not None:
+        candidates = [model]
+    else:
+        candidates = settings.openrouter_free_models_list
+        if not candidates:
+            logger.warning("LLM: OPENROUTER_FREE_MODELS is empty — skipping free cascade")
 
+    logger.info("LLM analyze: %s\"%s\" — cascade=%s", id_tag, title_short, candidates)
+    for candidate in candidates:
+        result = await _try_analyze(client, candidate, user_message)
+        if result is not None:
+            logger.info("LLM SUCCESS [%s]: %s\"%s\"", candidate, id_tag, title_short)
+            return result
+        logger.warning("LLM [%s] exhausted — next in cascade", candidate)
+
+    # Paid safety-net
     fallback = settings.OPENROUTER_FALLBACK_MODEL
-    logger.warning("LLM primary [%s] exhausted — trying fallback [%s] for %s\"%s\"", primary, fallback, id_tag, title_short)
-    result = await _try_analyze(client, fallback, user_message)
-    if result is not None:
-        logger.info("LLM SUCCESS [%s] (fallback): %s\"%s\"", fallback, id_tag, title_short)
-        return result
+    if fallback:
+        logger.warning(
+            "LLM: free cascade exhausted (%d models) — trying paid fallback [%s] for %s\"%s\"",
+            len(candidates), fallback, id_tag, title_short,
+        )
+        result = await _try_analyze(client, fallback, user_message)
+        if result is not None:
+            logger.info("LLM SUCCESS [%s] (paid fallback): %s\"%s\"", fallback, id_tag, title_short)
+            return result
 
-    logger.error("LLM FAIL: both [%s] and [%s] failed for %s\"%s\" — returning empty", primary, fallback, id_tag, title_short)
+    logger.error(
+        "LLM FAIL: %d free + fallback [%s] all failed for %s\"%s\" — returning empty",
+        len(candidates), fallback, id_tag, title_short,
+    )
     return ListingAnalysis()

@@ -50,9 +50,24 @@ class Settings(BaseSettings):
     # OpenRouter — optional, analysis disabled if not set or if LLM_ANALYSIS_ENABLED=false
     LLM_ANALYSIS_ENABLED: bool = True
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "qwen/qwen3-30b-a3b:free"
+    # Comma-separated list of free-tier models, tried in order on each call.
+    # All listed models must support strict structured outputs (response_format=schema).
+    # Refresh this list with: python -m app.analysis.list_free_models
+    OPENROUTER_FREE_MODELS: str = (
+        "qwen/qwen3-next-80b-a3b-instruct:free,"
+        "nvidia/nemotron-3-super-120b-a12b:free,"
+        "nvidia/nemotron-nano-9b-v2:free,"
+        "arcee-ai/trinity-large-preview:free"
+    )
+    # Paid safety-net, used only when ALL free models in the list failed for a request.
     OPENROUTER_FALLBACK_MODEL: str = "mistralai/mistral-nemo"
+    # One-off batch/backfill — paid, unlimited rate.
     OPENROUTER_BATCH_MODEL: str = "google/gemini-2.5-flash-lite"
+
+    @property
+    def openrouter_free_models_list(self) -> list[str]:
+        """Parse comma-separated OPENROUTER_FREE_MODELS into a list of model IDs."""
+        return [m.strip() for m in self.OPENROUTER_FREE_MODELS.split(",") if m.strip()]
 
     @field_validator("JWT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")
     @classmethod
