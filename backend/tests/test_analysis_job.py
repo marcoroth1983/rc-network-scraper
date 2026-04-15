@@ -1,4 +1,4 @@
-"""Unit tests for the analysis job (backend/app/analysis/job.py).
+"""Unit tests for the analysis job (backend/app/analysis/job.py) and extractor cascade behaviour.
 
 These tests mock analyze_listing and AsyncSessionLocal to avoid DB and network calls.
 Run with: docker compose exec backend pytest tests/test_analysis_job.py -v
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.analysis.extractor import ListingAnalysis
+from app.analysis.extractor import ListingAnalysis, analyze_listing
 from app.analysis.job import BATCH_SIZE, run_analysis_job
 
 
@@ -130,3 +130,83 @@ class TestRunAnalysisJob:
     async def test_batch_size_constant_is_correct(self) -> None:
         """BATCH_SIZE is 3 — respects ~20 req/min free tier limit."""
         assert BATCH_SIZE == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests for analyze_listing cascade fallback behaviour (extractor.py)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+class TestAnalyzeListingCascade:
+    """Verify the cascade → paid-fallback flow inside analyze_listing()."""
+
+    _CALL_ARGS = dict(
+        title="Multiplex Easy Glider",
+        description="Sehr guter Zustand, Spannweite 1800mm",
+        price="350 €",
+        condition="gebraucht",
+        category="flugmodelle",
+        listing_id=42,
+    )
+
+    async def test_cascade_exhaustion_falls_through_to_paid_fallback(self) -> None:
+        """All free models fail → paid fallback is tried and succeeds."""
+        paid_result = ListingAnalysis(manufacturer="Multiplex", model_name="Easy Glider")
+
+        with patch("app.analysis.extractor.settings") as mock_cfg:
+            mock_cfg.OPENROUTER_API_KEY = "sk-test"
+            mock_cfg.OPENROUTER_FALLBACK_MODEL = "mistralai/mistral-nemo"
+
+            with patch(
+                "app.analysis.extractor.model_cascade.load_cascade",
+                new_callable=AsyncMock,
+                return_value=["vendor/free-a:free", "vendor/free-b:free"],
+            ):
+                with patch(
+                    "app.analysis.extractor.model_cascade.record_failure",
+                    new_callable=AsyncMock,
+                ):
+                    with patch(
+                        "app.analysis.extractor.model_cascade.record_success",
+                        new_callable=AsyncMock,
+                    ):
+                        # _try_analyze returns (None, err) for free models, (result, None) for paid
+                        async def _try_side_effect(client, model, user_message):
+                            if model == "mistralai/mistral-nemo":
+                                return paid_result, None
+                            return None, f"RateLimitError from {model}"
+
+                        with patch(
+                            "app.analysis.extractor._try_analyze",
+                            side_effect=_try_side_effect,
+                        ):
+                            result = await analyze_listing(**self._CALL_ARGS)
+
+        assert result.manufacturer == "Multiplex"
+        assert result.model_name == "Easy Glider"
+
+    async def test_empty_cascade_goes_straight_to_paid_fallback(self) -> None:
+        """Empty cascade → no free model attempts → paid fallback used directly."""
+        paid_result = ListingAnalysis(model_type="glider")
+
+        with patch("app.analysis.extractor.settings") as mock_cfg:
+            mock_cfg.OPENROUTER_API_KEY = "sk-test"
+            mock_cfg.OPENROUTER_FALLBACK_MODEL = "mistralai/mistral-nemo"
+
+            with patch(
+                "app.analysis.extractor.model_cascade.load_cascade",
+                new_callable=AsyncMock,
+                return_value=[],  # empty cascade
+            ):
+                with patch(
+                    "app.analysis.extractor._try_analyze",
+                    new_callable=AsyncMock,
+                    return_value=(paid_result, None),
+                ) as mock_try:
+                    result = await analyze_listing(**self._CALL_ARGS)
+
+        assert result.model_type == "glider"
+        # _try_analyze must have been called exactly once — for the paid fallback
+        mock_try.assert_called_once()
+        _, called_model, _ = mock_try.call_args[0]
+        assert called_model == "mistralai/mistral-nemo"

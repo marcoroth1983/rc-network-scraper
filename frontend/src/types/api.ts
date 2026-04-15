@@ -170,3 +170,17 @@ export interface SavedSearch {
   match_count: number;
   category?: string | null;  // null = all categories
 }
+
+export interface LLMModelRow {
+  model_id: string;
+  position: number;
+  is_active: boolean;        // permanent admin flag, always true in this iteration
+  active_now: boolean;       // is_active AND (disabled_until null or in past)
+  context_length: number | null;
+  created_upstream: string | null;  // ISO timestamp (openrouter's created)
+  added_at: string;                 // ISO timestamp
+  last_refresh_at: string;          // ISO timestamp
+  last_error: string | null;
+  consecutive_failures: number;
+  disabled_until: string | null;    // ISO timestamp; countdown if future
+}

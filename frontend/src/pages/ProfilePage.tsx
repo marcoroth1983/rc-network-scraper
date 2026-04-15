@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
+import { LLMAdminPanel } from '../components/LLMAdminPanel';
 
 const PLZ_STORAGE_KEY = 'rcn_ref_plz';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -227,6 +228,21 @@ export function ProfilePage({ user, onLogout }: Props) {
           </button>
         </div>
       </div>
+
+      {/* LLM admin panel — only for admin role */}
+      {user.role === 'admin' && (
+        <div className="flex items-start justify-center px-4 pt-6 pb-10">
+          <div className="w-full max-w-sm">
+            <p
+              className="text-xs font-medium mb-3"
+              style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+            >
+              LLM-Kaskade — Admin
+            </p>
+            <LLMAdminPanel />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

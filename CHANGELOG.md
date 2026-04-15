@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.0] - 2026-04-15
+
+### Added
+
+**Dynamische LLM-Kaskade (PLAN-018)**
+- Free-Tier-Modelle werden alle 12 Stunden automatisch von OpenRouter aktualisiert
+- Pro Anfrage wird die Kaskade durchlaufen; ein Modell das 3 Mal in Folge scheitert wird für 1 Stunde automatisch deaktiviert
+- Paid-Fallback `mistralai/mistral-nemo` via `.env` bleibt als letztes Sicherheitsnetz bestehen
+- Admin-Panel im Profil (nur für Admin-Rolle) zeigt aktive Modelle, Aktiv-Status, Kontext-Länge, letzten Fehler und einen manuellen Refresh-Button
+- Neue DB-Tabelle `llm_models` mit `is_active`, `disabled_until`, `consecutive_failures`, `last_error` und Timestamps
+- Admin-Endpoints `GET /api/admin/llm-models` und `POST /api/admin/llm-models/refresh` (beide admin-only)
+- Scheduler-Logging zeigt bei jedem Refresh: added / kept / removed Modelle
+
+### Fixed
+
+- Frontend: Listings-Seite behält beim Öffnen und Schließen des Detail-Modals Filter, Scroll-Position und Suchparameter bei
+- Frontend: Kein infiniter Loop mehr beim Direkt-Öffnen von `/listings/:id` Cold-Links
+
+### Changed
+
+- Frontend: `window.confirm()` ersetzt durch Aurora-Glass-Confirmation-Dialog mit Focus-Trap, Escape/Enter und Scale-Animation
+
+---
+
 ## [1.2.0] - 2026-04-14
 
 ### Added

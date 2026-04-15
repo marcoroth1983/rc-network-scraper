@@ -128,6 +128,28 @@ async def init_db() -> None:
         # Drop legacy columns (data already migrated above)
         await conn.execute(text("ALTER TABLE listings DROP COLUMN IF EXISTS is_favorite"))
         await conn.execute(text("ALTER TABLE listings DROP COLUMN IF EXISTS favorited_at"))
+        # LLM free-tier cascade — dynamic, refreshed every 12h from OpenRouter API.
+        # See app/analysis/model_cascade.py for read/write logic.
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS llm_models (
+                model_id              TEXT PRIMARY KEY,
+                position              INTEGER NOT NULL,
+                context_length        INTEGER,
+                created_upstream      TIMESTAMPTZ,
+                added_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+                last_refresh_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+                disabled_until        TIMESTAMPTZ,
+                last_error            TEXT
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_llm_models_position ON llm_models (position)"
+        ))
+        # is_active column added after initial draft (PLAN-018 reviewer fix)
+        await conn.execute(text(
+            "ALTER TABLE llm_models ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

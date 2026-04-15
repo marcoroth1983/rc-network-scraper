@@ -2,6 +2,7 @@
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 # Ensure app-level loggers emit INFO and above.
 # basicConfig adds a StreamHandler to the root logger (no-op if already configured).
@@ -19,6 +20,7 @@ from app.config import settings
 from app.notifications.log_plugin import LogPlugin
 from app.notifications.registry import notification_registry
 from app.analysis.job import run_analysis_job
+from app.analysis import model_cascade
 from app.scrape_runner import start_update_job, start_recheck_job
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,12 @@ async def lifespan(app: FastAPI):
     from app.db import init_db
     await init_db()
     logger.info("Database initialised")
+
+    # Seed LLM cascade table from env if empty (first boot / fresh DB)
+    try:
+        await model_cascade.seed_if_empty()
+    except Exception as exc:
+        logger.warning("model_cascade seed failed: %s", exc)
 
     # Register notification plugins — guard against hot-reload duplicates
     if not notification_registry._plugins:
@@ -61,9 +69,21 @@ async def lifespan(app: FastAPI):
         id="auto_analysis",
         replace_existing=True,
     )
+    scheduler.add_job(
+        model_cascade.refresh_job,
+        trigger="interval",
+        hours=settings.LLM_CASCADE_REFRESH_HOURS,
+        id="llm_cascade_refresh",
+        next_run_time=datetime.now(timezone.utc),  # run once on boot with live data
+        replace_existing=True,
+    )
     scheduler.start()
     app.state.scheduler = scheduler
-    logger.info("Scheduler started — update every 30min, recheck every 1h, analysis every 2min")
+    logger.info(
+        "Scheduler started — update every 30min, recheck every 1h, "
+        "analysis every 2min, llm_cascade_refresh every %gh",
+        settings.LLM_CASCADE_REFRESH_HOURS,
+    )
 
     yield
 

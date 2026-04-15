@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.admin import router as admin_router
 from app.api.deps import get_current_user
 from app.api.schemas import (
     ListingDetail, ListingSummary, PaginatedResponse, PlzResponse,
@@ -23,6 +24,7 @@ from app.services.listing_filter import build_text_filter, filter_by_distance
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+router.include_router(admin_router)
 
 
 async def _get_favorite_listing_ids(user_id: int, session: AsyncSession) -> set[int]:

@@ -3,6 +3,7 @@ import type {
   ListingsQueryParams,
   ListingDetail,
   ListingSummary,
+  LLMModelRow,
   PaginatedResponse,
   PlzResponse,
   SavedSearch,
@@ -139,4 +140,14 @@ export async function toggleSavedSearch(id: number, isActive: boolean): Promise<
 export async function markSearchesViewed(): Promise<{ ok: boolean }> {
   const res = await fetch('/api/searches/mark-viewed', { method: 'POST' });
   return handleResponse<{ ok: boolean }>(res);
+}
+
+export async function getLLMModels(): Promise<LLMModelRow[]> {
+  const res = await fetch('/api/admin/llm-models');
+  return handleResponse<LLMModelRow[]>(res);
+}
+
+export async function refreshLLMModels(): Promise<LLMModelRow[]> {
+  const res = await fetch('/api/admin/llm-models/refresh', { method: 'POST' });
+  return handleResponse<LLMModelRow[]>(res);
 }

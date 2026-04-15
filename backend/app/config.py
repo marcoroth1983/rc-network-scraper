@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # One-off batch/backfill — paid, unlimited rate.
     OPENROUTER_BATCH_MODEL: str = "google/gemini-2.5-flash-lite"
 
+    # Cascade tuning knobs — override via env as needed
+    LLM_CASCADE_TOP_N: int = 4                # how many free models to keep in DB
+    LLM_CASCADE_FAILURE_THRESHOLD: int = 3    # consecutive failures before disable
+    LLM_CASCADE_DISABLE_HOURS: float = 1.0    # hours a disabled model stays out
+    LLM_CASCADE_REFRESH_HOURS: float = 12.0   # how often to refresh from OpenRouter
+
     @property
     def openrouter_free_models_list(self) -> list[str]:
         """Parse comma-separated OPENROUTER_FREE_MODELS into a list of model IDs."""
