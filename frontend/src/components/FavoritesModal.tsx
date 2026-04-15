@@ -3,6 +3,7 @@ import React from 'react';
 import { getFavorites } from '../api/client';
 import type { Category, ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
 import FavoriteCard from './FavoriteCard';
+import { useConfirm } from './ConfirmDialog';
 
 interface Props {
   open: boolean;
@@ -44,6 +45,7 @@ interface SavedSearchCardProps {
 }
 
 function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove }: SavedSearchCardProps) {
+  const confirm = useConfirm();
   const displayName = search.name ?? search.search ?? 'Alle Anzeigen';
   const hasPlzInfo = search.plz != null;
   const hasDistance = search.max_distance != null;
@@ -162,10 +164,14 @@ function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove
           <button
             type="button"
             aria-label="Gespeicherte Suche löschen"
-            onClick={() => {
-              if (window.confirm('Gespeicherte Suche löschen?')) {
-                onRemove();
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Gespeicherte Suche löschen?',
+                message: `„${displayName}" wird dauerhaft entfernt.`,
+                confirmLabel: 'Löschen',
+                destructive: true,
+              });
+              if (ok) onRemove();
             }}
             className="p-1 rounded transition-colors"
             style={{ color: 'rgba(248,250,252,0.3)' }}

@@ -5,6 +5,7 @@ import { getFavorites } from '../api/client';
 import { useSavedSearches } from '../hooks/useSavedSearches';
 import type { ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
 import FavoriteCard from '../components/FavoriteCard';
+import { useConfirm } from '../components/ConfirmDialog';
 
 // ---------------------------------------------------------------------------
 // Icons
@@ -42,6 +43,7 @@ interface SavedSearchCardProps {
 }
 
 function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearchCardProps) {
+  const confirm = useConfirm();
   const displayName = search.name ?? search.search ?? 'Alle Anzeigen';
   const hasPlzInfo = search.plz != null;
   const hasDistance = search.max_distance != null;
@@ -150,10 +152,14 @@ function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearch
           <button
             type="button"
             aria-label="Gespeicherte Suche löschen"
-            onClick={() => {
-              if (window.confirm('Gespeicherte Suche löschen?')) {
-                onRemove();
-              }
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Gespeicherte Suche löschen?',
+                message: `„${displayName}" wird dauerhaft entfernt.`,
+                confirmLabel: 'Löschen',
+                destructive: true,
+              });
+              if (ok) onRemove();
             }}
             className="p-1 rounded transition-colors"
             style={{ color: 'rgba(248,250,252,0.3)' }}

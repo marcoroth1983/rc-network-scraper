@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
+import { useConfirm } from '../components/ConfirmDialog';
 import type { ListingDetail, ListingSummary } from '../types/api';
 import { formatPrice } from '../utils/format';
 
@@ -288,6 +289,7 @@ export default function DetailPage() {
   const isDirectHit = locationState?.isDirectHit === true;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const confirm = useConfirm();
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -352,7 +354,14 @@ export default function DetailPage() {
 
   async function handleToggleSold() {
     const next = !listing!.is_sold;
-    if (next && !window.confirm(`"${listing!.title}" als verkauft markieren?`)) return;
+    if (next) {
+      const ok = await confirm({
+        title: 'Als verkauft markieren?',
+        message: `„${listing!.title}" wird als verkauft gekennzeichnet.`,
+        confirmLabel: 'Verkauft',
+      });
+      if (!ok) return;
+    }
     setSoldPending(true);
     try {
       await toggleSold(listing!.id, next);

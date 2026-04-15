@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
+import { ConfirmProvider } from './components/ConfirmDialog'
 
 // Disable browser-native scroll restoration. We manage scroll preservation
 // ourselves via sessionStorage (see useListingsScrollPreservation) so behaviour
@@ -16,7 +17,9 @@ if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <ConfirmProvider>
+        <App />
+      </ConfirmProvider>
     </BrowserRouter>
   </StrictMode>,
 )
