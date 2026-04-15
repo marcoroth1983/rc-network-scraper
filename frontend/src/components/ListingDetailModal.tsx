@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isDirectHit } from '../lib/modalLocation';
 
@@ -32,7 +32,10 @@ export default function ListingDetailModal({ children }: Props) {
   // offset — scrollY is preserved natively by the browser, no manual
   // scrollTo restore required. Combined with the modal's overscroll-
   // behavior:contain, iOS Safari rubber-band is also suppressed.
-  useEffect(() => {
+  // useLayoutEffect so the cleanup (overflow:'' restore) fires synchronously
+  // in the commit phase BEFORE the listings scroll-restore layout effect runs.
+  // Otherwise window.scrollTo() would be clamped by overflow:hidden's 0-max.
+  useLayoutEffect(() => {
     const html = document.documentElement;
     const prevOverflow = html.style.overflow;
     html.style.overflow = 'hidden';

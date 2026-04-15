@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
+import { getBackground } from '../lib/modalLocation';
 import { readFiltersFromParams, writeFiltersToParams } from '../hooks/useListings';
 import type { ListingsFilter } from '../hooks/useListings';
 
@@ -25,8 +26,20 @@ export default function PlzBar({
   onLogout,
   userEmail,
 }: Props) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const filter = readFiltersFromParams(searchParams);
+  const [, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  // Read filters from the background location while the detail modal is open,
+  // otherwise the URL is `/listings/:id` (no query string) and every buffered
+  // input (search, PLZ, distance, price) would flash to empty and potentially
+  // overwrite real filter state on the next onBlur. See useInfiniteListings
+  // for the same rationale on the fetch side.
+  const background = getBackground(location);
+  const effectiveSearch = background != null ? background.search : location.search;
+  const effectiveParams = new URLSearchParams(
+    effectiveSearch.startsWith('?') ? effectiveSearch.slice(1) : effectiveSearch,
+  );
+  const filter = readFiltersFromParams(effectiveParams);
 
   // PLZ state
   const [plzInput, setPlzInput] = useState(() => localStorage.getItem(PLZ_STORAGE_KEY) ?? '');

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { getListings } from '../api/client';
 import type { ListingSummary } from '../types/api';
+import { getBackground } from '../lib/modalLocation';
 import { readFiltersFromParams, writeFiltersToParams, type ListingsFilter } from './useListings';
 
 export interface UseInfiniteListingsResult {
@@ -18,11 +19,21 @@ export interface UseInfiniteListingsResult {
 }
 
 export function useInfiniteListings(): UseInfiniteListingsResult {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  // CRITICAL: When the detail modal is open, the URL is `/listings/:id` with
+  // NO query string — useSearchParams() would see an empty filter and reset
+  // our accumulated items. We must read filters from the BACKGROUND location
+  // (the listings URL captured when the modal opened) so the hook stays stable
+  // for the entire modal lifetime.
+  const background = getBackground(location);
+  const effectiveSearch = background != null ? background.search : location.search;
+  const effectiveParams = new URLSearchParams(effectiveSearch.startsWith('?') ? effectiveSearch.slice(1) : effectiveSearch);
 
   // Read filter from URL but ignore the `page` param — page is internal state.
   // Category is read from localStorage inside readFiltersFromParams.
-  const urlFilter = readFiltersFromParams(searchParams);
+  const urlFilter = readFiltersFromParams(effectiveParams);
 
   const [items, setItems] = useState<ListingSummary[]>([]);
   const [total, setTotal] = useState<number | null>(null);

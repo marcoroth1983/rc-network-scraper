@@ -3,6 +3,7 @@ import ListingCard from '../components/ListingCard';
 import FilterPanel from '../components/FilterPanel';
 import CategoryModal from '../components/CategoryModal';
 import { useInfiniteListings } from '../hooks/useInfiniteListings';
+import { useListingsScrollPreservation } from '../hooks/useListingsScrollPreservation';
 import type { Category, SavedSearch, SearchCriteria } from '../types/api';
 
 interface Props {
@@ -86,6 +87,12 @@ export default function ListingsPage({
 }: Props) {
   const { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore } =
     useInfiniteListings();
+
+  // Preserve scroll position across modal open/close. `ready` ensures we only
+  // try to restore once the DOM has enough content to scroll to the remembered
+  // position — otherwise scrollTo() would clamp to the (too-small) document height.
+  useListingsScrollPreservation(items.length > 0);
+
   const [fabFeedback, setFabFeedback] = useState<'saved' | 'updated' | null>(null);
 
   // First-visit modal: show when no category has been chosen yet
