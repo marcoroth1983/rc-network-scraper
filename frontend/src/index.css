@@ -4,6 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* Reserve gutter for the vertical scrollbar so toggling overflow:hidden
+     (detail modal scroll-lock) does not shift page content horizontally. */
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: 'Inter', sans-serif;
 }

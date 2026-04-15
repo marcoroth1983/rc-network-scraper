@@ -19,13 +19,26 @@ export default function ListingDetailModal({ children }: Props) {
     }
   }, [navigate, directHit]);
 
-  // Scroll-lock on mount, restore previous value on unmount.
-  // Empty deps — effect runs once per modal lifetime so that mid-modal
-  // pathname changes (nested A → B) do NOT toggle overflow between renders.
+  // Scroll-lock on mount, release on unmount. Empty deps — effect runs once
+  // per modal lifetime so mid-modal pathname changes (nested A → B) do NOT
+  // toggle overflow between renders.
+  //
+  // Why overflow on <html>, not position:fixed on body: position:fixed
+  // re-parents the scroll container, which (a) hard-resets scrollY to 0 on
+  // iOS Safari mid-cleanup, causing "page jumps to top" flicker, and (b) is
+  // sensitive to pre-navigation scroll adjustments (browser focus-scroll,
+  // sticky header interactions). overflow:hidden on <html> locks the wheel /
+  // touch / keyboard scroll path without touching the document's scroll
+  // offset — scrollY is preserved natively by the browser, no manual
+  // scrollTo restore required. Combined with the modal's overscroll-
+  // behavior:contain, iOS Safari rubber-band is also suppressed.
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    const html = document.documentElement;
+    const prevOverflow = html.style.overflow;
+    html.style.overflow = 'hidden';
+    return () => {
+      html.style.overflow = prevOverflow;
+    };
   }, []);
 
   // Close on Escape.

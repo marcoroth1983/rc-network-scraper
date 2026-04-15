@@ -183,22 +183,22 @@ describe('ListingDetailModal — case 5: scroll preservation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Case 6 — body.style.overflow lock/unlock + overscroll-behavior inline style
+// Case 6 — html.style.overflow lock/unlock + overscroll-behavior inline style
 // ---------------------------------------------------------------------------
-describe('ListingDetailModal — case 6: body overflow lock/unlock', () => {
-  it('locks body overflow on mount and restores it on unmount', () => {
+describe('ListingDetailModal — case 6: html overflow lock/unlock', () => {
+  it('locks html overflow on mount and restores it on unmount', () => {
     // jsdom starts with '' — capture it as the expected "pre-mount" value
-    const preMountOverflow = document.body.style.overflow;
+    const preMountOverflow = document.documentElement.style.overflow;
 
     const { unmount } = renderModal({});
 
-    // Body should be locked while modal is mounted
-    expect(document.body.style.overflow).toBe('hidden');
+    // <html> should be locked while modal is mounted
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     unmount();
 
-    // Body overflow should be restored to the pre-mount value
-    expect(document.body.style.overflow).toBe(preMountOverflow);
+    // overflow should be restored to the pre-mount value
+    expect(document.documentElement.style.overflow).toBe(preMountOverflow);
   });
 
   it('modal wrapper has overscroll-behavior: contain in its inline style', () => {
@@ -214,19 +214,19 @@ describe('ListingDetailModal — case 6: body overflow lock/unlock', () => {
 // ---------------------------------------------------------------------------
 describe('ListingDetailModal — case 7: scroll-lock stays through re-render', () => {
   beforeEach(() => {
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   afterEach(() => {
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
-  it('body overflow stays "hidden" during a pathname change and restores on unmount', () => {
+  it('html overflow stays "hidden" during a pathname change and restores on unmount', () => {
     const { rerender, unmount } = renderModal({
       children: <ModalContent id="42" />,
     });
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     // Simulate a nested navigation by re-rendering with different children
     // (in the real app the router would change location.pathname,
@@ -259,12 +259,12 @@ describe('ListingDetailModal — case 7: scroll-lock stays through re-render', (
     );
 
     // Still locked — the empty-deps effect must NOT toggle between renders
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     unmount();
 
     // Restored only after full unmount
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 });
 
