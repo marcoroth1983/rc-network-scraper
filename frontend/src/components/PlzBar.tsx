@@ -67,9 +67,15 @@ export default function PlzBar({
   useEffect(() => { setPriceMinInput(filter.price_min); }, [filter.price_min]);
   useEffect(() => { setPriceMaxInput(filter.price_max); }, [filter.price_max]);
 
-  // Restore PLZ from localStorage when missing from URL
+  // Restore PLZ from localStorage when missing from URL.
+  // Skip entirely while a detail modal is open (pathname = /listings/:id):
+  // setSearchParams() would mutate the DETAIL URL's query and drop the
+  // history state that carries `background`. Losing `background` makes
+  // DirectHitDetailRedirect re-synthesize a state, which wipes the query
+  // again — an infinite loop (see the 454-request network screenshot).
   useEffect(() => {
     if (suppressPlzRestore) return;
+    if (location.pathname !== '/') return;
     if (!filter.plz) {
       const saved = localStorage.getItem(PLZ_STORAGE_KEY);
       const savedCity = localStorage.getItem(PLZ_CITY_STORAGE_KEY);
@@ -88,7 +94,7 @@ export default function PlzBar({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter.plz, suppressPlzRestore]);
+  }, [filter.plz, suppressPlzRestore, location.pathname]);
 
   // Close filter popover on outside click
   useEffect(() => {
