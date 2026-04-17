@@ -2,7 +2,4 @@
 
 ## Open
 
-## Done
-
-- **Share-Link on Detail Page** — Added a "Teilen" share button that uses `navigator.share` when available and falls back to clipboard copy with a 2-second "kopiert" check-mark. Delivered 2026-04-14 (PLAN_016).
-- **Detail Page — Desktop Layout Redesign** — Restructured the detail page to a 12-column grid at `lg`+ (3/6/3 split: metadata · hero · metadata) with a widened `max-w-screen-2xl` modal container. Mobile layout preserved via `order-first lg:order-none`. Delivered 2026-04-14 (PLAN_016).
+- **NOTIFY-01: Per-User Telegram Notifications** — Enable users to receive personal Telegram alerts for their saved searches. Dedicated Telegram bot ("RC-Scout-Bot"), one per project. Account linking via deep-link token pattern: user clicks "Telegram verbinden" on profile page → app generates one-time token → user opens `t.me/RcScoutBot?start=<token>` → bot receives `/start <token>` + Telegram Chat-ID → backend stores `user_id ↔ telegram_chat_id`. Sending is a plain HTTP POST to Telegram API, no SDK or daemon needed. Supports per-user targeting — each user gets only alerts for their own searches. 3 active users currently. See also: MFC-Bussard project memory `reference_telegram_bot_pattern.md` for full pattern documentation.

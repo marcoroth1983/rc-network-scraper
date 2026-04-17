@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:www.rc-network.de)",
       "WebFetch(domain:openrouter.ai)",
-      "Bash(ps -W)"
+      "Bash(ps -W)",
+      "Bash(docker version *)"
     ]
   }
 }

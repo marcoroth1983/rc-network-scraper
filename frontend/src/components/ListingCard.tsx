@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ListingSummary } from '../types/api';
 import { getBackground } from '../lib/modalLocation';
 import { toggleFavorite } from '../api/client';
 import { formatPrice, formatDate } from '../utils/format';
+import ComparablesModal from './ComparablesModal';
 
 // Pin icon matching the mockup SVG
 function PinIcon() {
@@ -26,21 +27,18 @@ interface PriceIndicatorBadgeProps {
   indicator: ListingSummary['price_indicator'];
   median?: number | null;
   count?: number | null;
+  onClick?: (e: React.MouseEvent) => void;
+  badgeRef?: React.RefObject<HTMLSpanElement | null>;
 }
 
-function buildTooltip(label: string, median: number | null | undefined, count: number | null | undefined): string {
-  if (median == null || count == null) return label;
-  const medianStr = median.toLocaleString('de-DE', { maximumFractionDigits: 0 });
-  return `${label} · Ø ${medianStr} € bei ${count} Inseraten`;
-}
-
-function PriceIndicatorBadge({ indicator, median, count }: PriceIndicatorBadgeProps) {
+function PriceIndicatorBadge({ indicator, onClick, badgeRef }: PriceIndicatorBadgeProps) {
   if (indicator === 'deal') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
-        title={buildTooltip('Günstig', median, count)}
+        onClick={onClick}
       >
         Günstig
       </span>
@@ -49,9 +47,10 @@ function PriceIndicatorBadge({ indicator, median, count }: PriceIndicatorBadgePr
   if (indicator === 'fair') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
-        title={buildTooltip('Gut', median, count)}
+        onClick={onClick}
       >
         Gut
       </span>
@@ -60,9 +59,10 @@ function PriceIndicatorBadge({ indicator, median, count }: PriceIndicatorBadgePr
   if (indicator === 'expensive') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
-        title={buildTooltip('Teuer', median, count)}
+        onClick={onClick}
       >
         Teuer
       </span>
@@ -96,6 +96,8 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
 
   const [favorite, setFavorite] = useState(listing.is_favorite);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [comparablesOpen, setComparablesOpen] = useState(false);
+  const badgeRef = useRef<HTMLSpanElement>(null);
 
   async function handleFavorite(e: React.MouseEvent) {
     e.preventDefault();
@@ -203,7 +205,17 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
             {formatPrice(listing.price_numeric, listing.price)}
           </span>
           <div className="flex items-center gap-2">
-            <PriceIndicatorBadge indicator={listing.price_indicator} median={listing.price_indicator_median} count={listing.price_indicator_count} />
+            <PriceIndicatorBadge
+              indicator={listing.price_indicator}
+              median={listing.price_indicator_median}
+              count={listing.price_indicator_count}
+              badgeRef={badgeRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setComparablesOpen(true);
+              }}
+            />
             <span
               data-testid="condition"
               className="text-xs font-medium px-2 py-0.5 rounded-full"
@@ -253,6 +265,15 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
         </div>
 
       </div>
+
+      {comparablesOpen && (
+        <ComparablesModal
+          listingId={listing.id}
+          currentListingId={listing.id}
+          anchorRef={badgeRef}
+          onClose={() => setComparablesOpen(false)}
+        />
+      )}
     </article>
   );
 }

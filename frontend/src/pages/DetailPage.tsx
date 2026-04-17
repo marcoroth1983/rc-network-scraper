@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
 import { useConfirm } from '../components/ConfirmDialog';
+import ComparablesModal from '../components/ComparablesModal';
 import type { ListingDetail, ListingSummary } from '../types/api';
 import { formatPrice } from '../utils/format';
 
@@ -20,19 +21,22 @@ function formatDate(iso: string | null): string {
 
 type PriceIndicator = 'deal' | 'fair' | 'expensive' | null;
 
-function buildTooltip(label: string, median: number | null | undefined, count: number | null | undefined): string {
-  if (median == null || count == null) return label;
-  const medianStr = median.toLocaleString('de-DE', { maximumFractionDigits: 0 });
-  return `${label} · Ø ${medianStr} € bei ${count} Inseraten`;
+interface PriceIndicatorBadgeProps {
+  indicator: PriceIndicator;
+  median?: number | null;
+  count?: number | null;
+  onClick?: () => void;
+  badgeRef?: React.RefObject<HTMLSpanElement | null>;
 }
 
-function PriceIndicatorBadge({ indicator, median, count }: { indicator: PriceIndicator; median?: number | null; count?: number | null }) {
+function PriceIndicatorBadge({ indicator, onClick, badgeRef }: PriceIndicatorBadgeProps) {
   if (indicator === 'deal') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
-        title={buildTooltip('Günstig', median, count)}
+        onClick={onClick}
       >
         Günstig
       </span>
@@ -41,9 +45,10 @@ function PriceIndicatorBadge({ indicator, median, count }: { indicator: PriceInd
   if (indicator === 'fair') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
-        title={buildTooltip('Gut', median, count)}
+        onClick={onClick}
       >
         Gut
       </span>
@@ -52,9 +57,10 @@ function PriceIndicatorBadge({ indicator, median, count }: { indicator: PriceInd
   if (indicator === 'expensive') {
     return (
       <span
-        className="text-xs font-semibold px-2 py-0.5 rounded-full cursor-default"
+        ref={badgeRef}
+        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
         style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
-        title={buildTooltip('Teuer', median, count)}
+        onClick={onClick}
       >
         Teuer
       </span>
@@ -297,6 +303,8 @@ export default function DetailPage() {
   const [favoritePending, setFavoritePending] = useState(false);
   const [authorListings, setAuthorListings] = useState<ListingSummary[]>([]);
   const [shareCopied, setShareCopied] = useState(false);
+  const [comparablesOpen, setComparablesOpen] = useState(false);
+  const badgeRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -493,6 +501,8 @@ export default function DetailPage() {
                     indicator={listing.price_indicator}
                     median={listing.price_indicator_median}
                     count={listing.price_indicator_count}
+                    badgeRef={badgeRef}
+                    onClick={() => setComparablesOpen(true)}
                   />
                 </div>
 
@@ -694,6 +704,15 @@ export default function DetailPage() {
           </>
         );
       })()}
+
+      {comparablesOpen && listing.price_indicator && (
+        <ComparablesModal
+          listingId={listing.id}
+          currentListingId={listing.id}
+          anchorRef={badgeRef}
+          onClose={() => setComparablesOpen(false)}
+        />
+      )}
     </div>
   );
 }
