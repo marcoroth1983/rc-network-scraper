@@ -62,6 +62,15 @@ export function TelegramPanel({ user, onUserReload }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLinked) return;
+    const handleVisibility = () => {
+      if (!document.hidden) onUserReload();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => { document.removeEventListener('visibilitychange', handleVisibility); };
+  }, [isLinked, onUserReload]);
+
+  useEffect(() => {
     if (!isLinked) {
       setPrefs(null);
       setPrefsError(null);

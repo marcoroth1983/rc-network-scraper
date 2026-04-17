@@ -183,7 +183,65 @@ describe('TelegramPanel', () => {
     });
   });
 
-  // 6. Unlink button opens confirm dialog, then calls unlinkTelegram + onUserReload on confirm
+  // 6. visibilitychange fires while unlinked → onUserReload is called
+  it('calls onUserReload when visibilitychange fires and user is not linked', () => {
+    const user = makeUser({ telegram_chat_id: null });
+    const onUserReload = vi.fn();
+
+    render(<TelegramPanel user={user} onUserReload={onUserReload} />);
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onUserReload).toHaveBeenCalledOnce();
+  });
+
+  // 7. visibilitychange fires while already linked → onUserReload is NOT called
+  it('does not call onUserReload on visibilitychange when user is already linked', () => {
+    const user = makeUser({ telegram_chat_id: 12345, telegram_linked_at: '2026-04-10T10:00:00Z' });
+    vi.mocked(client.getNotificationPrefs).mockResolvedValue(defaultPrefs);
+    const onUserReload = vi.fn();
+
+    render(<TelegramPanel user={user} onUserReload={onUserReload} />);
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onUserReload).not.toHaveBeenCalled();
+  });
+
+  // 8. visibilitychange fires while hidden → onUserReload is NOT called (guards if (!document.hidden))
+  it('does not call onUserReload when visibilitychange fires but document is hidden', () => {
+    const user = makeUser({ telegram_chat_id: null });
+    const onUserReload = vi.fn();
+
+    render(<TelegramPanel user={user} onUserReload={onUserReload} />);
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onUserReload).not.toHaveBeenCalled();
+  });
+
+  // 9. Transitioning from unlinked to linked tears down the listener — no reload after rerender
+  it('does not call onUserReload after rerender with linked user', () => {
+    const unlinkedUser = makeUser({ telegram_chat_id: null });
+    const linkedUser = makeUser({ telegram_chat_id: 12345, telegram_linked_at: '2026-04-10T10:00:00Z' });
+    vi.mocked(client.getNotificationPrefs).mockResolvedValue(defaultPrefs);
+    const onUserReload = vi.fn();
+
+    const { rerender } = render(<TelegramPanel user={unlinkedUser} onUserReload={onUserReload} />);
+
+    // Re-render with a linked user (simulates Telegram link completing in another tab)
+    rerender(<TelegramPanel user={linkedUser} onUserReload={onUserReload} />);
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(onUserReload).not.toHaveBeenCalled();
+  });
+
+  // 10. Unlink button opens confirm dialog, then calls unlinkTelegram + onUserReload on confirm
   it('calls unlinkTelegram and onUserReload after confirm dialog is accepted', async () => {
     const user = makeUser({ telegram_chat_id: 12345, telegram_linked_at: '2026-04-10T10:00:00Z' });
     vi.mocked(client.getNotificationPrefs).mockResolvedValue(defaultPrefs);

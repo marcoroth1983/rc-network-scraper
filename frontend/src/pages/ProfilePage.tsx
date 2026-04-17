@@ -13,7 +13,7 @@ const PLZ_LON_KEY = 'rcn_ref_lon';
 interface Props {
   user: AuthUser;
   onLogout: () => void;
-  onUserReload?: () => void;
+  onUserReload: () => void;
 }
 
 function getInitials(email: string): string {
@@ -227,7 +227,7 @@ export function ProfilePage({ user, onLogout, onUserReload }: Props) {
 
         {/* ── Column 2: Settings stack ──────────────────────────────────── */}
         <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
-          <TelegramPanel user={user} onUserReload={onUserReload ?? (() => {})} />
+          <TelegramPanel user={user} onUserReload={onUserReload} />
           {user.role === 'admin' && <LLMAdminPanel />}
         </div>
       </div>
