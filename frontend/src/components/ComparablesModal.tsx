@@ -6,7 +6,7 @@ import { useComparables } from '../hooks/useComparables';
 interface Props {
   listingId: number | null;
   currentListingId: number;
-  anchorRef: React.RefObject<HTMLSpanElement | null>;
+  anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
 }
 
@@ -20,7 +20,10 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
   useLayoutEffect(() => {
     if (!isOpen || !anchorRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
-    const POPOVER_WIDTH = 400;
+    // Desktop popover: wider than the narrow 400px default. Long titles like
+    // "Graupner Mini Viper Jet EDF PNP ..." need space before the trailing
+    // price column, otherwise everything truncates aggressively.
+    const POPOVER_WIDTH = Math.min(640, window.innerWidth - 32);
     const POPOVER_MAX_H = window.innerHeight * 0.6;
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const top = spaceBelow >= POPOVER_MAX_H

@@ -216,7 +216,15 @@ export function LLMAdminPanel() {
       {/* Table */}
       {!loading && !error && rows && (
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '480px' }}>
+          <table className="w-full text-left border-collapse table-fixed" style={{ minWidth: '480px' }}>
+            <colgroup>
+              <col style={{ width: '30%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
+            </colgroup>
             <thead>
               <tr>
                 {(['Modell', 'Aktiv', 'Context', 'Fehler', 'Pausiert', 'Stand'] as const).map((col) => (
@@ -236,8 +244,8 @@ export function LLMAdminPanel() {
                   key={row.model_id}
                   style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
                 >
-                  {/* Model ID */}
-                  <td className="py-2 pr-4 text-xs font-mono" style={{ color: 'rgba(248,250,252,0.75)', maxWidth: '180px', wordBreak: 'break-all' }}>
+                  {/* Model ID — truncate with full value on hover (table-fixed needs this) */}
+                  <td className="py-2 pr-4 text-xs font-mono truncate" style={{ color: 'rgba(248,250,252,0.75)' }} title={row.model_id}>
                     {row.model_id}
                   </td>
 

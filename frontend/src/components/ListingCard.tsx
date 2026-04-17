@@ -28,44 +28,54 @@ interface PriceIndicatorBadgeProps {
   median?: number | null;
   count?: number | null;
   onClick?: (e: React.MouseEvent) => void;
-  badgeRef?: React.RefObject<HTMLSpanElement | null>;
+  badgeRef?: React.RefObject<HTMLButtonElement | null>;
 }
+
+// <button> instead of <span onClick>: iOS Safari reliably dispatches click
+// events on native-clickable elements (button/a) but is flaky on spans with
+// synthetic onClick handlers. touch-action:manipulation kills the 300ms tap
+// delay and the double-tap-zoom gesture, so taps register instantly.
+const BADGE_CLASSES = "relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer";
+const BADGE_TOUCH_STYLE: React.CSSProperties = { touchAction: 'manipulation' };
 
 function PriceIndicatorBadge({ indicator, onClick, badgeRef }: PriceIndicatorBadgeProps) {
   if (indicator === 'deal') {
     return (
-      <span
+      <button
+        type="button"
         ref={badgeRef}
-        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
-        style={{ background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
+        className={BADGE_CLASSES}
+        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
         onClick={onClick}
       >
         Günstig
-      </span>
+      </button>
     );
   }
   if (indicator === 'fair') {
     return (
-      <span
+      <button
+        type="button"
         ref={badgeRef}
-        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
-        style={{ background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
+        className={BADGE_CLASSES}
+        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
         onClick={onClick}
       >
         Gut
-      </span>
+      </button>
     );
   }
   if (indicator === 'expensive') {
     return (
-      <span
+      <button
+        type="button"
         ref={badgeRef}
-        className="relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer"
-        style={{ background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
+        className={BADGE_CLASSES}
+        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
         onClick={onClick}
       >
         Teuer
-      </span>
+      </button>
     );
   }
   return null;
@@ -97,7 +107,7 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
   const [favorite, setFavorite] = useState(listing.is_favorite);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [comparablesOpen, setComparablesOpen] = useState(false);
-  const badgeRef = useRef<HTMLSpanElement>(null);
+  const badgeRef = useRef<HTMLButtonElement>(null);
 
   async function handleFavorite(e: React.MouseEvent) {
     e.preventDefault();

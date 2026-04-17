@@ -65,34 +65,52 @@ describe('TelegramPanel', () => {
     expect(screen.getByRole('button', { name: /mit telegram verbinden/i })).toBeInTheDocument();
   });
 
-  // 2. Clicking link button calls linkTelegram and navigates current tab to deeplink
-  it('calls linkTelegram and navigates to the deeplink on link button click', async () => {
+  // 2. Clicking link button calls linkTelegram, tries tg:// native scheme first,
+  //    then falls back to the https://t.me/ deeplink after 800ms if the page
+  //    is still visible (meaning the Telegram app did not catch the tg:// URL).
+  it('calls linkTelegram, tries tg:// first, falls back to https after 800ms', async () => {
     const user = makeUser({ telegram_chat_id: null });
     const deeplink = 'https://t.me/testbot?start=abc123';
     vi.mocked(client.linkTelegram).mockResolvedValue({
       deeplink,
       expires_at: '2026-04-17T12:00:00Z',
     });
-    // The component creates a synthetic <a href=deeplink> and clicks it —
-    // gives browsers the native link-navigation path (Android intent / iOS
-    // universal link) which is the most reliable way to hand off a t.me
-    // URL to the installed Telegram app.
-    const clickedHrefs: string[] = [];
-    const originalClick = HTMLAnchorElement.prototype.click;
-    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-      clickedHrefs.push(this.href);
-    };
 
-    render(<TelegramPanel user={user} onUserReload={vi.fn()} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /mit telegram verbinden/i }));
-
-    await waitFor(() => {
-      expect(client.linkTelegram).toHaveBeenCalledOnce();
-      expect(clickedHrefs).toContain(deeplink);
+    // Capture every assignment to window.location.href without actually
+    // navigating (JSDOM would throw on cross-origin navigation).
+    const navigations: string[] = [];
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'location')!;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: new Proxy(window.location, {
+        set(target, prop, value) {
+          if (prop === 'href') {
+            navigations.push(String(value));
+            return true;
+          }
+          return Reflect.set(target, prop, value);
+        },
+      }),
     });
 
-    HTMLAnchorElement.prototype.click = originalClick;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<TelegramPanel user={user} onUserReload={vi.fn()} />);
+      await userEvent.click(screen.getByRole('button', { name: /mit telegram verbinden/i }));
+
+      // Wait for the first navigation (tg://)
+      await waitFor(() => {
+        expect(client.linkTelegram).toHaveBeenCalledOnce();
+        expect(navigations.some((u) => u.startsWith('tg://resolve?domain=testbot&start=abc123'))).toBe(true);
+      });
+
+      // Advance timers past the 800ms fallback window
+      vi.advanceTimersByTime(900);
+      expect(navigations).toContain(deeplink);
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(window, 'location', descriptor);
+    }
   });
 
   // 3. Renders toggles and "Verbunden"-status when telegram_chat_id is set

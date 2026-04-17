@@ -72,176 +72,165 @@ export function ProfilePage({ user, onLogout, onUserReload }: Props) {
 
   const initials = getInitials(user.email);
 
+  const cardStyle: React.CSSProperties = {
+    background: 'rgba(15, 15, 35, 0.6)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+  };
+
   return (
-    <div className="flex flex-col" style={{ color: '#F8FAFC' }}>
-      {/* Centered card */}
-      <div className="flex-1 flex items-start justify-center px-4 pt-10">
-        <div
-          className="w-full max-w-sm rounded-2xl p-6"
-          style={{
-            background: 'rgba(15, 15, 35, 0.6)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            backdropFilter: 'blur(16px)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          }}
-        >
-          {/* Avatar */}
-          <div className="flex flex-col items-center gap-3 pb-5">
-            <div
-              className="flex items-center justify-center rounded-full select-none"
-              style={{
-                width: '72px',
-                height: '72px',
-                background: 'rgba(167, 139, 250, 0.15)',
-                border: '2px solid rgba(167, 139, 250, 0.40)',
-                color: '#A78BFA',
-              }}
-            >
-              {initials.length > 0 ? (
-                <span className="text-xl font-semibold leading-none">{initials}</span>
-              ) : (
-                // Fallback person icon when initials cannot be derived
-                <svg
-                  className="w-8 h-8"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="8" r="4" />
-                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" strokeLinecap="round" />
-                </svg>
-              )}
-            </div>
+    <div
+      className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-12"
+      style={{ color: '#F8FAFC' }}
+    >
+      {/* Page heading — hidden on mobile (bottom nav already indicates context) */}
+      <h1 className="hidden sm:block text-2xl font-bold mb-8" style={{ color: '#F8FAFC' }}>
+        Einstellungen
+      </h1>
 
-            {/* Email */}
-            <p
-              className="text-sm text-center break-all"
-              style={{ color: 'rgba(248, 250, 252, 0.65)' }}
-            >
-              {user.email}
-            </p>
-          </div>
-
-          {/* Divider */}
-          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }} className="mb-5" />
-
-          {/* PLZ / Standort section */}
-          <div className="mb-5">
-            <p
-              className="text-xs font-medium mb-2"
-              style={{ color: 'rgba(248, 250, 252, 0.35)' }}
-            >
-              Mein Standort
-            </p>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <input
-                  type="text"
-                  aria-label="Meine PLZ"
-                  placeholder="Meine PLZ"
-                  value={plzInput}
-                  onChange={(e) => setPlzInput(e.target.value)}
-                  onBlur={() => validateAndApplyPlz(plzInput)}
-                  onKeyDown={(e) => e.key === 'Enter' && validateAndApplyPlz(plzInput)}
-                  maxLength={5}
-                  className={`w-28 px-3 py-1.5 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-aurora-indigo/50 transition text-white placeholder:text-white/30 ${
-                    plzCity
-                      ? 'border-2 border-aurora-teal/60'
-                      : plzError
-                      ? 'border-2 border-aurora-pink/60'
-                      : 'border border-white/15'
-                  }`}
-                  style={{ background: 'rgba(255, 255, 255, 0.05)' }}
-                />
-                {plzValidating && (
-                  <span
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
-                    style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 sm:gap-6 items-start">
+        {/* ── Column 1: Profile card (sticky on desktop) ───────────────── */}
+        <aside className="lg:sticky lg:top-20">
+          <div className="rounded-2xl p-6" style={cardStyle}>
+            {/* Avatar + email */}
+            <div className="flex flex-col items-center gap-3 pb-5">
+              <div
+                className="flex items-center justify-center rounded-full select-none"
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  background: 'rgba(167, 139, 250, 0.15)',
+                  border: '2px solid rgba(167, 139, 250, 0.40)',
+                  color: '#A78BFA',
+                }}
+              >
+                {initials.length > 0 ? (
+                  <span className="text-xl font-semibold leading-none">{initials}</span>
+                ) : (
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    aria-hidden="true"
                   >
-                    …
-                  </span>
-                )}
-                {plzInput && !plzValidating && (
-                  <button
-                    type="button"
-                    onClick={handlePlzClear}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-xs leading-none transition"
-                    style={{ color: 'rgba(248, 250, 252, 0.35)' }}
-                    aria-label="PLZ löschen"
-                  >
-                    ✕
-                  </button>
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" strokeLinecap="round" />
+                  </svg>
                 )}
               </div>
-              {plzCity && (
-                <span
-                  className="text-sm font-medium"
-                  style={{ color: 'rgba(248, 250, 252, 0.65)' }}
-                >
-                  {plzCity}
-                </span>
-              )}
-              {plzError && (
-                <span className="text-xs font-medium text-aurora-pink/80">{plzError}</span>
-              )}
+              <p
+                className="text-sm text-center break-all"
+                style={{ color: 'rgba(248, 250, 252, 0.65)' }}
+              >
+                {user.email}
+              </p>
             </div>
-          </div>
 
-          {/* Divider before logout */}
-          <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }} className="mb-5" />
+            <div
+              style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
+              className="mb-5"
+            />
 
-          {/* Logout button */}
-          <button
-            onClick={onLogout}
-            className="w-full rounded-xl py-2.5 text-sm font-medium transition-all duration-150"
-            style={{
-              background: 'rgba(167, 139, 250, 0.08)',
-              border: '1px solid rgba(167, 139, 250, 0.35)',
-              color: '#A78BFA',
-            }}
-            onPointerEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                'rgba(167, 139, 250, 0.16)';
-            }}
-            onPointerLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                'rgba(167, 139, 250, 0.08)';
-            }}
-          >
-            Abmelden
-          </button>
-        </div>
-      </div>
+            {/* PLZ / Standort */}
+            <div className="mb-5">
+              <p
+                className="text-[10px] font-semibold uppercase tracking-widest mb-2"
+                style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+              >
+                Mein Standort
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="relative">
+                  <input
+                    type="text"
+                    aria-label="Meine PLZ"
+                    placeholder="Meine PLZ"
+                    value={plzInput}
+                    onChange={(e) => setPlzInput(e.target.value)}
+                    onBlur={() => validateAndApplyPlz(plzInput)}
+                    onKeyDown={(e) => e.key === 'Enter' && validateAndApplyPlz(plzInput)}
+                    maxLength={5}
+                    className={`w-28 px-3 py-1.5 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-aurora-indigo/50 transition text-white placeholder:text-white/30 ${
+                      plzCity
+                        ? 'border-2 border-aurora-teal/60'
+                        : plzError
+                        ? 'border-2 border-aurora-pink/60'
+                        : 'border border-white/15'
+                    }`}
+                    style={{ background: 'rgba(255, 255, 255, 0.05)' }}
+                  />
+                  {plzValidating && (
+                    <span
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
+                      style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+                    >
+                      …
+                    </span>
+                  )}
+                  {plzInput && !plzValidating && (
+                    <button
+                      type="button"
+                      onClick={handlePlzClear}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-xs leading-none transition"
+                      style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+                      aria-label="PLZ löschen"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {plzCity && (
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: 'rgba(248, 250, 252, 0.65)' }}
+                  >
+                    {plzCity}
+                  </span>
+                )}
+                {plzError && (
+                  <span className="text-xs font-medium text-aurora-pink/80">{plzError}</span>
+                )}
+              </div>
+            </div>
 
-      {/* Telegram notification panel — always visible for authenticated users */}
-      <div className="flex items-start justify-center px-4 pt-6">
-        <div className="w-full max-w-sm">
-          <p
-            className="text-xs font-medium mb-3"
-            style={{ color: 'rgba(248, 250, 252, 0.35)' }}
-          >
-            Benachrichtigungen
-          </p>
-          <TelegramPanel user={user} onUserReload={onUserReload ?? (() => {})} />
-        </div>
-      </div>
+            <div
+              style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
+              className="mb-5"
+            />
 
-      {/* LLM admin panel — only for admin role */}
-      {user.role === 'admin' && (
-        <div className="flex items-start justify-center px-4 pt-6 pb-10">
-          <div className="w-full max-w-sm">
-            <p
-              className="text-xs font-medium mb-3"
-              style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+            {/* Logout */}
+            <button
+              onClick={onLogout}
+              className="w-full rounded-xl py-2.5 text-sm font-medium transition-all duration-150"
+              style={{
+                background: 'rgba(167, 139, 250, 0.08)',
+                border: '1px solid rgba(167, 139, 250, 0.35)',
+                color: '#A78BFA',
+              }}
+              onPointerEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  'rgba(167, 139, 250, 0.16)';
+              }}
+              onPointerLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  'rgba(167, 139, 250, 0.08)';
+              }}
             >
-              LLM-Kaskade — Admin
-            </p>
-            <LLMAdminPanel />
+              Abmelden
+            </button>
           </div>
+        </aside>
+
+        {/* ── Column 2: Settings stack ──────────────────────────────────── */}
+        <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
+          <TelegramPanel user={user} onUserReload={onUserReload ?? (() => {})} />
+          {user.role === 'admin' && <LLMAdminPanel />}
         </div>
-      )}
+      </div>
     </div>
   );
 }

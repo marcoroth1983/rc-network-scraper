@@ -105,19 +105,32 @@ export function TelegramPanel({ user, onUserReload }: Props) {
         setActionError('Ungültiger Deeplink vom Server');
         return;
       }
-      // Synthetic <a> click triggers the browser's native link-navigation
-      // path — including Android's intent system and iOS universal links
-      // that hand off t.me URLs to the installed Telegram app. Using
-      // window.open or location.assign is less reliable on mobile: many
-      // browsers just render the t.me landing page instead of opening
-      // the app.
-      const anchor = document.createElement('a');
-      anchor.href = result.deeplink;
-      anchor.rel = 'noopener noreferrer';
-      anchor.target = '_blank';
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
+      // Mobile browsers are unreliable at handing the t.me URL off to the
+      // native Telegram app — many just render the t.me landing page.
+      // Strategy: try the native tg:// scheme first (opens the installed
+      // app directly). If the page is still visible after 800ms, assume
+      // the app is not installed and fall back to the https://t.me/ URL,
+      // which at least shows Telegram's "Open in Telegram" landing page.
+      const botName = parsed.pathname.replace(/^\//, '');
+      const startToken = parsed.searchParams.get('start') ?? '';
+      const tgUrl = `tg://resolve?domain=${encodeURIComponent(botName)}&start=${encodeURIComponent(startToken)}`;
+
+      let switchedAway = false;
+      const onVisibility = () => {
+        if (document.hidden) switchedAway = true;
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+
+      // First: try the native scheme.
+      window.location.href = tgUrl;
+
+      // Fallback: if still visible after 800ms, the app didn't catch the URL.
+      window.setTimeout(() => {
+        document.removeEventListener('visibilitychange', onVisibility);
+        if (!switchedAway && !document.hidden) {
+          window.location.href = result.deeplink;
+        }
+      }, 800);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Verknüpfung fehlgeschlagen');
     } finally {
