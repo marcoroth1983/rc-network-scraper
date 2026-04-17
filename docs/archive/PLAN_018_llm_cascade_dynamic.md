@@ -5,22 +5,19 @@
 | Reviewer | approved (after revise) | 2026-04-15 |
 | Human    | approved | 2026-04-15 |
 
-## Implementation Status (pre-review draft already in repo)
+## Implementation Status
 
-Parts of this plan exist as uncommitted working-tree changes (drafted
-during the discussion phase). The plan still lists them as steps for
-clarity; status fields below indicate what is done vs open. Any
-implementer MUST reconcile with the working tree, not re-create.
+**Completed, shipped as v1.4.0 (commit faa57b7, deployed to prod 2026-04-15).**
 
 | Step | Status | Location |
 |------|--------|----------|
-| 1 DB migration | partially-implemented, needs `is_active` column added | `backend/app/db.py` |
-| 2 model_cascade.py | implemented (draft) | `backend/app/analysis/model_cascade.py` |
-| 3 extractor wiring | implemented (draft) | `backend/app/analysis/extractor.py` |
-| 4 scheduler seed | partially-implemented, `add_job` missing | `backend/app/main.py` |
-| 5 admin endpoint | open | `backend/app/api/admin.py` (new), `deps.py` (needs `require_admin`) |
-| 6 frontend panel | open | `frontend/src/components/LLMAdminPanel.tsx` (new) |
-| 7 tests | open | `backend/tests/test_model_cascade.py` (new), extend existing |
+| 1 DB migration | ✅ approved — `is_active` column added | `backend/app/db.py` |
+| 2 model_cascade.py | ✅ approved — pricing widened, DISABLE log | `backend/app/analysis/model_cascade.py` |
+| 3 extractor wiring | ✅ approved | `backend/app/analysis/extractor.py` |
+| 4 scheduler seed | ✅ approved — 12h job registered, S1 timezone fix | `backend/app/main.py` |
+| 5 admin endpoint | ✅ approved — `require_admin` guard + GET/POST | `backend/app/api/admin.py`, `deps.py` |
+| 6 frontend panel | ✅ approved — 3 reviewer fixes applied | `frontend/src/components/LLMAdminPanel.tsx` |
+| 7 tests | ✅ approved — 31 backend + 6 frontend, all green | `backend/tests/test_model_cascade.py`, extended `test_analysis_job.py`, `__tests__/LLMAdminPanel.test.tsx` |
 
 ## Context & Goal
 
@@ -247,14 +244,14 @@ Response: [
 Each step has a status field. Allowed values: `open | implemented |
 reviewed | approved`. Implementer updates the field as work progresses.
 
-1. **DB schema** — `status: partially-implemented`
+1. **DB schema** — `status: approved`
    - Add `llm_models` table in `init_db()` (already in repo, lines 131–148).
    - **MISSING:** `ALTER TABLE llm_models ADD COLUMN IF NOT EXISTS
      is_active BOOLEAN NOT NULL DEFAULT TRUE` — append inside `init_db()`
      following the existing idempotent-ALTER pattern used elsewhere in
      that function.
 
-2. **`model_cascade.py`** — `status: implemented (draft, uncommitted)`
+2. **`model_cascade.py`** — `status: approved`
    - DB read/write helpers: `load_cascade()` (60 s in-process cache),
      `record_success(model_id)`, `record_failure(model_id, error)`,
      `refresh_from_openrouter(top_n)`, `seed_if_empty()`,
@@ -269,12 +266,12 @@ reviewed | approved`. Implementer updates the field as work progresses.
      disabled_until=…, last_error=…` so it appears cleanly in scheduler
      logs (not only the per-call WARN from extractor).
 
-3. **Extractor wiring** — `status: implemented (draft, uncommitted)`
+3. **Extractor wiring** — `status: approved`
    - `analyze_listing()` reads cascade from `model_cascade.load_cascade()`.
    - After each `_try_analyze`, calls `record_success` or `record_failure`.
    - Paid fallback path untouched (env only).
 
-4. **Scheduler + startup seed** — `status: partially-implemented`
+4. **Scheduler + startup seed** — `status: approved`
    - Call `model_cascade.seed_if_empty()` after `init_db()` (already in repo).
    - **MISSING:** register the 12 h refresh job in the scheduler:
      ```python
@@ -290,7 +287,7 @@ reviewed | approved`. Implementer updates the field as work progresses.
      ```
    - Update the "Scheduler started" log line to include the new job.
 
-5. **Admin endpoint + role guard** — `status: open`
+5. **Admin endpoint + role guard** — `status: approved`
    - `backend/app/api/deps.py`: add `require_admin` dependency that
      depends on `get_current_user` and raises HTTP 403 when
      `user.role != "admin"`.
@@ -303,7 +300,7 @@ reviewed | approved`. Implementer updates the field as work progresses.
      - Both guarded by `Depends(require_admin)`.
    - Mount in `routes.py` under `/api/admin`.
 
-6. **Frontend admin panel** — `status: open`
+6. **Frontend admin panel** — `status: approved`
    - `LLMAdminPanel.tsx` with table + refresh button.
    - Columns: model_id, aktiv badge (green/red/amber-for-disabled-until),
      last_error (truncated, tooltip for full), disabled_until countdown
@@ -315,7 +312,7 @@ reviewed | approved`. Implementer updates the field as work progresses.
      borders, #A78BFA active, #EC4899 disabled/error).
    - API client: `getLLMModels()`, `refreshLLMModels()` in `api/client.ts`.
 
-7. **Tests** — `status: open`
+7. **Tests** — `status: approved`
    - See "Test files" section below.
 
 ## Test files
