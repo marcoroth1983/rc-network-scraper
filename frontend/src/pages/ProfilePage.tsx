@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
@@ -23,23 +22,8 @@ function getInitials(email: string): string {
 }
 
 export function ProfilePage({ user, onLogout, onUserReload }: Props) {
-  const navigate = useNavigate();
-
-  // On sm+ viewports this page is irrelevant — redirect to home.
-  // We check via a media query on mount so the redirect is instant on desktop
-  // without waiting for a render cycle.
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 640px)');
-    if (mq.matches) {
-      navigate('/', { replace: true });
-      return;
-    }
-    const handler = (e: MediaQueryListEvent) => {
-      if (e.matches) navigate('/', { replace: true });
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, [navigate]);
+  // The page renders on all viewports — desktop reaches it via the
+  // "Einstellungen" link in the PlzBar person-popover; mobile via bottom nav.
 
   // PLZ state — mirrors PlzBar logic but writes only to localStorage (no URL params on this page)
   const [plzInput, setPlzInput] = useState(() => localStorage.getItem(PLZ_STORAGE_KEY) ?? '');

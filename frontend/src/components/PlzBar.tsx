@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
 import { getBackground } from '../lib/modalLocation';
@@ -28,6 +28,7 @@ export default function PlzBar({
 }: Props) {
   const [, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Read filters from the background location while the detail modal is open,
   // otherwise the URL is `/listings/:id` (no query string) and every buffered
@@ -530,6 +531,30 @@ export default function PlzBar({
                   <p className="mt-2 text-xs font-medium" style={{ color: '#EC4899' }}>{plzError}</p>
                 )}
               </div>
+
+              {divider}
+
+              {/* Weitere Einstellungen (Telegram, Admin-Panel, ...) */}
+              <button
+                type="button"
+                onClick={() => { setPersonOpen(false); navigate('/profile'); }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-sm transition-colors duration-150 cursor-pointer"
+                style={{ color: 'rgba(248,250,252,0.5)' }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.75)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.5)';
+                }}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+                <span>Einstellungen</span>
+              </button>
 
               {divider}
 
