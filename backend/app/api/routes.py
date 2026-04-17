@@ -1,6 +1,7 @@
 """REST API endpoints."""
 
 import logging
+import statistics
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -9,8 +10,10 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin import router as admin_router
+from app.api.telegram import router as telegram_api_router
 from app.api.deps import get_current_user
 from app.api.schemas import (
+    ComparableListing, ComparablesResponse,
     ListingDetail, ListingSummary, PaginatedResponse, PlzResponse,
     SavedSearchCreate, SavedSearchResponse, SavedSearchUpdate,
     ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
@@ -25,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 router.include_router(admin_router)
+router.include_router(telegram_api_router)
 
 
 async def _get_favorite_listing_ids(user_id: int, session: AsyncSession) -> set[int]:
@@ -275,6 +279,89 @@ async def get_listings_by_author(
             summary = summary.model_copy(update={"is_favorite": True})
         items.append(summary)
     return items
+
+
+@router.get("/listings/{listing_id}/comparables", response_model=ComparablesResponse)
+async def get_comparables(
+    listing_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ComparablesResponse:
+    """Return the comparable listings used to compute the price indicator for a given listing."""
+    result = await session.execute(select(Listing).where(Listing.id == listing_id))
+    listing = result.scalar_one_or_none()
+    if listing is None:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    fav_ids = await _get_favorite_listing_ids(current_user.id, session)
+
+    base_q = (
+        select(Listing)
+        .where(Listing.is_sold == False)          # noqa: E712
+        .where(Listing.price_numeric.is_not(None))
+        .where(Listing.id != listing_id)
+    )
+
+    rows: list[Listing]
+    group_label: str
+    group_level: Literal["model", "type"]
+
+    # Mirror the SQL job's two-level grouping: L1 requires ≥5 members, L2 is fallback.
+    used_level: str | None = None
+
+    if listing.manufacturer and listing.model_name:
+        l1_q = base_q.where(
+            Listing.manufacturer == listing.manufacturer,
+            Listing.model_name == listing.model_name,
+        ).order_by(Listing.price_numeric.asc())
+        res = await session.execute(l1_q)
+        l1_rows = list(res.scalars().all())
+        if len(l1_rows) >= 4:  # ≥4 others = ≥5 total including current listing
+            rows = l1_rows
+            group_label = f"{listing.manufacturer} {listing.model_name}"
+            group_level = "model"
+            used_level = "l1"
+
+    if used_level is None and listing.model_type and listing.model_subtype and listing.completeness:
+        l2_q = base_q.where(
+            Listing.model_type == listing.model_type,
+            Listing.model_subtype == listing.model_subtype,
+            Listing.completeness == listing.completeness,
+        ).order_by(Listing.price_numeric.asc())
+        res = await session.execute(l2_q)
+        l2_rows = list(res.scalars().all())
+        if len(l2_rows) >= 4:  # ≥4 others = ≥5 total including current listing
+            rows = l2_rows
+            group_label = f"{listing.model_type} {listing.model_subtype} {listing.completeness}"
+            group_level = "type"
+            used_level = "l2"
+
+    if used_level is None:
+        return ComparablesResponse(
+            group_label="",
+            group_level="model",
+            median=listing.price_indicator_median or 0.0,
+            count=0,
+            listings=[],
+        )
+
+    prices = [float(r.price_numeric) for r in rows if r.price_numeric is not None]
+    median_val = statistics.median(prices) if prices else (listing.price_indicator_median or 0.0)
+
+    items: list[ComparableListing] = []
+    for row in rows:
+        comp = ComparableListing.model_validate(row)
+        if row.id in fav_ids:
+            comp = comp.model_copy(update={"is_favorite": True})
+        items.append(comp)
+
+    return ComparablesResponse(
+        group_label=group_label,
+        group_level=group_level,
+        median=median_val,
+        count=len(items),
+        listings=items,
+    )
 
 
 @router.get("/listings/{listing_id}", response_model=ListingDetail)

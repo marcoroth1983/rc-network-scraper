@@ -41,10 +41,54 @@ async def test_engine(test_db_url: str):
 
     engine = create_async_engine(test_db_url, echo=False)
 
-    # Drop and recreate all tables to ensure schema is always up to date
+    # Drop and recreate all tables to ensure schema is always up to date.
+    # Manually-created tables (not in Base.metadata) that have FK references to
+    # ORM-managed tables must be dropped first, otherwise drop_all fails with
+    # DependentObjectsStillExistError when it tries to DROP TABLE users.
     async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS user_notification_prefs CASCADE"))
+        await conn.execute(text("DROP TABLE IF EXISTS telegram_link_tokens CASCADE"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        # Apply incremental migrations that are not in ORM models (mirror init_db pattern)
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'member'"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ"))
+        # PLAN-015: user_favorites is already in Base.metadata via UserFavorite model,
+        # but the snapshot columns are not in the ORM model — add them here
+        await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_is_sold BOOLEAN"))
+        await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_numeric NUMERIC(10,2)"))
+        await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_indicator VARCHAR(20)"))
+        await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_scraped_at TIMESTAMPTZ"))
+        # PLAN-019: Telegram columns on users
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT"))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_users_telegram_chat_id
+            ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL
+        """))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMPTZ"))
+        # PLAN-019: telegram_link_tokens table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at  TIMESTAMPTZ NOT NULL,
+                used_at     TIMESTAMPTZ
+            )
+        """))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_telegram_link_tokens_user ON telegram_link_tokens (user_id)"))
+        # PLAN-019: user_notification_prefs table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_notification_prefs (
+                user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                new_search_results BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_sold           BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_price          BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_deleted        BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_indicator      BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
 
     yield engine
 
@@ -67,6 +111,53 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     )
     async with session_factory() as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def patch_async_session_local(test_engine) -> None:
+    """Redirect AsyncSessionLocal to the test engine for the duration of each test.
+
+    Patches both the canonical module (app.db) and every submodule that imported
+    it directly (from app.db import AsyncSessionLocal), so that all call-sites
+    hit the test DB rather than production.
+    """
+    import app.db as _db_module  # noqa: PLC0415
+    import importlib  # noqa: PLC0415
+
+    test_factory = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    # Modules that do "from app.db import AsyncSessionLocal" — patch their local ref
+    _patch_targets = [
+        "app.telegram.bot",
+        "app.telegram.link",
+        "app.telegram.prefs",
+        "app.telegram.plugin",
+        "app.telegram.fav_sweep",
+    ]
+
+    originals: dict = {"app.db": _db_module.AsyncSessionLocal}
+    _db_module.AsyncSessionLocal = test_factory
+
+    for mod_name in _patch_targets:
+        try:
+            mod = importlib.import_module(mod_name)
+            if hasattr(mod, "AsyncSessionLocal"):
+                originals[mod_name] = mod.AsyncSessionLocal
+                mod.AsyncSessionLocal = test_factory
+        except ImportError:
+            pass
+
+    yield
+
+    _db_module.AsyncSessionLocal = originals["app.db"]
+    for mod_name in _patch_targets:
+        if mod_name in originals:
+            mod = importlib.import_module(mod_name)
+            mod.AsyncSessionLocal = originals[mod_name]
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -135,3 +226,165 @@ def reset_scrape_runner():
     reset_state()
     yield
     reset_state()
+
+
+# ---------------------------------------------------------------------------
+# Telegram test fixtures
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass  # noqa: E402
+
+
+@dataclass
+class _LinkedUser:
+    user_id: int
+    chat_id: int
+
+
+@pytest_asyncio.fixture()
+async def db_user(db_session: AsyncSession):
+    """Insert a test user (no Telegram link) and return the ORM object."""
+    from app.models import User  # noqa: PLC0415
+
+    user = User(
+        google_id="test-google-tg",
+        email="tg_test@example.com",
+        name="TG Test",
+        is_approved=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest_asyncio.fixture()
+async def db_user_linked(db_session: AsyncSession) -> _LinkedUser:
+    """Insert a user with telegram_chat_id=12345 and return (user_id, chat_id)."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved, telegram_chat_id, telegram_linked_at)
+            VALUES ('tg-linked-google', 'tg_linked@example.com', 'TG Linked', TRUE, 12345, now())
+        """)
+    )
+    await db_session.commit()
+    row = await db_session.execute(
+        _text("SELECT id FROM users WHERE google_id = 'tg-linked-google'")
+    )
+    user_id = row.scalar_one()
+    return _LinkedUser(user_id=user_id, chat_id=12345)
+
+
+@pytest_asyncio.fixture()
+async def db_listing(db_session: AsyncSession):
+    """Insert a minimal listing and return its id."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    now = datetime.now(timezone.utc)
+    await db_session.execute(
+        _text("""
+            INSERT INTO listings (external_id, url, title, description, author, scraped_at, images, tags)
+            VALUES ('tg-test-ext-1', 'http://example.com/1', 'Test Listing TG', 'desc', 'author',
+                    :now, '[]', '[]')
+        """),
+        {"now": now},
+    )
+    await db_session.commit()
+    row = await db_session.execute(
+        _text("SELECT id FROM listings WHERE external_id = 'tg-test-ext-1'")
+    )
+    return type("Listing", (), {"id": row.scalar_one()})()
+
+
+@pytest_asyncio.fixture()
+async def authenticated_client(test_engine, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """AsyncClient authenticated as a fresh test user (inserted after clean_listings)."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+    from app.api.deps import get_current_user  # noqa: PLC0415
+    from app.db import get_session  # noqa: PLC0415
+    from app.main import app  # noqa: PLC0415
+    from app.models import User  # noqa: PLC0415
+
+    # Insert user in the same db_session that already passed clean_listings
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved)
+            VALUES ('auth-client-google', 'auth_client@example.com', 'Auth Client', TRUE)
+            ON CONFLICT (google_id) DO NOTHING
+        """)
+    )
+    await db_session.commit()
+    row = await db_session.execute(
+        _text("SELECT id FROM users WHERE google_id = 'auth-client-google'")
+    )
+    user_id = row.scalar_one()
+
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async with factory() as session:
+            yield session
+
+    async def _fake_user() -> User:
+        async with factory() as session:
+            r = await session.execute(
+                _text("SELECT id, google_id, email, name, is_approved, role FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+            row = r.one()
+            return User(id=row[0], google_id=row[1], email=row[2], name=row[3], is_approved=row[4], role=row[5])
+
+    app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_current_user] = _fake_user
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture()
+async def authenticated_client_linked(test_engine, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """AsyncClient authenticated as a user with telegram_chat_id=99999 (inserted after clean_listings)."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+    from app.api.deps import get_current_user  # noqa: PLC0415
+    from app.db import get_session  # noqa: PLC0415
+    from app.main import app  # noqa: PLC0415
+    from app.models import User  # noqa: PLC0415
+
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved, telegram_chat_id, telegram_linked_at)
+            VALUES ('auth-linked-google', 'auth_linked@example.com', 'Auth Linked', TRUE, 99999, now())
+            ON CONFLICT (google_id) DO NOTHING
+        """)
+    )
+    await db_session.commit()
+    row = await db_session.execute(
+        _text("SELECT id FROM users WHERE google_id = 'auth-linked-google'")
+    )
+    user_id = row.scalar_one()
+
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async with factory() as session:
+            yield session
+
+    async def _fake_user() -> User:
+        async with factory() as session:
+            r = await session.execute(
+                _text("SELECT id, google_id, email, name, is_approved, role FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+            row = r.one()
+            return User(id=row[0], google_id=row[1], email=row[2], name=row[3], is_approved=row[4], role=row[5])
+
+    app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_current_user] = _fake_user
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()

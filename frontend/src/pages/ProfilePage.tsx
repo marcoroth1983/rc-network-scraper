@@ -4,6 +4,7 @@ import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
 import { LLMAdminPanel } from '../components/LLMAdminPanel';
+import { TelegramPanel } from '../components/TelegramPanel';
 
 const PLZ_STORAGE_KEY = 'rcn_ref_plz';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -13,6 +14,7 @@ const PLZ_LON_KEY = 'rcn_ref_lon';
 interface Props {
   user: AuthUser;
   onLogout: () => void;
+  onUserReload?: () => void;
 }
 
 function getInitials(email: string): string {
@@ -20,7 +22,7 @@ function getInitials(email: string): string {
   return local.slice(0, 2).toUpperCase();
 }
 
-export function ProfilePage({ user, onLogout }: Props) {
+export function ProfilePage({ user, onLogout, onUserReload }: Props) {
   const navigate = useNavigate();
 
   // On sm+ viewports this page is irrelevant — redirect to home.
@@ -226,6 +228,19 @@ export function ProfilePage({ user, onLogout }: Props) {
           >
             Abmelden
           </button>
+        </div>
+      </div>
+
+      {/* Telegram notification panel — always visible for authenticated users */}
+      <div className="flex items-start justify-center px-4 pt-6">
+        <div className="w-full max-w-sm">
+          <p
+            className="text-xs font-medium mb-3"
+            style={{ color: 'rgba(248, 250, 252, 0.35)' }}
+          >
+            Benachrichtigungen
+          </p>
+          <TelegramPanel user={user} onUserReload={onUserReload ?? (() => {})} />
         </div>
       </div>
 

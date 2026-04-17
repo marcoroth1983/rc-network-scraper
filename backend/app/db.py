@@ -150,6 +150,52 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE llm_models ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
         ))
+        # PLAN-019: Telegram notifications
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT"
+        ))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_users_telegram_chat_id
+            ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL
+        """))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at  TIMESTAMPTZ NOT NULL,
+                used_at     TIMESTAMPTZ
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_telegram_link_tokens_user ON telegram_link_tokens (user_id)"
+        ))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS user_notification_prefs (
+                user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                new_search_results BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_sold           BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_price          BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_deleted        BOOLEAN NOT NULL DEFAULT TRUE,
+                fav_indicator      BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text(
+            "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_is_sold BOOLEAN"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_numeric NUMERIC(10,2)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_indicator VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_scraped_at TIMESTAMPTZ"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.6.0] - 2026-04-17
+
+### Added
+
+**Telegram-Benachrichtigungen (PLAN-019)**
+- Jeder User kann seinen Telegram-Account im Profil verknüpfen (Deep-Link, ein Klick)
+- Digest-Benachrichtigungen zu neuen Treffern gespeicherter Suchen — werden automatisch nach jedem Scrape-Lauf verschickt, via bestehende Notification-Plugin-Architektur
+- Event-Benachrichtigungen bei Statusänderungen an Merklisten-Einträgen: verkauft / Preisänderung / gelöscht / Preisbewertung
+- Per-User-Toggles im Profil für jede der 5 Benachrichtigungsarten
+- Telegram-Subsystem ist komplett deaktiviert wenn `TELEGRAM_BOT_TOKEN` nicht gesetzt ist (Default)
+- Blockierter Bot wird automatisch entknüpft (403-Auto-Unlink nur bei spezifischen Blocked-Fragmenten)
+- Webhook-Security: Shared-Secret-Header-Prüfung, HTTPS-only Deeplink-Validierung im Client
+
+---
+
+## [1.5.0] - 2026-04-16
+
+### Added
+
+- Preisvergleich-Modal: Klick auf Price-Indicator-Badge öffnet eine sortierte Liste aller vergleichbaren Inserate mit Median-Marker, Zustand, Stadt und Preis
+- Funktioniert als Desktop-Popover und mobiles Bottom-Sheet mit Swipe-to-Close
+- Neuer Endpoint `GET /api/listings/{id}/comparables` mit zweistufiger Gruppierung (Modell → Typ-Fallback)
+
+---
+
 ## [1.4.0] - 2026-04-15
 
 ### Added

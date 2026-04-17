@@ -70,6 +70,23 @@ class Settings(BaseSettings):
     LLM_CASCADE_DISABLE_HOURS: float = 1.0    # hours a disabled model stays out
     LLM_CASCADE_REFRESH_HOURS: float = 12.0   # how often to refresh from OpenRouter
 
+    # Telegram notifications — disabled entirely when any required field is empty
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_LINK_TOKEN_TTL_MIN: int = 15
+    TELEGRAM_DIGEST_TOP_N: int = 5
+    TELEGRAM_FAV_SWEEP_INTERVAL_MIN: int = 60
+    TELEGRAM_FAV_DELETED_DAYS: int = 3
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return bool(
+            self.TELEGRAM_BOT_TOKEN
+            and self.TELEGRAM_BOT_USERNAME
+            and self.TELEGRAM_WEBHOOK_SECRET
+        )
+
     @property
     def openrouter_free_models_list(self) -> list[str]:
         """Parse comma-separated OPENROUTER_FREE_MODELS into a list of model IDs."""

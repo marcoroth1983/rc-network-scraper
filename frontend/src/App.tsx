@@ -36,7 +36,7 @@ function PlaneIcon() {
 }
 
 // Inner component so useSearchParams and useNavigate work inside the Router context
-function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () => void }) {
+function AuthenticatedAppInner({ user, logout, reloadUser }: { user: AuthUser; logout: () => void; reloadUser: () => void }) {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -182,7 +182,7 @@ function AuthenticatedAppInner({ user, logout }: { user: AuthUser; logout: () =>
             }
           />
           <Route path="/listings/:id" element={<DirectHitDetailRedirect />} />
-          <Route path="/profile" element={<ProfilePage user={user} onLogout={logout} />} />
+          <Route path="/profile" element={<ProfilePage user={user} onLogout={logout} onUserReload={reloadUser} />} />
           <Route path="/favorites" element={<FavoritesPage />} />
         </Routes>
         {background && (
@@ -250,12 +250,12 @@ function DirectHitDetailRedirect() {
   );
 }
 
-function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => void }) {
-  return <AuthenticatedAppInner user={user} logout={logout} />;
+function AuthenticatedApp({ user, logout, reloadUser }: { user: AuthUser; logout: () => void; reloadUser: () => void }) {
+  return <AuthenticatedAppInner user={user} logout={logout} reloadUser={reloadUser} />;
 }
 
 export default function App() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, reloadUser } = useAuth(); // reloadUser passed to AuthenticatedApp
 
   if (loading) {
     return (
@@ -272,7 +272,7 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <AuthenticatedApp user={user} logout={logout} />
+            <AuthenticatedApp user={user} logout={logout} reloadUser={reloadUser} />
           ) : (
             <Navigate to="/login" replace />
           )

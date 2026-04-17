@@ -184,3 +184,36 @@ export interface LLMModelRow {
   consecutive_failures: number;
   disabled_until: string | null;    // ISO timestamp; countdown if future
 }
+
+export interface ComparableListing {
+  id: number;
+  title: string;
+  url: string;
+  price: string | null;
+  price_numeric: number | null;
+  condition: string | null;
+  city: string | null;
+  posted_at: string | null;
+  is_favorite: boolean;
+}
+
+export interface ComparablesResponse {
+  group_label: string;
+  group_level: 'model' | 'type';
+  median: number;
+  count: number;
+  listings: ComparableListing[];
+}
+
+export interface NotificationPrefs {
+  new_search_results: boolean;
+  fav_sold: boolean;
+  fav_price: boolean;
+  fav_deleted: boolean;
+  fav_indicator: boolean;
+}
+
+export interface TelegramLinkResponse {
+  deeplink: string;
+  expires_at: string;  // ISO 8601
+}

@@ -35,9 +35,10 @@ vi.mock('../api/client', () => ({
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: vi.fn().mockReturnValue({
-    user: { id: 1, email: 'test@example.com', name: 'Test', role: 'member' },
+    user: { id: 1, email: 'test@example.com', name: 'Test', role: 'member', telegram_chat_id: null, telegram_linked_at: null },
     loading: false,
     logout: vi.fn(),
+    reloadUser: vi.fn(),
   }),
 }));
 
@@ -200,9 +201,10 @@ describe('ModalRouting — case 8: PlzBar stays mounted during modal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useAuth).mockReturnValue({
-      user: { id: 1, email: 'test@example.com', name: 'Test', role: 'member' },
+      user: { id: 1, email: 'test@example.com', name: 'Test', role: 'member', telegram_chat_id: null, telegram_linked_at: null },
       loading: false,
       logout: vi.fn(),
+      reloadUser: vi.fn(),
     });
   });
 

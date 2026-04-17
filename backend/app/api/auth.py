@@ -141,7 +141,20 @@ async def auth_me(
         {"uid": user.id},
     )
     await session.commit()
-    return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
+    # Re-fetch to pick up columns not loaded on the User ORM object (telegram fields)
+    row = await session.execute(
+        text("SELECT telegram_chat_id, telegram_linked_at FROM users WHERE id = :uid"),
+        {"uid": user.id},
+    )
+    tg = row.one_or_none()
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "telegram_chat_id": tg[0] if tg else None,
+        "telegram_linked_at": tg[1].isoformat() if tg and tg[1] else None,
+    }
 
 
 @router.post("/auth/logout")

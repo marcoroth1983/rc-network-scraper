@@ -1,15 +1,18 @@
 import type {
   Category,
+  ComparablesResponse,
   ListingsQueryParams,
   ListingDetail,
   ListingSummary,
   LLMModelRow,
+  NotificationPrefs,
   PaginatedResponse,
   PlzResponse,
   SavedSearch,
   SearchCriteria,
   ScrapeLogEntry,
   ScrapeStatus,
+  TelegramLinkResponse,
 } from '../types/api';
 import { ApiError } from '../types/api';
 
@@ -150,4 +153,33 @@ export async function getLLMModels(): Promise<LLMModelRow[]> {
 export async function refreshLLMModels(): Promise<LLMModelRow[]> {
   const res = await fetch('/api/admin/llm-models/refresh', { method: 'POST' });
   return handleResponse<LLMModelRow[]>(res);
+}
+
+export async function getComparables(id: number): Promise<ComparablesResponse> {
+  const res = await fetch(`/api/listings/${id}/comparables`);
+  return handleResponse<ComparablesResponse>(res);
+}
+
+export async function linkTelegram(): Promise<TelegramLinkResponse> {
+  const res = await fetch('/api/telegram/link', { method: 'POST' });
+  return handleResponse<TelegramLinkResponse>(res);
+}
+
+export async function unlinkTelegram(): Promise<{ ok: true }> {
+  const res = await fetch('/api/telegram/unlink', { method: 'POST' });
+  return handleResponse<{ ok: true }>(res);
+}
+
+export async function getNotificationPrefs(): Promise<NotificationPrefs> {
+  const res = await fetch('/api/telegram/prefs');
+  return handleResponse<NotificationPrefs>(res);
+}
+
+export async function updateNotificationPrefs(partial: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+  const res = await fetch('/api/telegram/prefs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(partial),
+  });
+  return handleResponse<NotificationPrefs>(res);
 }
