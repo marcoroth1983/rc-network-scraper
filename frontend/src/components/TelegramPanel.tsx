@@ -105,7 +105,19 @@ export function TelegramPanel({ user, onUserReload }: Props) {
         setActionError('Ungültiger Deeplink vom Server');
         return;
       }
-      window.open(result.deeplink, '_blank', 'noopener,noreferrer');
+      // Synthetic <a> click triggers the browser's native link-navigation
+      // path — including Android's intent system and iOS universal links
+      // that hand off t.me URLs to the installed Telegram app. Using
+      // window.open or location.assign is less reliable on mobile: many
+      // browsers just render the t.me landing page instead of opening
+      // the app.
+      const anchor = document.createElement('a');
+      anchor.href = result.deeplink;
+      anchor.rel = 'noopener noreferrer';
+      anchor.target = '_blank';
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Verknüpfung fehlgeschlagen');
     } finally {
