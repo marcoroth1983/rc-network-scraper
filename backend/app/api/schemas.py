@@ -126,6 +126,28 @@ class PaginatedResponse(BaseModel):
     items: list[ListingSummary]
 
 
+class ComparableListing(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    url: str
+    price: str | None
+    price_numeric: float | None = None
+    condition: str | None = None
+    city: str | None = None
+    posted_at: datetime | None = None
+    is_favorite: bool = False
+
+
+class ComparablesResponse(BaseModel):
+    group_label: str
+    group_level: Literal["model", "type"]
+    median: float
+    count: int
+    listings: list[ComparableListing]
+
+
 class SavedSearchCreate(BaseModel):
     search: str | None = None
     plz: str | None = None
