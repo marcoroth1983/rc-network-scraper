@@ -64,16 +64,16 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
           {listing.title}
         </Link>
 
-        {/* Row 2: PLZ + city on left, distance on right */}
-        <div className="flex justify-between items-center mt-1">
+        {/* Row 2: distance (if set) then location */}
+        <div className="flex items-center gap-1.5 mt-1 min-w-0">
+          {listing.distance_km != null && (
+            <span className="text-xs font-semibold shrink-0" style={{ color: '#6366F1' }}>
+              {listing.distance_km.toFixed(1)} km
+            </span>
+          )}
           <span className="text-xs truncate" style={{ color: 'rgba(248,250,252,0.4)' }}>
             {location || '–'}
           </span>
-          {listing.distance_km != null && (
-            <span className="text-xs font-semibold shrink-0 ml-2" style={{ color: '#6366F1' }}>
-              {listing.distance_km!.toFixed(1)} km
-            </span>
-          )}
         </div>
 
         {/* Row 3: price / sold badge on left, date on right */}
