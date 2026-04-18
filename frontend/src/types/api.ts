@@ -134,6 +134,8 @@ export interface ListingsQueryParams {
   completeness?: string;
   shipping_available?: boolean;
   price_indicator?: string;
+  model_type?: string;
+  model_subtype?: string;
 }
 
 export class ApiError extends Error {
