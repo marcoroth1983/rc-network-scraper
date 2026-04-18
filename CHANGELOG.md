@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.8.0] - 2026-04-18
+
+### Changed
+
+**LLM-Extraktor: kontrolliertes Vokabular für Modelltypen (PLAN-021)**
+- `model_type` und `model_subtype` werden jetzt auf feste Erlaubt-Listen geclampt — unbekannte LLM-Werte landen automatisch als `null`
+- LLM-Prompt listet exakte Subtypen je Kategorie auf statt offener Beispiele
+- Bestandsdaten (3500+ Listings) einmalig normalisiert: `high-wing`/`highwing` → `hochdecker`, `3D` → `3d` etc.
+- Suche durchsucht jetzt Titel, Hersteller, Modellname, Typ und Subtyp — nicht mehr Freitext-Beschreibung
+
+---
+
+## [1.7.0] - 2026-04-18
+
+### Changed
+
+**Preisvergleich: Similarity-Ranking statt starrer Gruppen (PLAN-020)**
+- Comparables-Modal zeigt jetzt nach Ähnlichkeit sortierte Inserate statt einer fixen Typ-Gruppe
+- Preisindikator (deal/fair/expensive) wird nur noch gesetzt wenn das Vergleichscluster homogen genug ist — bewusste Stille für heterogene Daten
+- Pro Inserat wird die Ähnlichkeitsstufe angezeigt (sehr ähnlich / ähnlich / entfernt)
+- Median-Anzeige im Modal erscheint nur bei homogenem Cluster, sonst ehrlicher leerer Zustand
+- Preis-Indikator-Job läuft jetzt unabhängig von der LLM-Analyse alle 15 Minuten
+
+---
+
 ## [1.6.0] - 2026-04-17
 
 ### Added

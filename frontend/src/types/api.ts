@@ -195,12 +195,14 @@ export interface ComparableListing {
   city: string | null;
   posted_at: string | null;
   is_favorite: boolean;
+  similarity_score: number;
 }
 
+export type MatchQuality = "homogeneous" | "heterogeneous" | "insufficient";
+
 export interface ComparablesResponse {
-  group_label: string;
-  group_level: 'model' | 'type';
-  median: number;
+  match_quality: MatchQuality;
+  median: number | null;
   count: number;
   listings: ComparableListing[];
 }

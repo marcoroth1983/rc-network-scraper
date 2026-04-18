@@ -2,11 +2,16 @@
 
 import asyncio
 import logging
+from collections import defaultdict
 
 from sqlalchemy import select, update
 from sqlalchemy import text
 
 from app.analysis.extractor import analyze_listing
+from app.analysis.similarity import (
+    score as similarity_score,
+    assess_homogeneity,
+)
 from app.config import settings
 from app.db import AsyncSessionLocal
 from app.models import Listing
@@ -82,72 +87,75 @@ async def run_analysis_job() -> None:
 
         await asyncio.sleep(DELAY_SECONDS)
 
-    await recalculate_price_indicators()
-    logger.info("Analysis job: price indicators recalculated")
-
 
 async def recalculate_price_indicators() -> None:
-    """Assign price bands to active non-sold listings using two-level grouping.
+    """Set price indicator only when the per-listing similarity cluster is homogeneous.
 
-    Level 1: manufacturer + model_name (min 5 listings)
-    Level 2: model_type + model_subtype + completeness (min 5 listings)
-    Bands: deal < median*0.75 <= fair <= median*1.25 < expensive
+    For each active priced listing with a non-NULL model_type:
+      - Build candidate pool from same model_type.
+      - Score + rank.
+      - Assess homogeneity of top-20.
+      - Set deal/fair/expensive only when homogeneous; otherwise NULL.
+    Listings without model_type get price_indicator = NULL (unscorable).
     """
     async with AsyncSessionLocal() as session:
-        await session.execute(text("""
-            WITH medians_l1 AS (
-                SELECT manufacturer, model_name,
-                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median,
-                    COUNT(*) AS cnt
-                FROM listings
-                WHERE price_numeric IS NOT NULL
-                  AND is_sold = false
-                  AND manufacturer IS NOT NULL
-                  AND model_name IS NOT NULL
-                GROUP BY manufacturer, model_name
-                HAVING COUNT(*) >= 5
-            ),
-            medians_l2 AS (
-                SELECT model_type, model_subtype, completeness,
-                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price_numeric) AS median,
-                    COUNT(*) AS cnt
-                FROM listings
-                WHERE price_numeric IS NOT NULL
-                  AND is_sold = false
-                  AND model_type IS NOT NULL
-                  AND model_subtype IS NOT NULL
-                  AND completeness IS NOT NULL
-                GROUP BY model_type, model_subtype, completeness
-                HAVING COUNT(*) >= 5
-            ),
-            new_indicators AS (
-                SELECT
-                    l.id,
-                    CASE
-                        WHEN m1.median IS NOT NULL AND l.price_numeric <= m1.median * 0.75 THEN 'deal'
-                        WHEN m1.median IS NOT NULL AND l.price_numeric >= m1.median * 1.25 THEN 'expensive'
-                        WHEN m1.median IS NOT NULL THEN 'fair'
-                        WHEN m2.median IS NOT NULL AND l.price_numeric <= m2.median * 0.75 THEN 'deal'
-                        WHEN m2.median IS NOT NULL AND l.price_numeric >= m2.median * 1.25 THEN 'expensive'
-                        WHEN m2.median IS NOT NULL THEN 'fair'
-                        ELSE NULL
-                    END AS indicator,
-                    COALESCE(m1.median, m2.median) AS median,
-                    COALESCE(m1.cnt, m2.cnt)::integer AS cnt
-                FROM listings l
-                LEFT JOIN medians_l1 m1
-                    ON m1.manufacturer = l.manufacturer AND m1.model_name = l.model_name
-                LEFT JOIN medians_l2 m2
-                    ON m2.model_type = l.model_type
-                   AND m2.model_subtype = l.model_subtype
-                   AND m2.completeness = l.completeness
-                WHERE l.price_numeric IS NOT NULL AND l.is_sold = false
+        all_rows = (await session.execute(
+            select(Listing).where(
+                Listing.is_sold == False,       # noqa: E712
+                Listing.price_numeric.is_not(None),
             )
-            UPDATE listings
-            SET price_indicator = ni.indicator,
-                price_indicator_median = ni.median,
-                price_indicator_count = ni.cnt
-            FROM new_indicators ni
-            WHERE listings.id = ni.id
-        """))
+        )).scalars().all()
+
+    by_type: dict[str | None, list[Listing]] = defaultdict(list)
+    for r in all_rows:
+        by_type[r.model_type].append(r)
+
+    updates: list[tuple[int, str | None, float | None, int]] = []
+
+    for base in all_rows:
+        if not base.model_type:
+            updates.append((base.id, None, None, 0))
+            continue
+
+        candidates = [c for c in by_type[base.model_type] if c.id != base.id]
+        scored = [(c, similarity_score(base, c)) for c in candidates]
+        scored = [(c, s) for c, s in scored if s > 0.0]
+        scored.sort(key=lambda t: (-t[1], float(t[0].price_numeric or 0)))
+        top = scored[:20]
+
+        quality, median_val = assess_homogeneity(base, top)
+
+        if quality != "homogeneous" or median_val is None:
+            updates.append((base.id, None, None, len(top)))
+            continue
+
+        base_p = float(base.price_numeric)
+        if base_p <= median_val * 0.75:
+            ind = "deal"
+        elif base_p >= median_val * 1.25:
+            ind = "expensive"
+        else:
+            ind = "fair"
+        updates.append((base.id, ind, median_val, len(top)))
+
+    # Bulk update in chunks via executemany-style loop. 3500 rows × ~1 ms round-trip
+    # is acceptable for a 15-min job.
+    async with AsyncSessionLocal() as session:
+        for lid, ind, med, cnt in updates:
+            await session.execute(
+                text("""
+                    UPDATE listings SET
+                        price_indicator = :ind,
+                        price_indicator_median = :med,
+                        price_indicator_count = :cnt
+                    WHERE id = :lid
+                """),
+                {"lid": lid, "ind": ind, "med": med, "cnt": cnt},
+            )
         await session.commit()
+
+    logger.info(
+        "price_indicator recalc: processed %d listings, %d homogeneous",
+        len(updates),
+        sum(1 for _, ind, _, _ in updates if ind is not None),
+    )

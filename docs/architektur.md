@@ -115,3 +115,23 @@ rc-markt-scout/
 - Cron job or background task for periodic scraping
 - **Private access only** — no public exposure, firewall/VPN restricted to owner
 - No auth layer needed (single user behind network restriction)
+
+## Preisvergleich & Similarity-Ranking
+
+**Entscheidung:** Attribut-gewichteter Scorer statt starrer L1/L2-Gruppen (Manufacturer + Model vs. Fallback-Typ-Gruppe). Starre Gruppen erzeugten irreführende Mediane bei heterogenem Cluster (gemessen: 60× Preisspanne in einer L2-Gruppe).
+
+**Zentrale Module:**
+- `backend/app/analysis/similarity.py` — `score()` (Attribute-weighted scoring zwischen zwei Listings) + `assess_homogeneity()` (entscheidet ob Top-N homogen genug für einen Median)
+- `backend/app/api/routes.py::get_comparables` — nutzt `score()` + `assess_homogeneity()` für die API-Response
+- `backend/app/analysis/job.py::recalculate_price_indicators` — nutzt dieselben Funktionen für den Batch-Indikator-Job
+
+**Scoring-Gewichte** (`SimilarityWeights`, tunable an einer Stelle):
+- `model_name`: 5.0, `manufacturer`: 3.0, `model_subtype`: 2.0, `completeness`: 2.0, `model_type`: 1.0
+- Wingspan-Penalty: 0.002 per mm Differenz (500 mm → −1.0)
+
+**Homogenitäts-Schwellen** (tunable in `similarity.py`):
+- `MIN_TOP_SIZE = 4` — weniger Kandidaten → `insufficient`
+- `MIN_ATTR_AGREEMENT = 0.7` — mind. 70 % des Top-N müssen das Base-Attribut teilen
+- `MAX_PRICE_SPREAD = 4.0` — max/min-Preis-Ratio im Top-N
+
+**Scheduling:** Eigenständiger APScheduler-Job alle 15 Minuten, unabhängig von der LLM-Analyse-Queue. Indikator wird **nur bei homogenem Cluster** gesetzt — bewusste Stille-by-default. Listings ohne `model_type` bekommen keinen Indikator (kein sinnvoller Kandidaten-Pool).

@@ -1,7 +1,6 @@
 """REST API endpoints."""
 
 import logging
-import statistics
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -9,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analysis.similarity import (
+    score as similarity_score,
+    assess_homogeneity,
+)
 from app.api.admin import router as admin_router
 from app.api.telegram import router as telegram_api_router
 from app.api.deps import get_current_user
@@ -284,10 +287,11 @@ async def get_listings_by_author(
 @router.get("/listings/{listing_id}/comparables", response_model=ComparablesResponse)
 async def get_comparables(
     listing_id: int,
+    limit: int = 20,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> ComparablesResponse:
-    """Return the comparable listings used to compute the price indicator for a given listing."""
+    """Return the top-N most similar listings, ranked by attribute similarity."""
     result = await session.execute(select(Listing).where(Listing.id == listing_id))
     listing = result.scalar_one_or_none()
     if listing is None:
@@ -297,70 +301,48 @@ async def get_comparables(
 
     base_q = (
         select(Listing)
-        .where(Listing.is_sold == False)          # noqa: E712
+        .where(Listing.is_sold == False)  # noqa: E712
         .where(Listing.price_numeric.is_not(None))
         .where(Listing.id != listing_id)
     )
+    if listing.model_type:
+        base_q = base_q.where(Listing.model_type == listing.model_type)
 
-    rows: list[Listing]
-    group_label: str
-    group_level: Literal["model", "type"]
+    candidates = list((await session.execute(base_q)).scalars().all())
 
-    # Mirror the SQL job's two-level grouping: L1 requires ≥5 members, L2 is fallback.
-    used_level: str | None = None
+    scored = [(c, similarity_score(listing, c)) for c in candidates]
+    # Filter > 0.0: without any attribute match, the comparison is not meaningful.
+    # Negative scores (pure wingspan diff without attribute match) are discarded —
+    # with few candidates this results in 'insufficient', which is more honest than bad comparisons.
+    scored = [(c, s) for c, s in scored if s > 0.0]
+    # Deterministic tie-break: score desc, price asc, id asc (stable for snapshot tests).
+    scored.sort(key=lambda t: (-t[1], float(t[0].price_numeric or 0), t[0].id))
+    top = scored[:limit]
 
-    if listing.manufacturer and listing.model_name:
-        l1_q = base_q.where(
-            Listing.manufacturer == listing.manufacturer,
-            Listing.model_name == listing.model_name,
-        ).order_by(Listing.price_numeric.asc())
-        res = await session.execute(l1_q)
-        l1_rows = list(res.scalars().all())
-        if len(l1_rows) >= 4:  # ≥4 others = ≥5 total including current listing
-            rows = l1_rows
-            group_label = f"{listing.manufacturer} {listing.model_name}"
-            group_level = "model"
-            used_level = "l1"
-
-    if used_level is None and listing.model_type and listing.model_subtype and listing.completeness:
-        l2_q = base_q.where(
-            Listing.model_type == listing.model_type,
-            Listing.model_subtype == listing.model_subtype,
-            Listing.completeness == listing.completeness,
-        ).order_by(Listing.price_numeric.asc())
-        res = await session.execute(l2_q)
-        l2_rows = list(res.scalars().all())
-        if len(l2_rows) >= 4:  # ≥4 others = ≥5 total including current listing
-            rows = l2_rows
-            group_label = f"{listing.model_type} {listing.model_subtype} {listing.completeness}"
-            group_level = "type"
-            used_level = "l2"
-
-    if used_level is None:
-        return ComparablesResponse(
-            group_label="",
-            group_level="model",
-            median=listing.price_indicator_median or 0.0,
-            count=0,
-            listings=[],
-        )
-
-    prices = [float(r.price_numeric) for r in rows if r.price_numeric is not None]
-    median_val = statistics.median(prices) if prices else (listing.price_indicator_median or 0.0)
-
-    items: list[ComparableListing] = []
-    for row in rows:
-        comp = ComparableListing.model_validate(row)
-        if row.id in fav_ids:
-            comp = comp.model_copy(update={"is_favorite": True})
-        items.append(comp)
+    quality, median_val = assess_homogeneity(listing, top)
 
     return ComparablesResponse(
-        group_label=group_label,
-        group_level=group_level,
+        match_quality=quality,
         median=median_val,
-        count=len(items),
-        listings=items,
+        count=len(top),
+        listings=[_to_comparable(c, s, fav_ids) for c, s in top],
+    )
+
+
+def _to_comparable(row: Listing, score_val: float, fav_ids: set[int]) -> ComparableListing:
+    # Construct via explicit kwargs — model_validate() would fail on similarity_score
+    # which is not an ORM attribute.
+    return ComparableListing(
+        id=row.id,
+        title=row.title,
+        url=row.url,
+        price=row.price,
+        price_numeric=float(row.price_numeric) if row.price_numeric is not None else None,
+        condition=row.condition,
+        city=row.city,
+        posted_at=row.posted_at,
+        is_favorite=row.id in fav_ids,
+        similarity_score=round(score_val, 2),
     )
 
 

@@ -2,12 +2,34 @@ import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useComparables } from '../hooks/useComparables';
+import type { MatchQuality } from '../types/api';
 
 interface Props {
   listingId: number | null;
   currentListingId: number;
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
+}
+
+/** Similarity label based on index position in the sorted Top-N list (3 equal tiers). */
+function similarityLabel(idx: number, count: number): string {
+  if (idx < count / 3) return 'sehr ähnlich';
+  if (idx < (2 * count) / 3) return 'ähnlich';
+  return 'entfernt';
+}
+
+/** Build the header subtitle text based on match quality. */
+function buildSubtitle(matchQuality: MatchQuality, count: number, median: number | null): string {
+  switch (matchQuality) {
+    case 'homogeneous':
+      return median !== null
+        ? `${count} ähnliche Inserate · Median ${median.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
+        : `${count} ähnliche Inserate`;
+    case 'heterogeneous':
+      return `${count} ähnliche Inserate · Preisspanne zu groß für Median`;
+    case 'insufficient':
+      return `Zu wenige vergleichbare Inserate (${count})`;
+  }
 }
 
 export default function ComparablesModal({ listingId, currentListingId, anchorRef, onClose }: Props) {
@@ -53,9 +75,10 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
 
   if (!isOpen) return null;
 
-  const medianValue = data?.median ?? 0;
+  // Median line: find the last index where price_numeric <= median, only when median is set.
+  const medianValue = data?.median ?? null;
   let medianInsertIdx = -1;
-  if (data) {
+  if (data && medianValue !== null) {
     for (let i = data.listings.length - 1; i >= 0; i--) {
       const p = data.listings[i].price_numeric;
       if (p !== null && p <= medianValue) { medianInsertIdx = i; break; }
@@ -74,10 +97,9 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
     <div className="px-4 py-3 flex items-center justify-between shrink-0"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
       <div>
-        <p className="text-xs font-semibold" style={{ color: '#F8FAFC' }}>{data.group_label}</p>
+        <p className="text-xs font-semibold" style={{ color: '#F8FAFC' }}>Preisvergleich</p>
         <p className="text-[10px]" style={{ color: 'rgba(248,250,252,0.4)' }}>
-          {data.count} {data.count === 1 ? 'Inserat' : 'Inserate'}{' · '}Median{' '}
-          {data.median.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
+          {buildSubtitle(data.match_quality, data.count, data.median)}
         </p>
       </div>
       <button ref={closeRef} onClick={onClose} aria-label="Schließen"
@@ -109,11 +131,12 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
       )}
       {data?.listings.map((item, idx) => (
         <div key={item.id}>
-          {idx === medianInsertIdx && (
+          {/* Median divider line — only rendered when median is set (homogeneous cluster) */}
+          {medianInsertIdx >= 0 && idx === medianInsertIdx && medianValue !== null && (
             <div className="flex items-center gap-2 px-4 py-1">
               <div className="flex-1 h-px" style={{ background: 'rgba(167,139,250,0.35)' }} />
               <span className="text-[10px] font-semibold" style={{ color: '#A78BFA' }}>
-                Median {data.median.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
+                Median {medianValue.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
               </span>
               <div className="flex-1 h-px" style={{ background: 'rgba(167,139,250,0.35)' }} />
             </div>
@@ -132,6 +155,11 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
               {item.title}
             </span>
             <div className="flex items-center gap-2 shrink-0">
+              {/* Per-listing similarity tier label */}
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(248,250,252,0.5)' }}>
+                {similarityLabel(idx, data.count)}
+              </span>
               {item.condition && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full"
                   style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(248,250,252,0.5)' }}>

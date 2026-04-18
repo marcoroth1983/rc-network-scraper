@@ -132,18 +132,22 @@ class ComparableListing(BaseModel):
     id: int
     title: str
     url: str
-    price: str | None
+    price: str | None = None
     price_numeric: float | None = None
     condition: str | None = None
     city: str | None = None
     posted_at: datetime | None = None
     is_favorite: bool = False
+    similarity_score: float = 0.0  # descending sorted; default needed because ORM does not have this field
 
 
 class ComparablesResponse(BaseModel):
-    group_label: str
-    group_level: Literal["model", "type"]
-    median: float
+    # Semantics change: no rigid group anymore, but Top-N ranked by similarity.
+    match_quality: Literal["homogeneous", "heterogeneous", "insufficient"]
+    # homogeneous:     Top-N similar enough to each other → median set, UI shows it
+    # heterogeneous:   Top-N spread too wide → median = None
+    # insufficient:    < 4 scorable candidates → median = None, listings may contain 1–3 partial matches
+    median: float | None
     count: int
     listings: list[ComparableListing]
 
