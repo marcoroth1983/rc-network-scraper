@@ -5,6 +5,8 @@ import { ApiError } from '../types/api';
 import { getBackground } from '../lib/modalLocation';
 import { readFiltersFromParams, writeFiltersToParams } from '../hooks/useListings';
 import type { ListingsFilter } from '../hooks/useListings';
+import { MODEL_SUBTYPES, MODEL_TYPE_LABELS, availableModelTypes } from '../constants/vocabulary';
+import type { ModelType } from '../constants/vocabulary';
 
 const PLZ_STORAGE_KEY = 'rcn_ref_plz';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -170,7 +172,8 @@ export default function PlzBar({
   }
 
   const hasValidPlz = !!filter.plz;
-  const hasActiveFilterBadge = filter.category !== 'all' || !!filter.max_distance || !!filter.price_min || !!filter.price_max;
+  const hasActiveFilterBadge = filter.category !== 'all' || !!filter.max_distance || !!filter.price_min || !!filter.price_max ||
+    filter.shipping_available === true || !!filter.price_indicator || !!filter.model_type || !!filter.model_subtype;
   const emailInitial = userEmail.charAt(0).toUpperCase();
 
   const inputClass =
@@ -446,6 +449,105 @@ export default function PlzBar({
                   </div>
                 </div>
               </div>
+
+              {divider}
+
+              {/* Versand */}
+              <div className="px-4 pt-3 pb-3">
+                <p className={sectionLabel} style={sectionLabelColor}>Versand</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${
+                      filter.shipping_available === true
+                        ? 'bg-aurora-indigo text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                    onClick={() => writeFiltersToParams({
+                      ...filter,
+                      shipping_available: filter.shipping_available === true ? undefined : true,
+                      page: 1,
+                    }, setSearchParams)}
+                  >
+                    Versand möglich
+                  </button>
+                </div>
+              </div>
+
+              {divider}
+
+              {/* Preis-Bewertung */}
+              <div className="px-4 pt-3 pb-3">
+                <p className={sectionLabel} style={sectionLabelColor}>Preis-Bewertung</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${
+                      filter.price_indicator === 'deal'
+                        ? 'bg-aurora-indigo text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                    onClick={() => writeFiltersToParams({
+                      ...filter,
+                      price_indicator: filter.price_indicator === 'deal' ? undefined : 'deal',
+                      page: 1,
+                    }, setSearchParams)}
+                  >
+                    Nur Günstige
+                  </button>
+                </div>
+              </div>
+
+              {/* Modelltyp + Subtyp — only shown when category implies model types */}
+              {availableModelTypes(filter.category).length > 0 && (
+                <>
+                  {divider}
+                  <div className="px-4 pt-3 pb-3">
+                    <p className={sectionLabel} style={sectionLabelColor}>Modelltyp</p>
+                    <select
+                      value={filter.model_type ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        writeFiltersToParams({
+                          ...filter,
+                          model_type: val || undefined,
+                          model_subtype: undefined,
+                          page: 1,
+                        }, setSearchParams);
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition appearance-none cursor-pointer`}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(248,250,252,0.85)' }}
+                      aria-label="Modelltyp"
+                    >
+                      <option value="" style={{ background: '#0f0f23' }}>Alle Typen</option>
+                      {availableModelTypes(filter.category).map((t) => (
+                        <option key={t} value={t} style={{ background: '#0f0f23' }}>
+                          {MODEL_TYPE_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="px-4 pt-0 pb-4">
+                    <p className={sectionLabel} style={sectionLabelColor}>Subtyp</p>
+                    <select
+                      value={filter.model_subtype ?? ''}
+                      onChange={(e) => writeFiltersToParams({ ...filter, model_subtype: e.target.value || undefined, page: 1 }, setSearchParams)}
+                      disabled={!filter.model_type}
+                      className={`w-full px-3 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition appearance-none cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed`}
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(248,250,252,0.85)' }}
+                      aria-label="Subtyp"
+                    >
+                      <option value="" style={{ background: '#0f0f23' }}>Alle Subtypen</option>
+                      {filter.model_type &&
+                        MODEL_SUBTYPES[filter.model_type as ModelType]?.map((s) => (
+                          <option key={s} value={s} style={{ background: '#0f0f23' }}>
+                            {s}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
