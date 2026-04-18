@@ -52,6 +52,8 @@ export async function getListings(params: ListingsQueryParams): Promise<Paginate
   if (params.completeness) qs.set('completeness', params.completeness);
   if (params.shipping_available != null) qs.set('shipping_available', String(params.shipping_available));
   if (params.price_indicator) qs.set('price_indicator', params.price_indicator);
+  if (params.model_type) qs.set('model_type', params.model_type);
+  if (params.model_subtype) qs.set('model_subtype', params.model_subtype);
 
   const res = await fetch(`/api/listings?${qs.toString()}`);
   return handleResponse<PaginatedResponse>(res);
