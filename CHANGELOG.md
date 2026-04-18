@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.1] - 2026-04-19
+
+### Fixed
+
+**Doppelte Suchleiste auf Desktop entfernt**
+- v2.1.0 hatte im FilterPanel eine eigene Desktop-Filterleiste hinzugefügt, die parallel zur bestehenden PlzBar angezeigt wurde — zwei Suchfelder übereinander
+- FilterPanel ist jetzt wieder mobile-only (Sticky-Suchleiste + Bottom-Sheet)
+- PlzBar ist auf Desktop die einzige Suchleiste und wurde um die fehlenden Filter erweitert: Versand, Preis-Bewertung, Modelltyp, Subtyp — damit volle Filter-Parität Desktop ↔ Mobile
+- Active-Filter-Badge im Desktop-Filter-Button berücksichtigt jetzt alle Filter
+
+---
+
 ## [2.1.0] - 2026-04-18
 
 ### Added
