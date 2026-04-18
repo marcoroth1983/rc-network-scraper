@@ -58,6 +58,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     completeness: urlFilter.completeness,
     shipping_available: urlFilter.shipping_available,
     price_indicator: urlFilter.price_indicator,
+    model_type: urlFilter.model_type,
+    model_subtype: urlFilter.model_subtype,
   });
 
   // Detect filter dimension changes (anything except page).
@@ -75,7 +77,9 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     prevFilter.drive_type !== urlFilter.drive_type ||
     prevFilter.completeness !== urlFilter.completeness ||
     prevFilter.shipping_available !== urlFilter.shipping_available ||
-    prevFilter.price_indicator !== urlFilter.price_indicator;
+    prevFilter.price_indicator !== urlFilter.price_indicator ||
+    prevFilter.model_type !== urlFilter.model_type ||
+    prevFilter.model_subtype !== urlFilter.model_subtype;
 
   if (filterChanged) {
     filterRef.current = {
@@ -91,6 +95,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       completeness: urlFilter.completeness,
       shipping_available: urlFilter.shipping_available,
       price_indicator: urlFilter.price_indicator,
+      model_type: urlFilter.model_type,
+      model_subtype: urlFilter.model_subtype,
     };
     // Reset synchronously during render — safe because we haven't committed yet
     // and this is logically equivalent to getDerivedStateFromProps.
@@ -103,7 +109,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   }
 
   // Stable snapshot of filter dimensions for the fetch effect.
-  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator } = filterRef.current;
+  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator, model_type, model_subtype } = filterRef.current;
 
   useEffect(() => {
     // Fetch gate: no localStorage value means first visit — wait for modal selection.
@@ -143,6 +149,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       completeness,
       shipping_available,
       price_indicator,
+      model_type,
+      model_subtype,
     })
       .then((res) => {
         if (cancelled) return;
@@ -166,7 +174,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     };
     // `items.length` is intentionally included so hasMore calculation is correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator]);
+  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator, model_type, model_subtype]);
 
   const loadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -229,6 +237,8 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     completeness: urlFilter.completeness,
     shipping_available: urlFilter.shipping_available,
     price_indicator: urlFilter.price_indicator,
+    model_type: urlFilter.model_type,
+    model_subtype: urlFilter.model_subtype,
   };
 
   return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore };
