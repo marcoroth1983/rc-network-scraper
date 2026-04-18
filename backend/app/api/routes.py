@@ -21,6 +21,7 @@ from app.api.schemas import (
     SavedSearchCreate, SavedSearchResponse, SavedSearchUpdate,
     ScrapeSummary, ScrapeStatus, ScrapeLogEntry,
 )
+from app.analysis.vocabulary import MODEL_TYPES
 from app.config import CATEGORIES, CATEGORY_KEYS
 from app.db import get_session
 from app.models import Listing, PlzGeodata, SavedSearch, SearchNotification, User, UserFavorite
@@ -148,6 +149,8 @@ async def list_listings(
         raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
     if price_min is not None and price_max is not None and price_min > price_max:
         raise HTTPException(status_code=400, detail="price_min must be <= price_max")
+    if model_type is not None and model_type not in MODEL_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unknown model_type: '{model_type}'")
 
     fav_ids = await _get_favorite_listing_ids(current_user.id, session)
 

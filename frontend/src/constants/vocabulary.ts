@@ -11,9 +11,9 @@ export const MODEL_SUBTYPES: Record<ModelType, string[]> = {
     "hochdecker", "tiefdecker", "mitteldecker", "delta", "biplane",
     "aerobatic", "kit", "hotliner", "funflyer", "speed", "pylon"],
   helicopter: ["700", "580", "600", "550", "500", "450", "420", "380", "scale"],
+  multicopter: ["quadcopter", "hexacopter", "fpv"],
   glider: ["thermik", "hotliner", "f3b", "f3k", "f3j", "f5j", "f5b", "f5k",
     "f3f", "f3l", "hangflug", "dlg", "scale", "motorglider"],
-  multicopter: ["quadcopter", "hexacopter", "fpv"],
   boat: ["rennboot", "segelboot", "schlepper", "submarine", "yacht"],
   car: ["buggy", "monstertruck", "crawler", "tourenwagen", "truggy", "drift"],
 };
