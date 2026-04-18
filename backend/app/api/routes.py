@@ -131,6 +131,7 @@ async def list_listings(
     price_max: float | None = Query(default=None, ge=0),
     drive_type: str | None = Query(default=None),
     completeness: str | None = Query(default=None),
+    model_type: str | None = Query(default=None),
     model_subtype: str | None = Query(default=None),
     shipping_available: bool | None = Query(default=None),
     price_indicator: str | None = Query(default=None),
@@ -169,6 +170,8 @@ async def list_listings(
         stmt = stmt.where(Listing.drive_type == drive_type)
     if completeness:
         stmt = stmt.where(Listing.completeness == completeness)
+    if model_type:
+        stmt = stmt.where(Listing.model_type == model_type)
     if model_subtype:
         stmt = stmt.where(Listing.model_subtype == model_subtype)
     if shipping_available is not None:
