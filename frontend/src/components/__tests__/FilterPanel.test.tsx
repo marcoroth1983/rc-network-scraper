@@ -54,12 +54,16 @@ describe('FilterPanel', () => {
 
   it('max_distance input is disabled when PLZ is empty', () => {
     renderPanel();
-    expect(screen.getByLabelText(/Max.*Entfernung/i)).toBeDisabled();
+    screen.getAllByLabelText(/Max.*Entfernung/i).forEach((el) => {
+      expect(el).toBeDisabled();
+    });
   });
 
   it('max_distance input is enabled when filter.plz is set', () => {
     renderPanel({ ...defaultFilter, plz: '97070' });
-    expect(screen.getByLabelText(/Max.*Entfernung/i)).not.toBeDisabled();
+    screen.getAllByLabelText(/Max.*Entfernung/i).forEach((el) => {
+      expect(el).not.toBeDisabled();
+    });
   });
 
   it('distance sort options show PLZ required label when hasValidPlz is false', () => {

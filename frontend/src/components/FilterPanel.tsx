@@ -306,28 +306,30 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
             );
           })()}
 
-          {/* Subtyp */}
-          <div>
-            <p className={sectionLabel} style={sectionLabelColor}>Subtyp</p>
-            <select
-              value={filter.model_subtype ?? ''}
-              onChange={(e) => {
-                onChange({ ...filter, model_subtype: e.target.value || undefined, page: 1 });
-              }}
-              disabled={!filter.model_type}
-              className={`w-full px-4 py-3 rounded-xl ${inputClass} appearance-none cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed`}
-              style={inputStyle}
-              aria-label="Subtyp"
-            >
-              <option value="" style={{ background: '#0f0f23' }}>Alle Subtypen</option>
-              {filter.model_type &&
-                MODEL_SUBTYPES[filter.model_type as ModelType]?.map((s) => (
-                  <option key={s} value={s} style={{ background: '#0f0f23' }}>
-                    {s}
-                  </option>
-                ))}
-            </select>
-          </div>
+          {/* Subtyp — only shown when Modelltyp section is visible */}
+          {availableModelTypes(filter.category).length > 0 && (
+            <div>
+              <p className={sectionLabel} style={sectionLabelColor}>Subtyp</p>
+              <select
+                value={filter.model_subtype ?? ''}
+                onChange={(e) => {
+                  onChange({ ...filter, model_subtype: e.target.value || undefined, page: 1 });
+                }}
+                disabled={!filter.model_type}
+                className={`w-full px-4 py-3 rounded-xl ${inputClass} appearance-none cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed`}
+                style={inputStyle}
+                aria-label="Subtyp"
+              >
+                <option value="" style={{ background: '#0f0f23' }}>Alle Subtypen</option>
+                {filter.model_type &&
+                  MODEL_SUBTYPES[filter.model_type as ModelType]?.map((s) => (
+                    <option key={s} value={s} style={{ background: '#0f0f23' }}>
+                      {s}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
         </div>
       </div>
