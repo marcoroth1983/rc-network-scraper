@@ -2,7 +2,7 @@
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -27,6 +27,7 @@ from app.analysis.job import run_analysis_job, recalculate_price_indicators
 from app.analysis import model_cascade
 from app.db import AsyncSessionLocal
 from app.scrape_runner import start_update_job, start_recheck_job
+from app.scraper.ebay_orchestrator import run_ebay_fetch
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,14 @@ async def lifespan(app: FastAPI):
         trigger="interval",
         minutes=30,
         id="auto_update",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_ebay_fetch,
+        "interval",
+        minutes=30,
+        id="auto_ebay_fetch",
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=3),
         replace_existing=True,
     )
     scheduler.add_job(
@@ -199,7 +208,7 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Scheduler started — update every 30min, recheck every 1h, "
         "analysis every 2min, llm_cascade_refresh every %gh, "
-        "price_indicator_recalc every 15min",
+        "price_indicator_recalc every 15min, ebay_fetch every 30min",
         settings.LLM_CASCADE_REFRESH_HOURS,
     )
 

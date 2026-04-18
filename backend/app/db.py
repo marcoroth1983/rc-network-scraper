@@ -196,6 +196,13 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_scraped_at TIMESTAMPTZ"
         ))
+        # PLAN-023: eBay second source
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'rcnetwork'"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_listings_source ON listings (source)"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

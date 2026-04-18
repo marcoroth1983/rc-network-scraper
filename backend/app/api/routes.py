@@ -134,6 +134,7 @@ async def list_listings(
     completeness: str | None = Query(default=None),
     model_type: str | None = Query(default=None),
     model_subtype: str | None = Query(default=None),
+    source: Literal["rcnetwork", "ebay"] | None = Query(default=None),
     shipping_available: bool | None = Query(default=None),
     price_indicator: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
@@ -177,6 +178,8 @@ async def list_listings(
         stmt = stmt.where(Listing.model_type == model_type)
     if model_subtype:
         stmt = stmt.where(Listing.model_subtype == model_subtype)
+    if source:
+        stmt = stmt.where(Listing.source == source)
     if shipping_available is not None:
         stmt = stmt.where(Listing.shipping_available == shipping_available)
     if price_indicator:

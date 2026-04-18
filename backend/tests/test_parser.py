@@ -113,3 +113,25 @@ class TestTagExtraction:
         """tags is an empty list when no js-tagList is present."""
         result = parse_detail(_load("detail_missing_price.html"))
         assert result["tags"] == []
+
+
+class TestSoldDetection:
+    def test_sold_via_title(self) -> None:
+        """is_sold is True when the thread title contains [VERKAUFT]."""
+        result = parse_detail(_load("detail_sold_title.html"))
+        assert result["is_sold"] is True
+
+    def test_sold_via_reply(self) -> None:
+        """is_sold is True when a reply post contains 'verkauft'."""
+        result = parse_detail(_load("detail_sold_reply.html"))
+        assert result["is_sold"] is True
+
+    def test_sold_via_first_post_body(self) -> None:
+        """is_sold is True when the seller edits their first post to contain 'VERKAUFT'."""
+        result = parse_detail(_load("detail_sold_firstpost.html"))
+        assert result["is_sold"] is True
+
+    def test_not_sold_when_no_indicator(self) -> None:
+        """is_sold is False for a normal active listing."""
+        result = parse_detail(_load("detail_complete.html"))
+        assert result["is_sold"] is False

@@ -1,0 +1,21 @@
+{
+  "total": 1,
+  "itemSummaries": [
+    {
+      "itemId": "v1|123456789|0",
+      "title": "Robbe Funtana 125 RC Flugzeug gebraucht",
+      "price": { "value": "149.00", "currency": "EUR" },
+      "condition": "Used",
+      "itemCreationDate": "2025-04-10T10:30:00.000Z",
+      "itemWebUrl": "https://www.ebay.de/itm/123456789",
+      "shortDescription": "Robbe Funtana 125 Verbrenner, gebraucht, flugbereit",
+      "image": { "imageUrl": "https://i.ebayimg.com/images/g/abc/s-l500.jpg" },
+      "additionalImages": [],
+      "itemLocation": { "postalCode": "80331", "city": "München" },
+      "seller": { "username": "rc_max_1983", "feedbackScore": 45 },
+      "shippingOptions": [
+        { "shippingServiceCode": "DHLPaket", "shippingCost": { "value": "6.99", "currency": "EUR" } }
+      ]
+    }
+  ]
+}

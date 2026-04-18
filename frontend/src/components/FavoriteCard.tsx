@@ -89,6 +89,15 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
               </span>
             )}
 
+            {listing.source === 'ebay' && (
+              <span
+                className="text-xs font-medium px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(253,230,138,0.15)', color: '#FDE68A', border: '1px solid rgba(253,230,138,0.25)' }}
+              >
+                eBay
+              </span>
+            )}
+
             {/* Condition — shown only when there is no distance */}
             {listing.distance_km == null && listing.condition && (
               <span className="text-xs truncate" style={{ color: 'rgba(248,250,252,0.4)' }}>

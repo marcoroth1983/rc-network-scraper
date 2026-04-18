@@ -226,6 +226,14 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
                 setComparablesOpen(true);
               }}
             />
+            {listing.source === 'ebay' && (
+              <span
+                className="text-xs font-medium px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(253,230,138,0.15)', color: '#FDE68A', border: '1px solid rgba(253,230,138,0.25)' }}
+              >
+                eBay
+              </span>
+            )}
             <span
               data-testid="condition"
               className="text-xs font-medium px-2 py-0.5 rounded-full"

@@ -36,6 +36,7 @@ class Listing(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     is_sold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, server_default="rcnetwork", index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, server_default="flugmodelle", index=True)
 
     # --- LLM-extracted analysis fields (Step 014) ---

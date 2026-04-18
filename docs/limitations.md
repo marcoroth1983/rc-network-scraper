@@ -49,3 +49,22 @@ Conscious deviations from the target vision, with justifications.
 ```bash
 docker compose exec db psql -U rcscout -c "CREATE DATABASE rcscout_test;"
 ```
+
+---
+
+## eBay source: private seller filter not available
+
+The eBay Browse API does not expose seller account type (Privatverkäufer vs.
+Gewerblich). eBay listings are filtered to `conditionIds:3000` (Used) as a
+best-effort proxy for private/used listings. After the first live run, inspect
+the `seller` object in actual API responses — if `sellerAccountType` is
+available, add a post-filter in `ebay_orchestrator._normalize_item()`.
+
+---
+
+## eBay source: LLM analysis quality
+
+eBay `shortDescription` fields are typically short headlines (<200 chars),
+unlike rc-network multi-paragraph posts. `model_type`/`model_subtype`
+extraction quality may be lower for eBay listings. Mitigation: fetch the full
+item via `get_item()` before analysis (future improvement).

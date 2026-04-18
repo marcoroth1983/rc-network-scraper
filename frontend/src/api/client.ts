@@ -54,6 +54,7 @@ export async function getListings(params: ListingsQueryParams): Promise<Paginate
   if (params.price_indicator) qs.set('price_indicator', params.price_indicator);
   if (params.model_type) qs.set('model_type', params.model_type);
   if (params.model_subtype) qs.set('model_subtype', params.model_subtype);
+  if (params.source) qs.set('source', params.source);
 
   const res = await fetch(`/api/listings?${qs.toString()}`);
   return handleResponse<PaginatedResponse>(res);

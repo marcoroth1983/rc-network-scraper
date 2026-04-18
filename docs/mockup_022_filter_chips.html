@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filter Chips — Mockup PLAN-022</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #07071a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    padding: 40px 16px 80px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    color: rgba(248,250,252,0.4);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  /* ── Phone frame ── */
+  .phone {
+    width: 375px;
+    background: rgba(12, 12, 28, 0.98);
+    border-radius: 28px;
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Sheet header ── */
+  .sheet-handle {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 6px;
+  }
+  .handle-bar {
+    width: 40px; height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.18);
+  }
+  .sheet-title {
+    padding: 8px 20px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #F8FAFC;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+
+  /* ── Section ── */
+  .sections {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(248,250,252,0.3);
+    margin-bottom: 8px;
+  }
+
+  /* ── Chip row (label + chip or + button) ── */
+  .chip-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 38px;
+  }
+
+  /* ── "+" add button ── */
+  .add-btn {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(167,139,250,0.35);
+    background: rgba(167,139,250,0.08);
+    color: #A78BFA;
+    font-size: 18px;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 150ms, border-color 150ms, transform 120ms;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .add-btn:hover { background: rgba(167,139,250,0.18); border-color: rgba(167,139,250,0.6); }
+  .add-btn:active { transform: scale(0.9); }
+
+  /* ── Chip ── */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 12px;
+    border-radius: 999px;
+    background: rgba(167,139,250,0.15);
+    border: 1px solid rgba(167,139,250,0.35);
+    color: #C4B5FD;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 150ms;
+  }
+  .chip .chip-x {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: rgba(167,139,250,0.25);
+    color: #C4B5FD;
+    font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 120ms;
+    line-height: 1;
+  }
+  .chip .chip-x:hover { background: rgba(167,139,250,0.5); }
+
+  /* ── Subtyp section — hidden until type selected ── */
+  .subtyp-section {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 250ms ease, opacity 200ms ease;
+  }
+  .subtyp-section.visible {
+    max-height: 80px;
+    opacity: 1;
+  }
+
+  /* ── Inline dropdown ── */
+  .dropdown-wrap { position: relative; display: inline-block; }
+  .dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: rgba(18,18,40,0.98);
+    border: 1px solid rgba(167,139,250,0.25);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    overflow: hidden;
+    z-index: 50;
+    min-width: 160px;
+    display: none;
+    animation: fadeDown 150ms ease;
+  }
+  .dropdown.open { display: block; }
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .dropdown-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: rgba(248,250,252,0.8);
+    cursor: pointer;
+    transition: background 100ms, color 100ms;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dropdown-item:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .dropdown-item:hover { background: rgba(167,139,250,0.12); color: #C4B5FD; }
+  .dropdown-item .item-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(167,139,250,0.4);
+    flex-shrink: 0;
+  }
+
+  /* ── Divider between existing sections ── */
+  .mock-section {
+    background: rgba(255,255,255,0.03);
+    border-radius: 14px;
+    padding: 14px 16px;
+    border: 1px solid rgba(255,255,255,0.05);
+    font-size: 13px;
+    color: rgba(248,250,252,0.25);
+    text-align: center;
+  }
+
+  /* ── State labels (outside phones) ── */
+  .state-label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(167,139,250,0.7);
+    font-weight: 600;
+    margin-bottom: -28px;
+  }
+
+  /* ── Annotations ── */
+  .annotation {
+    font-size: 11px;
+    color: rgba(248,250,252,0.3);
+    margin-top: -24px;
+    text-align: center;
+    max-width: 320px;
+  }
+
+  /* ── Live demo ── */
+  .live-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(45,212,191,0.8);
+    font-weight: 600;
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #2DD4BF;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  /* ── Comparison row ── */
+  .row {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ── Existing filters (placeholder) ── */
+  .existing-filter {
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: rgba(248,250,252,0.5);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .existing-filter select {
+    background: transparent;
+    border: none;
+    color: rgba(248,250,252,0.6);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    padding-right: 4px;
+  }
+  .existing-filter select option { background: #0f0f23; }
+</style>
+</head>
+<body>
+
+<h1>Filter Chips Mockup — PLAN-022</h1>
+
+<!-- ═══════════════════════════════════ STATIC STATES ═══════════════════════════════════ -->
+
+<div class="row">
+
+  <!-- STATE A: Leer -->
+  <div class="col">
+    <div class="state-label">A — Leer</div>
+    <div class="phone" style="width:260px">
+      <div class="sheet-handle"><div class="handle-bar"></div></div>
+      <div class="sheet-title">Filter</div>
+      <div class="sections">
+
+        <!-- Versand (existing) -->
+        <div>
+          <div class="section-label">Versand</div>
+          <div style="display:flex;gap:8px">
+            <div style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:rgba(248,250,252,0.6);font-size:13px">Versand möglich</div>
+          </div>
+        </div>
+
+        <!-- Modelltyp — empty -->
+        <div>
+          <div class="section-label">Modelltyp</div>
+          <div class="chip-row">
+            <span style="font-size:13px;color:rgba(248,250,252,0.25)">Kein Typ gewählt</span>
+            <div style="width:30px;height:30px;border-radius:50%;border:1px solid rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);color:#A78BFA;font-size:18px;display:flex;align-items:center;justify-content:center">+</div>
+          </div>
+        </div>
+
+        <!-- Subtyp hidden -->
+
+      </div>
+    </div>
+    <div class="annotation">Subtyp-Sektion nicht sichtbar</div>
+  </div>
+
+  <!-- STATE B: Typ gewählt -->
+  <div class="col">
+    <div class="state-label">B — Typ gewählt</div>
+    <div class="phone" style="width:260px">
+      <div class="sheet-handle"><div class="handle-bar"></div></div>
+      <div class="sheet-title">Filter</div>
+      <div class="sections">
+
+        <div>
+          <div class="section-label">Versand</div>
+          <div style="display:flex;gap:8px">
+            <div style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:rgba(248,250,252,0.6);font-size:13px">Versand möglich</div>
+          </div>
+        </div>
+
+        <!-- Modelltyp — chip shown -->
+        <div>
+          <div class="section-label">Modelltyp</div>
+          <div class="chip-row">
+            <div class="chip">
+              Flugzeug
+              <div class="chip-x">×</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtyp — visible, empty -->
+        <div>
+          <div class="section-label">Subtyp</div>
+          <div class="chip-row">
+            <span style="font-size:13px;color:rgba(248,250,252,0.25)">Kein Subtyp</span>
+            <div style="width:30px;height:30px;border-radius:50%;border:1px solid rgba(167,139,250,0.35);background:rgba(167,139,250,0.08);color:#A78BFA;font-size:18px;display:flex;align-items:center;justify-content:center">+</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="annotation">Subtyp erscheint, Chip mit × zum Entfernen</div>
+  </div>
+
+  <!-- STATE C: Beide gewählt -->
+  <div class="col">
+    <div class="state-label">C — Beide gewählt</div>
+    <div class="phone" style="width:260px">
+      <div class="sheet-handle"><div class="handle-bar"></div></div>
+      <div class="sheet-title">Filter</div>
+      <div class="sections">
+
+        <div>
+          <div class="section-label">Versand</div>
+          <div style="display:flex;gap:8px">
+            <div style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:rgba(248,250,252,0.6);font-size:13px">Versand möglich</div>
+          </div>
+        </div>
+
+        <!-- Modelltyp — chip -->
+        <div>
+          <div class="section-label">Modelltyp</div>
+          <div class="chip-row">
+            <div class="chip">
+              Flugzeug
+              <div class="chip-x">×</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtyp — chip -->
+        <div>
+          <div class="section-label">Subtyp</div>
+          <div class="chip-row">
+            <div class="chip" style="background:rgba(45,212,191,0.12);border-color:rgba(45,212,191,0.3);color:#99F6E4">
+              jet
+              <div class="chip-x" style="background:rgba(45,212,191,0.2);color:#99F6E4">×</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="annotation">Subtyp bekommt anderen Akzent (Teal) zur Unterscheidung</div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════ LIVE DEMO ═══════════════════════════════════ -->
+
+<div class="live-label">
+  <div class="live-dot"></div>
+  Live Demo — interaktiv
+</div>
+
+<div class="phone">
+  <div class="sheet-handle"><div class="handle-bar"></div></div>
+  <div class="sheet-title">Filter</div>
+  <div class="sections">
+
+    <!-- Existing: Sortierung -->
+    <div>
+      <div class="section-label">Sortierung</div>
+      <div class="existing-filter">
+        <span style="color:rgba(248,250,252,0.5)">Sortierung</span>
+        <select>
+          <option>Datum ↓</option>
+          <option>Datum ↑</option>
+          <option>Preis ↑</option>
+          <option>Preis ↓</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Existing: Versand -->
+    <div>
+      <div class="section-label">Versand</div>
+      <div style="display:flex;gap:8px">
+        <button id="shippingBtn" onclick="toggleShipping()" style="padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.08);color:rgba(248,250,252,0.6);font-size:13px;cursor:pointer;transition:all 150ms">
+          Versand möglich
+        </button>
+      </div>
+    </div>
+
+    <!-- NEW: Modelltyp -->
+    <div id="typSection">
+      <div class="section-label">Modelltyp</div>
+      <div class="chip-row">
+        <div id="typEmpty" style="font-size:13px;color:rgba(248,250,252,0.25)">Kein Typ gewählt</div>
+        <div id="typChip" class="chip" style="display:none">
+          <span id="typChipLabel">–</span>
+          <div class="chip-x" onclick="clearType()" title="Typ entfernen">×</div>
+        </div>
+        <div class="dropdown-wrap" id="typDropWrap">
+          <button class="add-btn" id="typAddBtn" onclick="toggleTypDropdown()" aria-label="Modelltyp wählen" title="Modelltyp hinzufügen">+</button>
+          <div class="dropdown" id="typDropdown">
+            <div class="dropdown-item" onclick="selectType('Flugzeug','airplane')"><div class="item-dot"></div>Flugzeug</div>
+            <div class="dropdown-item" onclick="selectType('Hubschrauber','helicopter')"><div class="item-dot"></div>Hubschrauber</div>
+            <div class="dropdown-item" onclick="selectType('Multicopter','multicopter')"><div class="item-dot"></div>Multicopter</div>
+            <div class="dropdown-item" onclick="selectType('Segler','glider')"><div class="item-dot"></div>Segler</div>
+            <div class="dropdown-item" onclick="selectType('Boot','boat')"><div class="item-dot"></div>Boot</div>
+            <div class="dropdown-item" onclick="selectType('Auto','car')"><div class="item-dot"></div>Auto</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW: Subtyp (hidden until type set) -->
+    <div id="subtypOuter" class="subtyp-section">
+      <div class="section-label">Subtyp</div>
+      <div class="chip-row">
+        <div id="subtypEmpty" style="font-size:13px;color:rgba(248,250,252,0.25)">Kein Subtyp</div>
+        <div id="subtypChip" class="chip" style="display:none;background:rgba(45,212,191,0.12);border-color:rgba(45,212,191,0.3);color:#99F6E4">
+          <span id="subtypChipLabel">–</span>
+          <div class="chip-x" onclick="clearSubtype()" style="background:rgba(45,212,191,0.2);color:#99F6E4" title="Subtyp entfernen">×</div>
+        </div>
+        <div class="dropdown-wrap" id="subtypDropWrap">
+          <button class="add-btn" id="subtypAddBtn" onclick="toggleSubtypDropdown()" aria-label="Subtyp wählen" title="Subtyp hinzufügen">+</button>
+          <div class="dropdown" id="subtypDropdown"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing: Preis-Bewertung -->
+    <div>
+      <div class="section-label">Preis-Bewertung</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="toggleDeal(this)" style="padding:6px 14px;border-radius:999px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.08);color:rgba(248,250,252,0.6);font-size:13px;cursor:pointer;transition:all 150ms">
+          Nur Günstige
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="annotation" style="margin-top:-24px;margin-bottom:0">Vollständig interaktiv — Dropdown öffnen/schließen, Chips setzen und entfernen</div>
+
+<script>
+  const SUBTYPES = {
+    airplane:    ['jet','warbird','trainer','scale','3d','nurflügler','hochdecker','tiefdecker','mitteldecker','delta','biplane','aerobatic','kit','hotliner','funflyer','speed','pylon'],
+    helicopter:  ['700','580','600','550','500','450','420','380','scale'],
+    glider:      ['thermik','hotliner','f3b','f3k','f3j','f5j','f5b','f5k','f3f','f3l','hangflug','dlg','scale','motorglider'],
+    multicopter: ['quadcopter','hexacopter','fpv'],
+    boat:        ['rennboot','segelboot','schlepper','submarine','yacht'],
+    car:         ['buggy','monstertruck','crawler','tourenwagen','truggy','drift'],
+  };
+
+  let selectedType = null;
+
+  function toggleTypDropdown() {
+    const dd = document.getElementById('typDropdown');
+    dd.classList.toggle('open');
+  }
+
+  function toggleSubtypDropdown() {
+    const dd = document.getElementById('subtypDropdown');
+    dd.classList.toggle('open');
+  }
+
+  function selectType(label, key) {
+    selectedType = key;
+    document.getElementById('typDropdown').classList.remove('open');
+    document.getElementById('typChipLabel').textContent = label;
+    document.getElementById('typChip').style.display = 'inline-flex';
+    document.getElementById('typEmpty').style.display = 'none';
+    document.getElementById('typAddBtn').style.display = 'none';
+
+    // Show subtyp section
+    const outer = document.getElementById('subtypOuter');
+    outer.classList.add('visible');
+
+    // Populate subtyp dropdown
+    const dd = document.getElementById('subtypDropdown');
+    dd.innerHTML = '';
+    (SUBTYPES[key] || []).forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'dropdown-item';
+      item.innerHTML = `<div class="item-dot"></div>${s}`;
+      item.onclick = () => selectSubtype(s);
+      dd.appendChild(item);
+    });
+
+    // Reset subtyp chip
+    clearSubtypeState();
+  }
+
+  function clearType() {
+    selectedType = null;
+    document.getElementById('typChip').style.display = 'none';
+    document.getElementById('typEmpty').style.display = 'block';
+    document.getElementById('typAddBtn').style.display = 'flex';
+    document.getElementById('subtypOuter').classList.remove('visible');
+    clearSubtypeState();
+  }
+
+  function selectSubtype(s) {
+    document.getElementById('subtypDropdown').classList.remove('open');
+    document.getElementById('subtypChipLabel').textContent = s;
+    document.getElementById('subtypChip').style.display = 'inline-flex';
+    document.getElementById('subtypEmpty').style.display = 'none';
+    document.getElementById('subtypAddBtn').style.display = 'none';
+  }
+
+  function clearSubtype() {
+    clearSubtypeState();
+  }
+
+  function clearSubtypeState() {
+    document.getElementById('subtypChip').style.display = 'none';
+    document.getElementById('subtypEmpty').style.display = 'block';
+    document.getElementById('subtypAddBtn').style.display = 'flex';
+    document.getElementById('subtypDropdown').classList.remove('open');
+  }
+
+  function toggleShipping() {
+    const btn = document.getElementById('shippingBtn');
+    const active = btn.dataset.active === '1';
+    btn.dataset.active = active ? '' : '1';
+    btn.style.background = active ? 'rgba(255,255,255,0.08)' : 'rgba(167,139,250,0.2)';
+    btn.style.borderColor = active ? 'rgba(255,255,255,0.1)' : 'rgba(167,139,250,0.5)';
+    btn.style.color = active ? 'rgba(248,250,252,0.6)' : '#C4B5FD';
+  }
+
+  function toggleDeal(btn) {
+    const active = btn.dataset.active === '1';
+    btn.dataset.active = active ? '' : '1';
+    btn.style.background = active ? 'rgba(255,255,255,0.08)' : 'rgba(167,139,250,0.2)';
+    btn.style.borderColor = active ? 'rgba(255,255,255,0.1)' : 'rgba(167,139,250,0.5)';
+    btn.style.color = active ? 'rgba(248,250,252,0.6)' : '#C4B5FD';
+  }
+
+  // Close dropdowns on outside click
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('typDropWrap').contains(e.target)) {
+      document.getElementById('typDropdown').classList.remove('open');
+    }
+    if (!document.getElementById('subtypDropWrap').contains(e.target)) {
+      document.getElementById('subtypDropdown').classList.remove('open');
+    }
+  });
+</script>
+</body>
+</html>

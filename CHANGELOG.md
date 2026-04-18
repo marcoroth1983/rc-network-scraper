@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.0] - 2026-04-18
+
+### Added
+
+**eBay.de als zweite Anzeigenquelle (PLAN-023)**
+- Inserate von eBay.de werden alle 30 Minuten automatisch abgerufen (eBay Browse API)
+- eBay-Inserate durchlaufen dieselbe LLM-Analyse und Preisindikator-Pipeline wie rc-network-Inserate
+- Alle Listingkarten zeigen ein „eBay"-Badge wenn das Inserat von eBay stammt
+- API: `GET /api/listings` akzeptiert neuen Filterparameter `source` (`rcnetwork` oder `ebay`)
+- Neue DB-Spalte `source` in der `listings`-Tabelle (Standardwert: `rcnetwork`)
+- Verkaufte eBay-Inserate werden stündlich erkannt (HTTP 404 = verkauft/entfernt)
+
+---
+
 ## [1.9.0] - 2026-04-18
 
 ### Added

@@ -1,3 +1,5 @@
+export type ListingSource = 'rcnetwork' | 'ebay';
+
 export interface Category {
   key: string;
   label: string;
@@ -24,6 +26,7 @@ export interface ListingSummary {
   is_sold: boolean;
   is_favorite: boolean;
   category: string;
+  source: ListingSource;
   // LLM-extracted product fields
   manufacturer: string | null;
   model_name: string | null;
@@ -61,6 +64,7 @@ export interface ListingDetail {
   is_sold: boolean;
   is_favorite: boolean;
   category: string;
+  source: ListingSource;
   // LLM-extracted product fields
   manufacturer: string | null;
   model_name: string | null;
@@ -136,6 +140,7 @@ export interface ListingsQueryParams {
   price_indicator?: string;
   model_type?: string;
   model_subtype?: string;
+  source?: ListingSource;
 }
 
 export class ApiError extends Error {

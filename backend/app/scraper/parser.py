@@ -215,14 +215,14 @@ def _extract_tags(soup: BeautifulSoup) -> list[str]:
 
 
 def _detect_sold(soup: BeautifulSoup) -> bool:
-    """Return True if the thread title or any reply indicates the item is sold."""
+    """Return True if the thread title or any post indicates the item is sold."""
     title = _extract_title(soup) or ""
     if _SOLD_RE.search(title):
         return True
-    # Scan reply posts (all posts after the first)
+    # Scan all posts — seller often edits the first post to mark as sold
     posts = soup.select("article.message--post")
-    for reply in posts[1:]:
-        wrapper = reply.select_one(".bbWrapper")
+    for post in posts:
+        wrapper = post.select_one(".bbWrapper")
         if wrapper and _SOLD_RE.search(wrapper.get_text()):
             return True
     return False

@@ -41,6 +41,7 @@ class ListingSummary(BaseModel):
     price_indicator: str | None = None
     price_indicator_median: float | None = None
     price_indicator_count: int | None = None
+    source: str = "rcnetwork"
 
 
 class ListingDetail(BaseModel):
@@ -80,6 +81,7 @@ class ListingDetail(BaseModel):
     price_indicator: str | None = None
     price_indicator_median: float | None = None
     price_indicator_count: int | None = None
+    source: str = "rcnetwork"
 
 
 class PlzResponse(BaseModel):

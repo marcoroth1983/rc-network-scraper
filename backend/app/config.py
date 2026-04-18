@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     LLM_CASCADE_DISABLE_HOURS: float = 1.0    # hours a disabled model stays out
     LLM_CASCADE_REFRESH_HOURS: float = 12.0   # how often to refresh from OpenRouter
 
+    # eBay Browse API — optional, eBay fetch disabled if not set
+    ebay_client_id: str = ""
+    ebay_client_secret: str = ""
+
     # Telegram notifications — disabled entirely when any required field is empty
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = ""
@@ -106,3 +110,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Maps our category slugs to eBay DE category IDs.
+# IMPORTANT: verify IDs against GET /buy/browse/v1/category_tree/77 before going live.
+# antriebstechnik / rc-elektronik / einzelteile intentionally share category 2577 to
+# avoid triple-fetching the same eBay category. Category assignment per listing is
+# derived from the LLM analysis, not the eBay category.
+EBAY_CATEGORY_MAP: dict[str, int] = {
+    "flugmodelle":    29332,  # RC Aircraft
+    "schiffsmodelle": 29325,  # RC Boats & Watercraft
+    "rc-cars":         2562,  # RC Cars, Trucks & Motorcycles
+    "rc-teile":        2577,  # RC Accessories & Parts (covers antriebstechnik / rc-elektronik / einzelteile)
+    # "verschenken" has no eBay equivalent — intentionally omitted
+}
