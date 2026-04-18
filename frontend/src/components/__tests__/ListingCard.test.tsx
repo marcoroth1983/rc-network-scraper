@@ -38,6 +38,7 @@ const base: ListingSummary = {
   price_indicator: null,
   price_indicator_median: null,
   price_indicator_count: null,
+  source: 'rcnetwork' as const,
 };
 
 function renderCard(props: Partial<ListingSummary> = {}) {

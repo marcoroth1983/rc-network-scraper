@@ -280,6 +280,7 @@ const baseListingSummary: ListingSummary = {
   price_indicator: null,
   price_indicator_median: null,
   price_indicator_count: null,
+  source: 'rcnetwork' as const,
 };
 
 // Spy component: exposes the location it sees via a data attribute

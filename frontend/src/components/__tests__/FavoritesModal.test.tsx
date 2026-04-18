@@ -18,6 +18,7 @@ const makeListing = (overrides = {}) => ({
   price_indicator: null,
   price_indicator_median: null,
   price_indicator_count: null,
+  source: 'rcnetwork' as const,
   ...overrides,
 });
 

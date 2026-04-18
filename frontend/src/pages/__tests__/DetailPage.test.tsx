@@ -62,6 +62,7 @@ const baseListing: ListingDetail = {
   price_indicator: null,
   price_indicator_median: null,
   price_indicator_count: null,
+  source: 'rcnetwork' as const,
 };
 
 function makeAuthorListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
@@ -96,6 +97,7 @@ function makeAuthorListing(overrides: Partial<ListingSummary> = {}): ListingSumm
     price_indicator_median: null,
     price_indicator_count: null,
     ...overrides,
+    source: overrides.source ?? 'rcnetwork',
   };
 }
 
