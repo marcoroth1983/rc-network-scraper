@@ -257,3 +257,49 @@ class TestAnalyzeListing:
 
         call_kwargs = mock_parse.call_args.kwargs
         assert call_kwargs.get("model") == "google/gemini-2.5-flash-lite"
+
+
+# --- Vocabulary clamping ---
+
+class TestListingAnalysisVocabularyClamping:
+    def test_known_model_type_passes_through(self):
+        a = ListingAnalysis(model_type="airplane", model_subtype="jet")
+        assert a.model_type == "airplane"
+        assert a.model_subtype == "jet"
+
+    def test_unknown_model_type_clamped_to_none(self):
+        a = ListingAnalysis(model_type="rc-elektronik", model_subtype="sender")
+        assert a.model_type is None
+        assert a.model_subtype is None  # subtype also cleared when type is invalid
+
+    def test_unknown_model_subtype_clamped_to_none(self):
+        a = ListingAnalysis(model_type="airplane", model_subtype="high-wing")
+        assert a.model_type == "airplane"
+        assert a.model_subtype is None
+
+    def test_case_insensitive_normalization(self):
+        a = ListingAnalysis(model_type="Airplane", model_subtype="JET")
+        assert a.model_type == "airplane"
+        assert a.model_subtype == "jet"
+
+    def test_none_values_unchanged(self):
+        a = ListingAnalysis(model_type=None, model_subtype=None)
+        assert a.model_type is None
+        assert a.model_subtype is None
+
+    def test_valid_subtype_for_wrong_type_clamped(self):
+        # "thermik" is valid for glider but not airplane
+        a = ListingAnalysis(model_type="airplane", model_subtype="thermik")
+        assert a.model_subtype is None
+
+    def test_drive_type_unknown_clamped_to_none(self):
+        a = ListingAnalysis(drive_type="brushless")
+        assert a.drive_type is None
+
+    def test_drive_type_known_passes_through(self):
+        a = ListingAnalysis(drive_type="turbine")
+        assert a.drive_type == "turbine"
+
+    def test_drive_type_case_normalized(self):
+        a = ListingAnalysis(drive_type="Electric")
+        assert a.drive_type == "electric"

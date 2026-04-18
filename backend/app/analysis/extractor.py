@@ -4,9 +4,10 @@ import logging
 import re
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.analysis import model_cascade
+from app.analysis.vocabulary import clamp_model_subtype, clamp_model_type
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,17 +16,29 @@ _SYSTEM_PROMPT = """\
 Du analysierst RC-Modell-Kleinanzeigen von rc-network.de.
 Extrahiere aus Titel und Beschreibung die Produktdaten.
 Gib nur Felder zurück die du sicher identifizieren kannst.
+Verwende EXAKT die aufgelisteten Werte — keine Varianten, keine Übersetzungen.
+Wenn kein passender Wert existiert: null.
 
-model_type: Grobe Kategorie — "airplane", "helicopter", "multicopter", "glider", "boat", "car"
-model_subtype: Spezifische Bauform, z.B.:
-  - Flugzeug: hochdecker, tiefdecker, mitteldecker, jet, delta, nurflügler, warbird, trainer, scale
-  - Heli: 700, 580, 500, 450, 380, scale
-  - Segler: hotliner, f3k, f3b, thermik, hangflug, dlg
-  - Boot: rennboot, segelboot, schlepper
-  - Auto: buggy, monstertruck, crawler, tourenwagen
-drive_type: Antriebsart — "electric", "nitro", "gas", "turbine" (Segler ohne Motor = kein drive_type)
-completeness: "RTF", "ARF", "BNF", "PNP", "kit", "parts", "set"
-price_euros: Geforderter Preis in Euro als Zahl (nur Zahl, kein Symbol). Null wenn kein Preis erkennbar.
+model_type — NUR wenn es sich um ein RC-Modell handelt:
+  "airplane", "helicopter", "multicopter", "glider", "boat", "car"
+  Elektronik, Akkus, Sender, Regler, Motoren, Ersatzteile → model_type = null
+
+model_subtype — wähle EXAKT einen der erlaubten Werte für den jeweiligen model_type:
+  airplane:    jet | warbird | trainer | scale | 3d | nurflügler | hochdecker | tiefdecker | mitteldecker | delta | biplane | aerobatic | kit | hotliner | funflyer | speed | pylon
+  helicopter:  700 | 580 | 600 | 550 | 500 | 450 | 420 | 380 | scale
+  glider:      thermik | hotliner | f3b | f3k | f3j | f5j | f5b | f5k | f3f | f3l | hangflug | dlg | scale | motorglider
+  multicopter: quadcopter | hexacopter | fpv
+  boat:        rennboot | segelboot | schlepper | submarine | yacht
+  car:         buggy | monstertruck | crawler | tourenwagen | truggy | drift
+
+drive_type — EXAKT einen dieser Werte oder null:
+  "electric" | "nitro" | "gas" | "turbine"
+  (Segler ohne Motor = null)
+
+completeness — EXAKT einen dieser Werte oder null:
+  "RTF" | "ARF" | "BNF" | "PNP" | "kit" | "parts" | "set"
+
+price_euros: Geforderter Preis in Euro als Zahl (nur Zahl, kein Symbol). null wenn kein Preis erkennbar.
 shipping_available: true wenn Versand angeboten wird, false wenn explizit kein Versand ("nur Abholung", "kein Versand"), null wenn unklar.
 
 Für "attributes": extrahiere alle weiteren technischen Daten als key-value Paare
@@ -35,6 +48,9 @@ Keys immer englisch, snake_case. Werte als Strings.
 
 _MAX_DESCRIPTION_CHARS = 2000
 _REQUEST_TIMEOUT = 15.0
+
+
+_DRIVE_TYPES = {"electric", "nitro", "gas", "turbine"}
 
 
 class ListingAnalysis(BaseModel):
@@ -47,6 +63,15 @@ class ListingAnalysis(BaseModel):
     price_euros: float | None = None
     shipping_available: bool | None = None
     attributes: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def clamp_to_vocabulary(self) -> "ListingAnalysis":
+        self.model_type = clamp_model_type(self.model_type)
+        self.model_subtype = clamp_model_subtype(self.model_type, self.model_subtype)
+        if self.drive_type is not None:
+            v = self.drive_type.strip().lower()
+            self.drive_type = v if v in _DRIVE_TYPES else None
+        return self
 
 
 def _build_user_message(

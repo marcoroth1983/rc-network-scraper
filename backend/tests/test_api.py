@@ -172,9 +172,10 @@ class TestSearch:
         assert data["total"] == 0
         assert data["items"] == []
 
-    async def test_search_matches_description(
+    async def test_search_does_not_match_description(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
+        # Search no longer includes description — only title, model_type, model_subtype, model_name, manufacturer
         await _insert_listing(
             db_session,
             external_id="1",
@@ -186,7 +187,7 @@ class TestSearch:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] == 1
+        assert data["total"] == 0
 
     async def test_search_is_case_insensitive(
         self, api_client: AsyncClient, db_session: AsyncSession
@@ -198,10 +199,10 @@ class TestSearch:
         assert response.status_code == 200
         assert response.json()["total"] == 1
 
-    async def test_search_matches_tags(
+    async def test_search_does_not_match_tags(
         self, api_client: AsyncClient, db_session: AsyncSession
     ) -> None:
-        """Search must find listings where the query matches a tag."""
+        # Search no longer includes tags — only title, model_type, model_subtype, model_name, manufacturer
         await db_session.execute(text("""
             INSERT INTO listings (external_id, url, title, description, images, tags,
                 author, scraped_at, is_sold)
@@ -212,7 +213,7 @@ class TestSearch:
 
         response = await api_client.get("/api/listings?search=dle+111")
         assert response.status_code == 200
-        assert response.json()["total"] == 1
+        assert response.json()["total"] == 0
 
 
 # ---------------------------------------------------------------------------

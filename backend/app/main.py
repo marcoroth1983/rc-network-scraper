@@ -23,9 +23,11 @@ from app.config import settings
 from app.notifications.log_plugin import LogPlugin
 from app.notifications.registry import notification_registry
 from app.telegram.plugin import TelegramPlugin
-from app.analysis.job import run_analysis_job
+from app.analysis.job import run_analysis_job, recalculate_price_indicators
 from app.analysis import model_cascade
+from app.db import AsyncSessionLocal
 from app.scrape_runner import start_update_job, start_recheck_job
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,14 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),  # run once on boot with live data
         replace_existing=True,
     )
+    scheduler.add_job(
+        recalculate_price_indicators,
+        trigger="interval",
+        minutes=15,
+        id="price_indicator_recalc",
+        replace_existing=True,
+    )
+
     if settings.telegram_enabled:
         from app.telegram import fav_sweep  # local import — only when telegram is active
         scheduler.add_job(
@@ -97,11 +107,99 @@ async def lifespan(app: FastAPI):
             replace_existing=True,
         )
 
+    # PLAN-020 one-shot — remove in next release
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("""
+            UPDATE listings SET
+                price_indicator = NULL,
+                price_indicator_median = NULL,
+                price_indicator_count = NULL
+            WHERE price_indicator IS NOT NULL
+        """))
+        await session.commit()
+
+    # PLAN-021 one-shot — remove in next release
+    # asyncpg requires one statement per execute() call — no multi-statement strings.
+    async with AsyncSessionLocal() as session:
+        # Pre-pass: lowercase all existing values so CASE/IN comparisons work correctly
+        await session.execute(text(
+            "UPDATE listings SET model_type = LOWER(model_type) WHERE model_type IS NOT NULL"
+        ))
+        await session.execute(text(
+            "UPDATE listings SET model_subtype = LOWER(model_subtype) WHERE model_subtype IS NOT NULL"
+        ))
+        # Clamp model_type: set unknown values to NULL
+        await session.execute(text("""
+            UPDATE listings SET model_type = NULL
+            WHERE model_type IS NOT NULL
+              AND LOWER(model_type) NOT IN (
+                'airplane','helicopter','multicopter','glider','boat','car'
+              )
+        """))
+        # Normalize airplane subtypes
+        await session.execute(text("""
+            UPDATE listings SET model_subtype = CASE LOWER(model_subtype)
+                WHEN '3d'              THEN '3d'
+                WHEN 'high-wing'       THEN 'hochdecker'
+                WHEN 'high_wing'       THEN 'hochdecker'
+                WHEN 'highwing'        THEN 'hochdecker'
+                WHEN 'low_wing'        THEN 'tiefdecker'
+                WHEN 'shoulder_decker' THEN 'mitteldecker'
+                WHEN 'aerobatic'       THEN 'aerobatic'
+                WHEN 'acro'            THEN 'aerobatic'
+                WHEN 'pylon_racer'     THEN 'pylon'
+                WHEN 'motor_glider'    THEN NULL
+                WHEN 'motorglider'     THEN NULL
+                WHEN 'motorsegler'     THEN NULL
+                ELSE NULL
+            END
+            WHERE model_type = 'airplane'
+              AND LOWER(model_subtype) NOT IN (
+                'jet','warbird','trainer','scale','3d','nurflügler',
+                'hochdecker','tiefdecker','mitteldecker','delta','biplane',
+                'aerobatic','kit','hotliner','funflyer','speed','pylon'
+              )
+        """))
+        # Normalize glider subtypes
+        await session.execute(text("""
+            UPDATE listings SET model_subtype = CASE LOWER(model_subtype)
+                WHEN 'thermal'       THEN 'thermik'
+                WHEN 'motorglider'   THEN 'motorglider'
+                WHEN 'motor_glider'  THEN 'motorglider'
+                WHEN 'motor-glider'  THEN 'motorglider'
+                WHEN 'motorsegler'   THEN 'motorglider'
+                WHEN 'f3j'           THEN 'f3j'
+                WHEN 'f5j'           THEN 'f5j'
+                WHEN 'f5k'           THEN 'f5k'
+                WHEN 'f3b'           THEN 'f3b'
+                ELSE NULL
+            END
+            WHERE model_type = 'glider'
+              AND LOWER(model_subtype) NOT IN (
+                'thermik','hotliner','f3b','f3k','f3j','f5j','f5b','f5k',
+                'f3f','f3l','hangflug','dlg','scale','motorglider'
+              )
+        """))
+        # For all other model_types: clamp unknown subtypes to NULL
+        await session.execute(text("""
+            UPDATE listings SET model_subtype = NULL
+            WHERE model_type IN ('helicopter','multicopter','boat','car')
+              AND model_subtype IS NOT NULL
+              AND LOWER(model_subtype) NOT IN (
+                '700','580','600','550','500','450','420','380','scale',
+                'quadcopter','hexacopter','fpv',
+                'rennboot','segelboot','schlepper','submarine','yacht',
+                'buggy','monstertruck','crawler','tourenwagen','truggy','drift'
+              )
+        """))
+        await session.commit()
+
     scheduler.start()
     app.state.scheduler = scheduler
     logger.info(
         "Scheduler started — update every 30min, recheck every 1h, "
-        "analysis every 2min, llm_cascade_refresh every %gh",
+        "analysis every 2min, llm_cascade_refresh every %gh, "
+        "price_indicator_recalc every 15min",
         settings.LLM_CASCADE_REFRESH_HOURS,
     )
 

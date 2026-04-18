@@ -1,6 +1,6 @@
 """Shared listing filter utilities used by the API route and the search matcher."""
 
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -18,8 +18,10 @@ def build_text_filter(search: str | None) -> list[ColumnElement]:
     return [
         or_(
             Listing.title.ilike(f"%{search}%"),
-            Listing.description.ilike(f"%{search}%"),
-            cast(Listing.tags, String).ilike(f"%{search}%"),
+            Listing.model_type.ilike(f"%{search}%"),
+            Listing.model_subtype.ilike(f"%{search}%"),
+            Listing.model_name.ilike(f"%{search}%"),
+            Listing.manufacturer.ilike(f"%{search}%"),
         )
     ]
 
