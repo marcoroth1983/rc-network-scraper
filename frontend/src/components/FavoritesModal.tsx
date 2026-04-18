@@ -50,9 +50,13 @@ function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove
   const hasPlzInfo = search.plz != null;
   const hasDistance = search.max_distance != null;
 
+  const sortLabel: Record<string, string> = { date: 'Datum', price: 'Preis', distance: 'Entfernung' };
+  const sortDir = search.sort_dir === 'asc' ? '↑' : '↓';
+
   const filterParts: string[] = [];
   if (search.plz) filterParts.push(`PLZ ${search.plz}`);
   if (hasDistance) filterParts.push(`bis ${search.max_distance} km`);
+  if (search.sort) filterParts.push(`${sortLabel[search.sort] ?? search.sort} ${sortDir}`);
   const filterSummary = filterParts.join(', ');
 
   return (
@@ -111,7 +115,7 @@ function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove
               </span>
             )}
           </div>
-          {(hasPlzInfo || hasDistance) && (
+          {filterSummary && (
             <p
               className="text-xs mt-0.5 truncate"
               style={{ color: 'rgba(248,250,252,0.45)' }}
