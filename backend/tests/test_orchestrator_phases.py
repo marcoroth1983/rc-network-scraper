@@ -349,3 +349,287 @@ async def test_phase3_deletes_stale_listings(db_session: AsyncSession):
     assert "stale" not in ids
     assert "fresh" in ids
     assert "nodate" in ids
+
+
+# ---------------------------------------------------------------------------
+# PLAN-007: Listing lifecycle timestamp tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_created_at_set_on_insert_not_overwritten_on_upsert(db_session: AsyncSession):
+    """created_at is stamped on first insert and never overwritten by a subsequent upsert."""
+    from app.config import Category
+    from app.scraper.orchestrator import _upsert_listing
+
+    scraped_at_first = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    await _upsert_listing(
+        session=db_session,
+        external_id="lifecycle-001",
+        url="https://rc-network.de/t/lifecycle-001/",
+        parsed={
+            "title": "Original Title",
+            "price": None, "condition": None, "shipping": None,
+            "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": False,
+            "plz": None, "city": None,
+        },
+        latitude=None,
+        longitude=None,
+        scraped_at=scraped_at_first,
+        category="flugmodelle",
+    )
+    await db_session.commit()
+
+    row = await db_session.execute(
+        text("SELECT created_at FROM listings WHERE external_id = 'lifecycle-001'")
+    )
+    created_at_after_insert = row.fetchone()[0]
+    assert created_at_after_insert is not None
+
+    # Re-upsert with a different title and a newer scraped_at
+    scraped_at_second = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+    await _upsert_listing(
+        session=db_session,
+        external_id="lifecycle-001",
+        url="https://rc-network.de/t/lifecycle-001/",
+        parsed={
+            "title": "Updated Title",
+            "price": None, "condition": None, "shipping": None,
+            "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": False,
+            "plz": None, "city": None,
+        },
+        latitude=None,
+        longitude=None,
+        scraped_at=scraped_at_second,
+        category="flugmodelle",
+    )
+    await db_session.commit()
+
+    row = await db_session.execute(
+        text("SELECT created_at, title FROM listings WHERE external_id = 'lifecycle-001'")
+    )
+    result_row = row.fetchone()
+    assert result_row[0] == created_at_after_insert  # created_at unchanged
+    assert result_row[1] == "Updated Title"  # title was updated
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase1_upsert_sets_sold_at_when_is_sold_flips_true(db_session: AsyncSession):
+    """Phase 1 upsert sets sold_at when is_sold transitions from FALSE to TRUE."""
+    from app.scraper.orchestrator import _upsert_listing
+
+    scraped_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    # Initial insert: not sold
+    await _upsert_listing(
+        session=db_session,
+        external_id="lifecycle-002",
+        url="https://rc-network.de/t/lifecycle-002/",
+        parsed={
+            "title": "Item For Sale",
+            "price": None, "condition": None, "shipping": None,
+            "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": False,
+            "plz": None, "city": None,
+        },
+        latitude=None,
+        longitude=None,
+        scraped_at=scraped_at,
+        category="flugmodelle",
+    )
+    await db_session.commit()
+
+    row = await db_session.execute(
+        text("SELECT sold_at FROM listings WHERE external_id = 'lifecycle-002'")
+    )
+    assert row.fetchone()[0] is None
+
+    # Re-upsert with is_sold=True
+    scraped_at_sold = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    await _upsert_listing(
+        session=db_session,
+        external_id="lifecycle-002",
+        url="https://rc-network.de/t/lifecycle-002/",
+        parsed={
+            "title": "Item For Sale",
+            "price": None, "condition": None, "shipping": None,
+            "description": "", "images": [], "tags": [],
+            "author": "u", "posted_at": None, "posted_at_raw": None, "is_sold": True,
+            "plz": None, "city": None,
+        },
+        latitude=None,
+        longitude=None,
+        scraped_at=scraped_at_sold,
+        category="flugmodelle",
+    )
+    await db_session.commit()
+
+    row = await db_session.execute(
+        text("SELECT is_sold, sold_at FROM listings WHERE external_id = 'lifecycle-002'")
+    )
+    result_row = row.fetchone()
+    assert result_row[0] is True
+    assert result_row[1] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_path_a_404_sets_sold_at(db_session: AsyncSession):
+    """Phase 2 Path A: 404 response marks listing as sold and sets sold_at."""
+    import httpx
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+        VALUES ('p2a-404', 'https://rc-network.de/t/p2a-404/', 'Item', '', '[]', '[]', 'user',
+                '2026-01-01 00:00:00+00', FALSE)
+    """))
+    await db_session.commit()
+
+    with patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_http.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError("404", request=MagicMock(), response=mock_resp)
+        )
+        mock_client_cls.return_value = mock_http
+
+        result = await _phase2_sold_recheck(db_session, lambda p: None, delay=0.0)
+
+    assert result["sold_found"] == 1
+
+    row = await db_session.execute(
+        text("SELECT is_sold, sold_at FROM listings WHERE external_id = 'p2a-404'")
+    )
+    result_row = row.fetchone()
+    assert result_row[0] is True
+    assert result_row[1] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_path_a_404_does_not_overwrite_existing_sold_at(db_session: AsyncSession):
+    """Phase 2 Path A: existing sold_at is not overwritten on subsequent 404."""
+    import httpx
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    past_sold_at = datetime(2026, 1, 10, 0, 0, 0, tzinfo=timezone.utc)
+    await db_session.execute(
+        text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                                  scraped_at, is_sold, sold_at)
+            VALUES ('p2a-idem', 'https://rc-network.de/t/p2a-idem/', 'Item', '', '[]', '[]', 'user',
+                    '2026-01-01 00:00:00+00', TRUE, :sold_at)
+        """),
+        {"sold_at": past_sold_at},
+    )
+    await db_session.commit()
+
+    with patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.scraper.orchestrator._RECHECK_SQL", new=text(
+             "SELECT id, url, external_id FROM listings WHERE external_id = 'p2a-idem'"
+         )):
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_http.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError("404", request=MagicMock(), response=mock_resp)
+        )
+        mock_client_cls.return_value = mock_http
+
+        await _phase2_sold_recheck(db_session, lambda p: None, delay=0.0)
+
+    row = await db_session.execute(
+        text("SELECT sold_at FROM listings WHERE external_id = 'p2a-idem'")
+    )
+    assert row.fetchone()[0] == past_sold_at
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_path_b_parser_sets_sold_at(db_session: AsyncSession):
+    """Phase 2 Path B: parser-detected sold sets sold_at."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+        VALUES ('p2b-sold', 'https://rc-network.de/t/p2b-sold/', 'Item', '', '[]', '[]', 'user',
+                '2026-01-01 00:00:00+00', FALSE)
+    """))
+    await db_session.commit()
+
+    with patch("app.scraper.orchestrator.parse_detail") as mock_parse, \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls:
+
+        mock_parse.return_value = {"is_sold": True}
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html>verkauft</html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        result = await _phase2_sold_recheck(db_session, lambda p: None, delay=0.0)
+
+    assert result["sold_found"] == 1
+
+    row = await db_session.execute(
+        text("SELECT is_sold, sold_at FROM listings WHERE external_id = 'p2b-sold'")
+    )
+    result_row = row.fetchone()
+    assert result_row[0] is True
+    assert result_row[1] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase2_reactivation_retains_sold_at(db_session: AsyncSession):
+    """Phase 2 Path B: sold_at is retained when is_sold flips back to FALSE (reactivation)."""
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    past_sold_at = datetime(2026, 1, 10, 0, 0, 0, tzinfo=timezone.utc)
+    await db_session.execute(
+        text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                                  scraped_at, is_sold, sold_at)
+            VALUES ('p2b-react', 'https://rc-network.de/t/p2b-react/', 'Item', '', '[]', '[]', 'user',
+                    '2026-01-01 00:00:00+00', FALSE, :sold_at)
+        """),
+        {"sold_at": past_sold_at},
+    )
+    await db_session.commit()
+
+    # Override _RECHECK_SQL so the sold listing (is_sold=FALSE forced back) is picked up
+    with patch("app.scraper.orchestrator.parse_detail") as mock_parse, \
+         patch("app.scraper.orchestrator.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.scraper.orchestrator._RECHECK_SQL", new=text(
+             "SELECT id, url, external_id FROM listings WHERE external_id = 'p2b-react'"
+         )):
+
+        mock_parse.return_value = {"is_sold": False}
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=None)
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.text = "<html>active listing</html>"
+        mock_http.get = AsyncMock(return_value=resp)
+        mock_client_cls.return_value = mock_http
+
+        await _phase2_sold_recheck(db_session, lambda p: None, delay=0.0)
+
+    row = await db_session.execute(
+        text("SELECT is_sold, sold_at FROM listings WHERE external_id = 'p2b-react'")
+    )
+    result_row = row.fetchone()
+    assert result_row[0] is False       # listing is no longer sold
+    assert result_row[1] == past_sold_at  # sold_at is retained

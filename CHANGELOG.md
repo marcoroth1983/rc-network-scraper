@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.1.0] - 2026-04-18
+
+### Added
+
+**Desktop-Filterleiste mit Dropdown (FilterPanel)**
+- Desktop-Ansicht zeigt jetzt eine dedizierte Filterleiste mit Suche, Entfernung und Sortierung direkt sichtbar
+- Weitere Filter (Kategorie, Preis, Versand, Preis-Bewertung, Modelltyp, Subtyp) sind über ein Dropdown erreichbar
+- Aktive Filter werden im Dropdown-Button durch einen lila Punkt signalisiert
+- Klick außerhalb schließt das Dropdown automatisch
+
+**Lifecycle-Timestamps für Inserate (PLAN-007)**
+- Neue DB-Spalte `created_at`: Zeitpunkt der Ersterfassung eines Inserats (wird nie überschrieben)
+- Neue DB-Spalte `sold_at`: Zeitpunkt, zu dem ein Inserat erstmals als verkauft erkannt wurde (NULL solange aktiv)
+- Beide Spalten werden automatisch befüllt — rückwirkend für alle bestehenden Einträge via idempotenter Migration
+- Ermöglicht DB-seitige Diagnose: wann wurde ein Inserat erstmals gesehen, wann als verkauft markiert
+
+---
+
 ## [2.0.0] - 2026-04-18
 
 ### Added

@@ -73,11 +73,11 @@ _UPSERT_SQL = text("""
     INSERT INTO listings (
         external_id, url, title, price, price_numeric, condition, shipping,
         description, images, tags, author, posted_at, posted_at_raw,
-        plz, city, latitude, longitude, scraped_at, is_sold, category
+        plz, city, latitude, longitude, scraped_at, is_sold, category, created_at
     ) VALUES (
         :external_id, :url, :title, :price, :price_numeric, :condition, :shipping,
         :description, :images, :tags, :author, :posted_at, :posted_at_raw,
-        :plz, :city, :latitude, :longitude, :scraped_at, :is_sold, :category
+        :plz, :city, :latitude, :longitude, :scraped_at, :is_sold, :category, :created_at
     )
     ON CONFLICT (external_id) DO UPDATE SET
         url           = EXCLUDED.url,
@@ -98,7 +98,13 @@ _UPSERT_SQL = text("""
         longitude     = EXCLUDED.longitude,
         scraped_at    = EXCLUDED.scraped_at,
         is_sold       = EXCLUDED.is_sold OR listings.is_sold,
+        sold_at       = CASE
+                          WHEN (EXCLUDED.is_sold OR listings.is_sold) AND listings.sold_at IS NULL
+                          THEN EXCLUDED.scraped_at
+                          ELSE listings.sold_at
+                        END,
         category      = EXCLUDED.category
+        -- created_at intentionally omitted — never overwritten on conflict
     RETURNING id, (xmax = 0) AS is_insert
 """)
 
@@ -299,6 +305,7 @@ async def _upsert_listing(
             "scraped_at": scraped_at,
             "is_sold": parsed.get("is_sold", False),
             "category": category,
+            "created_at": scraped_at,
         },
     )
     row = result.fetchone()
@@ -491,7 +498,13 @@ async def _phase2_sold_recheck(
                         external_id, exc.response.status_code,
                     )
                     await session.execute(
-                        text("UPDATE listings SET is_sold = TRUE, scraped_at = :now WHERE id = :id"),
+                        text("""
+                            UPDATE listings
+                            SET is_sold = TRUE,
+                                sold_at = CASE WHEN sold_at IS NULL THEN :now ELSE sold_at END,
+                                scraped_at = :now
+                            WHERE id = :id
+                        """),
                         {"now": now, "id": listing_id},
                     )
                     await session.commit()
@@ -521,7 +534,13 @@ async def _phase2_sold_recheck(
                 continue
 
             await session.execute(
-                text("UPDATE listings SET is_sold = :is_sold, scraped_at = :now WHERE id = :id"),
+                text("""
+                    UPDATE listings
+                    SET is_sold = :is_sold,
+                        sold_at = CASE WHEN :is_sold AND sold_at IS NULL THEN :now ELSE sold_at END,
+                        scraped_at = :now
+                    WHERE id = :id
+                """),
                 {"is_sold": is_sold, "now": now, "id": listing_id},
             )
             await session.commit()

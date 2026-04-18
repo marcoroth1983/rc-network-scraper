@@ -382,9 +382,16 @@ async def toggle_sold(
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> dict:
-    """Set or clear the is_sold flag on a listing."""
+    """Set or clear the is_sold flag on a listing. Sets sold_at on first transition to sold."""
     result = await session.execute(
-        update(Listing).where(Listing.id == listing_id).values(is_sold=is_sold).returning(Listing.id)
+        text("""
+            UPDATE listings
+            SET is_sold = :is_sold,
+                sold_at = CASE WHEN :is_sold AND sold_at IS NULL THEN now() ELSE sold_at END
+            WHERE id = :id
+            RETURNING id
+        """),
+        {"is_sold": is_sold, "id": listing_id},
     )
     if result.fetchone() is None:
         raise HTTPException(status_code=404, detail="Listing not found")

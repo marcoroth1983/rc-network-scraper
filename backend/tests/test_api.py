@@ -884,3 +884,80 @@ class TestPriceIndicator:
         resp = await api_client.get(f"/api/listings/{listing_id}")
         assert resp.status_code == 200
         assert resp.json()["price_indicator"] is None
+
+
+# ---------------------------------------------------------------------------
+# PLAN-007: sold_at lifecycle tests via PATCH /listings/{id}/sold
+# ---------------------------------------------------------------------------
+
+class TestToggleSoldAt:
+    """Tests that PATCH /listings/{id}/sold correctly manages sold_at."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_patch_sold_true_sets_sold_at(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """PATCH ?is_sold=true sets sold_at when listing was not previously sold."""
+        await db_session.execute(text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+            VALUES ('sold-patch-1', 'https://rc-network.de/t/sp1/', 'Item', '', '[]', '[]', 'user',
+                    NOW(), FALSE)
+        """))
+        await db_session.commit()
+
+        row = await db_session.execute(
+            text("SELECT id FROM listings WHERE external_id = 'sold-patch-1'")
+        )
+        listing_id = row.fetchone()[0]
+
+        resp = await api_client.patch(f"/api/listings/{listing_id}/sold?is_sold=true")
+        assert resp.status_code == 200
+
+        row = await db_session.execute(
+            text("SELECT is_sold, sold_at FROM listings WHERE id = :id"),
+            {"id": listing_id},
+        )
+        result_row = row.fetchone()
+        assert result_row[0] is True
+        assert result_row[1] is not None
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_patch_sold_twice_does_not_overwrite_sold_at(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """PATCH ?is_sold=true twice: second call does not overwrite sold_at."""
+        await db_session.execute(text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags, author, scraped_at, is_sold)
+            VALUES ('sold-patch-2', 'https://rc-network.de/t/sp2/', 'Item', '', '[]', '[]', 'user',
+                    NOW(), FALSE)
+        """))
+        await db_session.commit()
+
+        row = await db_session.execute(
+            text("SELECT id FROM listings WHERE external_id = 'sold-patch-2'")
+        )
+        listing_id = row.fetchone()[0]
+
+        # First PATCH
+        resp = await api_client.patch(f"/api/listings/{listing_id}/sold?is_sold=true")
+        assert resp.status_code == 200
+
+        row = await db_session.execute(
+            text("SELECT sold_at FROM listings WHERE id = :id"),
+            {"id": listing_id},
+        )
+        sold_at_first = row.fetchone()[0]
+        assert sold_at_first is not None
+
+        # Second PATCH — sold_at must not change
+        resp = await api_client.patch(f"/api/listings/{listing_id}/sold?is_sold=true")
+        assert resp.status_code == 200
+
+        row = await db_session.execute(
+            text("SELECT sold_at FROM listings WHERE id = :id"),
+            {"id": listing_id},
+        )
+        sold_at_second = row.fetchone()[0]
+        assert sold_at_second == sold_at_first

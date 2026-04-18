@@ -53,6 +53,12 @@ class Listing(Base):
     price_indicator_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shipping_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
+    # PLAN-007: lifecycle timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class PlzGeodata(Base):
     __tablename__ = "plz_geodata"

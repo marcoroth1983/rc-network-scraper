@@ -203,6 +203,22 @@ async def init_db() -> None:
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_listings_source ON listings (source)"
         ))
+        # PLAN-007: lifecycle timestamps
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+        ))
+        # One-time backfill: only runs when created_at was just added (default = now() would be wrong
+        # for existing rows). Guard: only update rows where created_at is newer than scraped_at,
+        # which can only happen for rows that just received the column default.
+        # Note: all statements run in a single transaction (engine.begin()) — now() is constant
+        # per transaction, so rows inserted during this same transaction have created_at == scraped_at
+        # and will not match the guard.
+        await conn.execute(text(
+            "UPDATE listings SET created_at = scraped_at WHERE created_at > scraped_at"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS sold_at TIMESTAMPTZ"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
