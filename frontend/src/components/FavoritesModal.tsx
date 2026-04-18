@@ -47,7 +47,6 @@ interface SavedSearchCardProps {
 function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove }: SavedSearchCardProps) {
   const confirm = useConfirm();
   const displayName = search.name ?? search.search ?? 'Alle Anzeigen';
-  const hasPlzInfo = search.plz != null;
   const hasDistance = search.max_distance != null;
 
   const sortLabel: Record<string, string> = { date: 'Datum', price: 'Preis', distance: 'Entfernung' };
