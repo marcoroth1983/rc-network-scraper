@@ -14,6 +14,8 @@ const defaultFilter: ListingsFilter = {
   price_max: '',
   page: 1,
   category: 'all',
+  model_type: undefined,
+  model_subtype: undefined,
 };
 
 function renderPanel(filter = defaultFilter, onChange = vi.fn()) {
@@ -64,5 +66,40 @@ describe('FilterPanel', () => {
     renderPanel();
     const opts = screen.getAllByRole('option', { name: /PLZ erforderlich/i });
     expect(opts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders Modelltyp select with empty default', () => {
+    renderPanel();
+    const select = screen.getByRole('combobox', { name: /Modelltyp/i });
+    expect(select).toBeInTheDocument();
+    expect((select as HTMLSelectElement).value).toBe('');
+  });
+
+  it('Subtyp select is disabled when no model_type is selected', () => {
+    renderPanel();
+    expect(screen.getByRole('combobox', { name: /Subtyp/i })).toBeDisabled();
+  });
+
+  it('selecting a model_type resets model_subtype and emits correct filter', () => {
+    const onChange = vi.fn();
+    renderPanel({ ...defaultFilter }, onChange);
+    fireEvent.change(screen.getByRole('combobox', { name: /Modelltyp/i }), { target: { value: 'airplane' } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ model_type: 'airplane', model_subtype: undefined, page: 1 }),
+    );
+  });
+
+  it('Subtyp select is enabled when model_type is set', () => {
+    renderPanel({ ...defaultFilter, model_type: 'glider' });
+    expect(screen.getByRole('combobox', { name: /Subtyp/i })).not.toBeDisabled();
+  });
+
+  it('selecting "Alle Typen" clears model_type', () => {
+    const onChange = vi.fn();
+    renderPanel({ ...defaultFilter, model_type: 'boat' }, onChange);
+    fireEvent.change(screen.getByRole('combobox', { name: /Modelltyp/i }), { target: { value: '' } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ model_type: undefined, model_subtype: undefined }),
+    );
   });
 });

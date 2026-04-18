@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import type { ListingsFilter } from '../hooks/useListings';
+import { MODEL_SUBTYPES, MODEL_TYPE_LABELS, availableModelTypes } from '../constants/vocabulary';
+import type { ModelType } from '../constants/vocabulary';
 
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
 
@@ -50,7 +52,8 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
     filter.category !== 'all' || !!filter.max_distance || filter.sort !== 'date' ||
     filter.sort_dir !== 'desc' || !!filter.price_min || !!filter.price_max ||
     filter.shipping_available === true || !!filter.price_indicator ||
-    !!filter.drive_type || !!filter.completeness;
+    !!filter.drive_type || !!filter.completeness ||
+    !!filter.model_type || !!filter.model_subtype;
 
   const inputClass =
     'placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition';
@@ -268,6 +271,62 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
                 Nur Günstige
               </button>
             </div>
+          </div>
+
+          {/* Modelltyp — hidden when category already implies the type */}
+          {(() => {
+            const types = availableModelTypes(filter.category);
+            if (types.length === 0) return null;
+            return (
+              <div>
+                <p className={sectionLabel} style={sectionLabelColor}>Modelltyp</p>
+                <select
+                  value={filter.model_type ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    onChange({
+                      ...filter,
+                      model_type: val || undefined,
+                      model_subtype: undefined,
+                      page: 1,
+                    });
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl ${inputClass} appearance-none cursor-pointer`}
+                  style={inputStyle}
+                  aria-label="Modelltyp"
+                >
+                  <option value="" style={{ background: '#0f0f23' }}>Alle Typen</option>
+                  {types.map((t) => (
+                    <option key={t} value={t} style={{ background: '#0f0f23' }}>
+                      {MODEL_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
+
+          {/* Subtyp */}
+          <div>
+            <p className={sectionLabel} style={sectionLabelColor}>Subtyp</p>
+            <select
+              value={filter.model_subtype ?? ''}
+              onChange={(e) => {
+                onChange({ ...filter, model_subtype: e.target.value || undefined, page: 1 });
+              }}
+              disabled={!filter.model_type}
+              className={`w-full px-4 py-3 rounded-xl ${inputClass} appearance-none cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed`}
+              style={inputStyle}
+              aria-label="Subtyp"
+            >
+              <option value="" style={{ background: '#0f0f23' }}>Alle Subtypen</option>
+              {filter.model_type &&
+                MODEL_SUBTYPES[filter.model_type as ModelType]?.map((s) => (
+                  <option key={s} value={s} style={{ background: '#0f0f23' }}>
+                    {s}
+                  </option>
+                ))}
+            </select>
           </div>
 
         </div>
