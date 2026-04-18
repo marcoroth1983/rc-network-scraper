@@ -17,6 +17,8 @@ export interface ListingsFilter {
   completeness?: string;
   shipping_available?: boolean;
   price_indicator?: string;
+  model_type?: string;
+  model_subtype?: string;
 }
 
 export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
@@ -43,6 +45,8 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     completeness: params.get('completeness') ?? undefined,
     shipping_available,
     price_indicator: params.get('price_indicator') ?? undefined,
+    model_type: params.get('model_type') ?? undefined,
+    model_subtype: params.get('model_subtype') ?? undefined,
   };
 }
 
@@ -62,6 +66,8 @@ export function writeFiltersToParams(
   if (filter.completeness) p.set('completeness', filter.completeness);
   if (filter.shipping_available != null) p.set('shipping_available', String(filter.shipping_available));
   if (filter.price_indicator) p.set('price_indicator', filter.price_indicator);
+  if (filter.model_type) p.set('model_type', filter.model_type);
+  if (filter.model_subtype) p.set('model_subtype', filter.model_subtype);
   if (filter.page > 1) p.set('page', String(filter.page));
   setParams(p);
 }
@@ -112,6 +118,8 @@ export function useListings(): UseListingsResult {
       completeness: filter.completeness,
       shipping_available: filter.shipping_available,
       price_indicator: filter.price_indicator,
+      model_type: filter.model_type,
+      model_subtype: filter.model_subtype,
     })
       .then((res) => {
         if (!cancelled) {
@@ -143,6 +151,8 @@ export function useListings(): UseListingsResult {
     filter.completeness,
     filter.shipping_available,
     filter.price_indicator,
+    filter.model_type,
+    filter.model_subtype,
   ]);
 
   return { data, loading, error, filter, setFilter };
