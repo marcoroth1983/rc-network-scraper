@@ -70,8 +70,8 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
             {location || '–'}
           </span>
           {listing.distance_km != null && (
-            <span className="text-xs shrink-0 ml-2" style={{ color: 'rgba(248,250,252,0.4)' }}>
-              {Math.round(listing.distance_km)} km
+            <span className="text-xs font-semibold shrink-0 ml-2" style={{ color: '#6366F1' }}>
+              {listing.distance_km!.toFixed(1)} km
             </span>
           )}
         </div>

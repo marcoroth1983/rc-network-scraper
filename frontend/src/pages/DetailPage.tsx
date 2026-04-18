@@ -605,7 +605,7 @@ export default function DetailPage() {
                 </MetaRow>
                 {distanceKm != null && (
                   <MetaRow label="Entfernung">
-                    <span style={{ color: '#A78BFA', fontWeight: 600 }}>
+                    <span style={{ color: '#6366F1', fontWeight: 600 }}>
                       {distanceKm.toFixed(1)} km{refCity ? ` von ${refCity}` : ''}
                     </span>
                   </MetaRow>
