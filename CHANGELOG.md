@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0] - 2026-04-18
+
+### Added
+
+**Modelltyp- und Subtyp-Filter (PLAN-022)**
+- Filtersheet (Mobile) zeigt zwei neue Dropdowns: Modelltyp (Flugzeug, Hubschrauber, Segler, Multicopter, Boot, Auto) und Subtyp (dynamisch je Typ)
+- Subtyp-Dropdown ist deaktiviert solange kein Typ gewählt ist; bei Typwechsel wird Subtyp automatisch zurückgesetzt
+- Modelltyp-Sektion wird ausgeblendet wenn die Kategorie den Typ bereits impliziert (rc-cars, Schiffsmodelle)
+- Beide Filter werden in der URL persistiert und beim Seitenload wiederhergestellt
+- Backend: `GET /api/listings` akzeptiert jetzt `model_type` als Filterparameter (war bisher nur `model_subtype`)
+
+---
+
 ## [1.8.0] - 2026-04-18
 
 ### Changed

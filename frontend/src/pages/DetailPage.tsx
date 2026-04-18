@@ -423,7 +423,7 @@ export default function DetailPage() {
   return (
     <div className="w-full pt-3 pb-6 sm:pt-0 sm:pb-10">
       {/* Back button */}
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-start mb-3">
         <button
           onClick={() => isDirectHit ? navigate('/', { replace: true }) : navigate(-1)}
           className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full transition-all duration-200"

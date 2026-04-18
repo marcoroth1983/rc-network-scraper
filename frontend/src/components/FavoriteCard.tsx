@@ -64,17 +64,19 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
           {listing.title}
         </Link>
 
-        {/* Row 2: PLZ + city on left, date on right */}
+        {/* Row 2: PLZ + city on left, distance on right */}
         <div className="flex justify-between items-center mt-1">
           <span className="text-xs truncate" style={{ color: 'rgba(248,250,252,0.4)' }}>
             {location || '–'}
           </span>
-          <span className="text-xs shrink-0 ml-2" style={{ color: 'rgba(248,250,252,0.35)' }}>
-            {formatDate(listing.posted_at)}
-          </span>
+          {listing.distance_km != null && (
+            <span className="text-xs shrink-0 ml-2" style={{ color: 'rgba(248,250,252,0.4)' }}>
+              {Math.round(listing.distance_km)} km
+            </span>
+          )}
         </div>
 
-        {/* Row 3: price / sold badge on left, distance (or condition fallback) on right */}
+        {/* Row 3: price / sold badge on left, date on right */}
         <div className="flex justify-between items-center mt-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
             {listing.is_sold ? (
@@ -95,11 +97,9 @@ export default function FavoriteCard({ listing, onRemove }: Props) {
             )}
           </div>
 
-          {listing.distance_km != null && (
-            <span className="text-xs shrink-0 ml-2" style={{ color: 'rgba(248,250,252,0.4)' }}>
-              {Math.round(listing.distance_km)} km
-            </span>
-          )}
+          <span className="text-xs shrink-0 ml-2" style={{ color: 'rgba(248,250,252,0.35)' }}>
+            {formatDate(listing.posted_at)}
+          </span>
         </div>
       </div>
 
