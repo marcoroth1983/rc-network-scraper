@@ -16,9 +16,31 @@ export interface ListingsFilter {
   drive_type?: string;
   completeness?: string;
   shipping_available?: boolean;
-  price_indicator?: string;
   model_type?: string;
   model_subtype?: string;
+  show_outdated?: boolean;
+  only_sold?: boolean;
+}
+
+// All filter fields except the pagination cursor.
+// This type drives change-detection and ref storage in useInfiniteListings —
+// adding a field to ListingsFilter automatically includes it here.
+export type FilterDimensions = Omit<ListingsFilter, 'page'>;
+
+/** Strip the `page` cursor from a full filter object. */
+export function extractFilterDimensions(f: ListingsFilter): FilterDimensions {
+  // Destructure page out, spread the rest — TypeScript keeps this in sync.
+  const { page: _page, ...dims } = f;
+  return dims;
+}
+
+/**
+ * Deep-equality check over all FilterDimension keys.
+ * Driven by Object.keys so it automatically covers new fields added to the type.
+ */
+export function filterDimensionsEqual(a: FilterDimensions, b: FilterDimensions): boolean {
+  const keys = Object.keys(a) as (keyof FilterDimensions)[];
+  return keys.every((k) => a[k] === b[k]);
 }
 
 export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
@@ -31,6 +53,8 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
   const category = localStorage.getItem('rcn_category') ?? 'all';
   const shippingRaw = params.get('shipping_available');
   const shipping_available = shippingRaw === 'true' ? true : shippingRaw === 'false' ? false : undefined;
+  const show_outdated = params.get('show_outdated') === 'true' ? true : undefined;
+  const only_sold = params.get('only_sold') === 'true' ? true : undefined;
   return {
     search: params.get('search') ?? '',
     plz: params.get('plz') ?? '',
@@ -44,9 +68,10 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
     drive_type: params.get('drive_type') ?? undefined,
     completeness: params.get('completeness') ?? undefined,
     shipping_available,
-    price_indicator: params.get('price_indicator') ?? undefined,
     model_type: params.get('model_type') ?? undefined,
     model_subtype: params.get('model_subtype') ?? undefined,
+    show_outdated,
+    only_sold,
   };
 }
 
@@ -65,9 +90,10 @@ export function writeFiltersToParams(
   if (filter.drive_type) p.set('drive_type', filter.drive_type);
   if (filter.completeness) p.set('completeness', filter.completeness);
   if (filter.shipping_available != null) p.set('shipping_available', String(filter.shipping_available));
-  if (filter.price_indicator) p.set('price_indicator', filter.price_indicator);
   if (filter.model_type) p.set('model_type', filter.model_type);
   if (filter.model_subtype) p.set('model_subtype', filter.model_subtype);
+  if (filter.show_outdated) p.set('show_outdated', 'true');
+  if (filter.only_sold) p.set('only_sold', 'true');
   if (filter.page > 1) p.set('page', String(filter.page));
   setParams(p);
 }
@@ -117,9 +143,10 @@ export function useListings(): UseListingsResult {
       drive_type: filter.drive_type,
       completeness: filter.completeness,
       shipping_available: filter.shipping_available,
-      price_indicator: filter.price_indicator,
       model_type: filter.model_type,
       model_subtype: filter.model_subtype,
+      show_outdated: filter.show_outdated,
+      only_sold: filter.only_sold,
     })
       .then((res) => {
         if (!cancelled) {
@@ -150,9 +177,10 @@ export function useListings(): UseListingsResult {
     filter.drive_type,
     filter.completeness,
     filter.shipping_available,
-    filter.price_indicator,
     filter.model_type,
     filter.model_subtype,
+    filter.show_outdated,
+    filter.only_sold,
   ]);
 
   return { data, loading, error, filter, setFilter };

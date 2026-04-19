@@ -3,7 +3,14 @@ import { useSearchParams, useLocation } from 'react-router-dom';
 import { getListings } from '../api/client';
 import type { ListingSummary } from '../types/api';
 import { getBackground } from '../lib/modalLocation';
-import { readFiltersFromParams, writeFiltersToParams, type ListingsFilter } from './useListings';
+import {
+  readFiltersFromParams,
+  writeFiltersToParams,
+  extractFilterDimensions,
+  filterDimensionsEqual,
+  type ListingsFilter,
+  type FilterDimensions,
+} from './useListings';
 
 export interface UseInfiniteListingsResult {
   items: ListingSummary[];
@@ -43,61 +50,19 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  // Stable references to the "current filter dimensions" used for change detection.
-  // We track these as refs so the fetch effect's deps stay clean.
-  const filterRef = useRef({
-    search: urlFilter.search,
-    plz: urlFilter.plz,
-    sort: urlFilter.sort,
-    sort_dir: urlFilter.sort_dir,
-    max_distance: urlFilter.max_distance,
-    category: urlFilter.category,
-    price_min: urlFilter.price_min,
-    price_max: urlFilter.price_max,
-    drive_type: urlFilter.drive_type,
-    completeness: urlFilter.completeness,
-    shipping_available: urlFilter.shipping_available,
-    price_indicator: urlFilter.price_indicator,
-    model_type: urlFilter.model_type,
-    model_subtype: urlFilter.model_subtype,
-  });
+  // Stable reference to the current filter dimensions used for change detection.
+  // Using FilterDimensions (page stripped) keeps this in sync with ListingsFilter
+  // automatically — no manual parallel lists needed.
+  const filterRef = useRef<FilterDimensions>(extractFilterDimensions(urlFilter));
 
   // Detect filter dimension changes (anything except page).
-  // When they change, reset accumulated state and go back to page 1.
-  const prevFilter = filterRef.current;
-  const filterChanged =
-    prevFilter.search !== urlFilter.search ||
-    prevFilter.plz !== urlFilter.plz ||
-    prevFilter.sort !== urlFilter.sort ||
-    prevFilter.sort_dir !== urlFilter.sort_dir ||
-    prevFilter.max_distance !== urlFilter.max_distance ||
-    prevFilter.category !== urlFilter.category ||
-    prevFilter.price_min !== urlFilter.price_min ||
-    prevFilter.price_max !== urlFilter.price_max ||
-    prevFilter.drive_type !== urlFilter.drive_type ||
-    prevFilter.completeness !== urlFilter.completeness ||
-    prevFilter.shipping_available !== urlFilter.shipping_available ||
-    prevFilter.price_indicator !== urlFilter.price_indicator ||
-    prevFilter.model_type !== urlFilter.model_type ||
-    prevFilter.model_subtype !== urlFilter.model_subtype;
+  // filterDimensionsEqual covers all keys via Object.keys — new fields are
+  // automatically included without touching this hook.
+  const urlDims = extractFilterDimensions(urlFilter);
+  const filterChanged = !filterDimensionsEqual(filterRef.current, urlDims);
 
   if (filterChanged) {
-    filterRef.current = {
-      search: urlFilter.search,
-      plz: urlFilter.plz,
-      sort: urlFilter.sort,
-      sort_dir: urlFilter.sort_dir,
-      max_distance: urlFilter.max_distance,
-      category: urlFilter.category,
-      price_min: urlFilter.price_min,
-      price_max: urlFilter.price_max,
-      drive_type: urlFilter.drive_type,
-      completeness: urlFilter.completeness,
-      shipping_available: urlFilter.shipping_available,
-      price_indicator: urlFilter.price_indicator,
-      model_type: urlFilter.model_type,
-      model_subtype: urlFilter.model_subtype,
-    };
+    filterRef.current = urlDims;
     // Reset synchronously during render — safe because we haven't committed yet
     // and this is logically equivalent to getDerivedStateFromProps.
     if (items.length > 0 || total !== null || page !== 1 || !hasMore) {
@@ -109,7 +74,9 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   }
 
   // Stable snapshot of filter dimensions for the fetch effect.
-  const { search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator, model_type, model_subtype } = filterRef.current;
+  // We serialise to a string so the useEffect dep comparison is O(1) and stable.
+  const dims = filterRef.current;
+  const dimsKey = JSON.stringify(dims);
 
   useEffect(() => {
     // Fetch gate: no localStorage value means first visit — wait for modal selection.
@@ -120,7 +87,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     }
 
     // Guard: distance-related params require PLZ (backend returns 400 otherwise)
-    if ((sort === 'distance' || max_distance) && !plz) {
+    if ((dims.sort === 'distance' || dims.max_distance) && !dims.plz) {
       return;
     }
 
@@ -137,20 +104,21 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
     getListings({
       page,
       per_page: 20,
-      search: search || null,
-      sort,
-      sort_dir,
-      plz: plz || null,
-      max_distance: max_distance ? parseInt(max_distance, 10) : null,
-      category: category !== 'all' ? category : undefined,
-      price_min: price_min ? parseFloat(price_min) : null,
-      price_max: price_max ? parseFloat(price_max) : null,
-      drive_type,
-      completeness,
-      shipping_available,
-      price_indicator,
-      model_type,
-      model_subtype,
+      search: dims.search || null,
+      sort: dims.sort,
+      sort_dir: dims.sort_dir,
+      plz: dims.plz || null,
+      max_distance: dims.max_distance ? parseInt(dims.max_distance, 10) : null,
+      category: dims.category !== 'all' ? dims.category : undefined,
+      price_min: dims.price_min ? parseFloat(dims.price_min) : null,
+      price_max: dims.price_max ? parseFloat(dims.price_max) : null,
+      drive_type: dims.drive_type,
+      completeness: dims.completeness,
+      shipping_available: dims.shipping_available,
+      model_type: dims.model_type,
+      model_subtype: dims.model_subtype,
+      show_outdated: dims.show_outdated,
+      only_sold: dims.only_sold,
     })
       .then((res) => {
         if (cancelled) return;
@@ -173,8 +141,10 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
       cancelled = true;
     };
     // `items.length` is intentionally included so hasMore calculation is correct.
+    // `dimsKey` is the serialised snapshot of all filter dimensions — one stable
+    // dep instead of a manually enumerated list of fields.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, plz, sort, sort_dir, max_distance, category, price_min, price_max, drive_type, completeness, shipping_available, price_indicator, model_type, model_subtype]);
+  }, [page, dimsKey]);
 
   const loadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -223,23 +193,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   // Expose the filter with the internal page for consumers that read filter.page
   // (e.g. criteriaChanged helper). Page in the returned filter reflects the
   // URL's page param, which we intentionally keep absent — so it will be 1.
-  const filter: ListingsFilter = {
-    search: urlFilter.search,
-    plz: urlFilter.plz,
-    sort: urlFilter.sort,
-    sort_dir: urlFilter.sort_dir,
-    max_distance: urlFilter.max_distance,
-    page: 1,
-    category: urlFilter.category,
-    price_min: urlFilter.price_min,
-    price_max: urlFilter.price_max,
-    drive_type: urlFilter.drive_type,
-    completeness: urlFilter.completeness,
-    shipping_available: urlFilter.shipping_available,
-    price_indicator: urlFilter.price_indicator,
-    model_type: urlFilter.model_type,
-    model_subtype: urlFilter.model_subtype,
-  };
+  const filter: ListingsFilter = { ...urlFilter, page: 1 };
 
   return { items, total, loading, loadingMore, hasMore, error, filter, setFilter, setCategory, loadMore };
 }

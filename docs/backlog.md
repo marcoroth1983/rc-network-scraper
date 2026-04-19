@@ -2,9 +2,11 @@
 
 ## Open
 
+- **TEST-01: Pre-existing Frontend-Test-Failure `DetailPage — case 16: lg:grid-cols-12`** — Der Test `src/pages/__tests__/DetailPage.test.tsx` (Case 16) prüft `document.querySelector('.lg\\:grid-cols-12')` und erwartet truthy, aber die aktuelle DetailPage-Implementierung hat keinen 12-Spalten-Grid-Wrapper mehr. Test war rot vor PLAN-024 und ist weiter rot nach PLAN-025. Entscheidung nötig: entweder (a) Test streichen/anpassen an die tatsächliche Layout-Implementierung oder (b) DetailPage auf `lg:grid-cols-12` zurück-refactoren, falls das Original-Layout gewünscht ist. Aktuell Rauschen in jeder Plan-Verification — darum Tracking hier statt wiederholtes "pre-existing failure" in jedem Plan-Review. _Gemeldet 2026-04-19 nach PLAN-025._
+
 - **NOTIFY-01: Per-User Telegram Notifications** — Enable users to receive personal Telegram alerts for their saved searches. Dedicated Telegram bot ("RC-Scout-Bot"), one per project. Account linking via deep-link token pattern: user clicks "Telegram verbinden" on profile page → app generates one-time token → user opens `t.me/RcScoutBot?start=<token>` → bot receives `/start <token>` + Telegram Chat-ID → backend stores `user_id ↔ telegram_chat_id`. Sending is a plain HTTP POST to Telegram API, no SDK or daemon needed. Supports per-user targeting — each user gets only alerts for their own searches. 3 active users currently. See also: MFC-Bussard project memory `reference_telegram_bot_pattern.md` for full pattern documentation.
 
-- ~~**PRICE-01: Pivot from price indicator to similarity ranking**~~ — **✅ Erledigt (PLAN-020, 2026-04-18)**. Attribut-gewichteter Scorer, `assess_homogeneity`, eigenständiger Scheduler-Job.
+- ~~**PRICE-01: Pivot from price indicator to similarity ranking**~~ — **Reverted by PLAN-025 (2026-04-19)**. Das Similarity-Ranking + Median-Indikator-System (PLAN-020) wurde vollständig entfernt und durch eine reine Hart-Attribut-Filterung im `/comparables`-Endpoint ersetzt. Begründung: Median-Mechanik war für den Hobby-Scope zu ungenau; User bevorzugt eine deterministische Filterung (Kategorie + Modelltyp + Antrieb + Spannweite ±25 %).
 
 - **PRICE-02: RC product graph — models + components + "installed vs. included" relations** — Long-term vision, not committed. Build a structured product catalogue that separates **models** (e.g. "Align T-Rex 700X", "E-flite P-51 Mustang 1.5m") from **components** (motors, ESCs, servos, gyros, blades, batteries, receivers), with a per-listing relation tagging each component as `installed`, `spare`, or `unrelated`. Unlocks analytics that no public RC source provides: "which motors are most commonly installed in 700-class helis?", "price spread for T-Rex 700 with Scorpion+Edge vs. Hobbywing", "is this Yak 54 under-equipped for its price?". A price indicator built on top of this graph becomes genuinely meaningful because comparison is "same model + similar component set", not "same words in the title".
 
@@ -21,7 +23,7 @@
   1. **Phase 0 — a weekend, cheap exploration**: Design Pydantic schema for `models`, `components`, `listing_model_ref`, `listing_component_ref`. Build a heli-only extractor POC. Run over 50 hand-picked heli listings, measure extraction quality. **Stop-signal**: abort if useful extraction rate < 70%.
   2. **Phase 1**: Backfill all existing heli listings, one-pass manual dedup (1–2 hours), minimal UI showing "verbaute Komponenten" on the heli detail page.
   3. **Phase 2**: Analytics feature — "What are others installing?" module. Project shifts from scraper to market-observation tool.
-  4. **Phase 3**: Extend to non-custom airplanes. Rebuild the price indicator on top of the graph (similarity across model + component set).
+  4. **Phase 3**: Extend to non-custom airplanes. Optional: build a price indicator on top of the graph (similarity across model + component set). _Note 2026-04-19: an earlier indicator implementation (PLAN-020) was reverted by PLAN-025; a future revival would need a fresh plan._
 
   **Data coverage measured on staging 2026-04-18** (3555 active listings, all LLM-analysed):
   - `manufacturer` set: 59%
