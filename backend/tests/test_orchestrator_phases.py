@@ -319,36 +319,118 @@ async def test_phase3_strips_images_from_old_sold_listings(db_session: AsyncSess
     assert new_sold_images.fetchone()[0] == ["https://example.com/img3.jpg"]
 
 
+# ---------------------------------------------------------------------------
+# PLAN-024: Phase 3 marks outdated instead of deleting
+# ---------------------------------------------------------------------------
+
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_phase3_deletes_stale_listings(db_session: AsyncSession):
-    """Phase 3 deletes non-sold listings with posted_at older than 8 weeks."""
+async def test_phase3_marks_outdated_instead_of_deleting(db_session: AsyncSession):
+    """Phase 3 marks non-sold listings older than 8 weeks as is_outdated=TRUE (no deletion)."""
     await db_session.execute(text("""
         INSERT INTO listings (external_id, url, title, description, images, tags, author,
                               scraped_at, posted_at, is_sold)
-        VALUES
-            -- Old: should be deleted
-            ('stale', 'https://rc-network.de/t/10/', 'Stale', '', '[]', '[]', 'u',
-             '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', FALSE),
-            -- Recent: should NOT be deleted
-            ('fresh', 'https://rc-network.de/t/11/', 'Fresh', '', '[]', '[]', 'u',
-             NOW(), NOW(), FALSE),
-            -- NULL posted_at: should NOT be deleted
-            ('nodate', 'https://rc-network.de/t/12/', 'No date', '', '[]', '[]', 'u',
-             '2025-01-01 00:00:00+00', NULL, FALSE)
+        VALUES ('outdated-1', 'https://rc-network.de/t/20/', 'Old listing', '', '[]', '[]', 'u',
+                '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', FALSE)
     """))
     await db_session.commit()
 
     result = await _phase3_cleanup(db_session)
 
-    assert result["deleted_stale"] == 1
-    remaining = await db_session.execute(
-        text("SELECT external_id FROM listings ORDER BY external_id")
+    assert result["marked_outdated"] == 1
+
+    # Listing must still exist
+    row = await db_session.execute(
+        text("SELECT is_outdated FROM listings WHERE external_id = 'outdated-1'")
     )
-    ids = {r[0] for r in remaining.fetchall()}
-    assert "stale" not in ids
-    assert "fresh" in ids
-    assert "nodate" in ids
+    fetched = row.fetchone()
+    assert fetched is not None
+    assert fetched[0] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_does_not_mark_sold_listings_as_outdated(db_session: AsyncSession):
+    """Phase 3 does not set is_outdated on sold listings (only non-sold listings are affected)."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold)
+        VALUES ('sold-old', 'https://rc-network.de/t/21/', 'Old sold', '', '[]', '[]', 'u',
+                '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', TRUE)
+    """))
+    await db_session.commit()
+
+    await _phase3_cleanup(db_session)
+
+    row = await db_session.execute(
+        text("SELECT is_outdated FROM listings WHERE external_id = 'sold-old'")
+    )
+    assert row.fetchone()[0] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_idempotent_does_not_remark_already_outdated(db_session: AsyncSession):
+    """Phase 3 is idempotent: already-outdated listings are not counted again on re-run."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold, is_outdated)
+        VALUES ('already-outdated', 'https://rc-network.de/t/22/', 'Already outdated', '',
+                '[]', '[]', 'u', '2025-01-01 00:00:00+00', '2025-01-01 00:00:00+00', FALSE, TRUE)
+    """))
+    await db_session.commit()
+
+    result = await _phase3_cleanup(db_session)
+
+    assert result["marked_outdated"] == 0
+
+    # is_outdated stays TRUE
+    row = await db_session.execute(
+        text("SELECT is_outdated FROM listings WHERE external_id = 'already-outdated'")
+    )
+    assert row.fetchone()[0] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_does_not_mark_recent_listings(db_session: AsyncSession):
+    """Phase 3 does not mark listings with posted_at less than 8 weeks ago."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold)
+        VALUES ('recent', 'https://rc-network.de/t/23/', 'Recent', '', '[]', '[]', 'u',
+                NOW(), NOW() - INTERVAL '2 weeks', FALSE)
+    """))
+    await db_session.commit()
+
+    await _phase3_cleanup(db_session)
+
+    row = await db_session.execute(
+        text("SELECT is_outdated FROM listings WHERE external_id = 'recent'")
+    )
+    assert row.fetchone()[0] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase3_does_not_mark_listings_without_posted_at(db_session: AsyncSession):
+    """Phase 3 skips rows with NULL posted_at — the SQL guard `AND posted_at IS NOT NULL`
+    must prevent those rows from ever being marked outdated."""
+    await db_session.execute(text("""
+        INSERT INTO listings (external_id, url, title, description, images, tags, author,
+                              scraped_at, posted_at, is_sold)
+        VALUES ('no-posted-at', 'https://rc-network.de/t/24/', 'No posted_at', '', '[]', '[]', 'u',
+                '2025-01-01 00:00:00+00', NULL, FALSE)
+    """))
+    await db_session.commit()
+
+    result = await _phase3_cleanup(db_session)
+
+    assert result["marked_outdated"] == 0
+    row = await db_session.execute(
+        text("SELECT is_outdated FROM listings WHERE external_id = 'no-posted-at'")
+    )
+    assert row.fetchone()[0] is False
 
 
 # ---------------------------------------------------------------------------

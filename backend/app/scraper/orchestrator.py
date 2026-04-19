@@ -105,6 +105,9 @@ _UPSERT_SQL = text("""
                         END,
         category      = EXCLUDED.category
         -- created_at intentionally omitted — never overwritten on conflict
+        -- is_outdated intentionally omitted — PLAN-024: once a listing is marked outdated
+        -- by Phase 3, a subsequent Phase 1/2 upsert does NOT reset it. Rare in practice
+        -- because Phase 1's fully-known stop-early usually prevents re-upsert of old rows.
     RETURNING id, (xmax = 0) AS is_insert
 """)
 
@@ -561,10 +564,10 @@ async def _phase3_cleanup(session: AsyncSession) -> dict:
 
     Retention rules:
     - Sold listings with scraped_at older than 2 weeks: strip images (kept forever for seller history)
-    - Non-sold listings with posted_at older than 8 weeks: delete
+    - Non-sold listings with posted_at older than 8 weeks: mark is_outdated=TRUE (no hard delete)
       (listings with NULL posted_at are excluded and kept indefinitely)
 
-    Returns: {cleaned_sold, deleted_stale}
+    Returns: {cleaned_sold, marked_outdated}
     """
     now = datetime.now(timezone.utc)
     two_weeks_ago = now - timedelta(weeks=2)
@@ -580,21 +583,24 @@ async def _phase3_cleanup(session: AsyncSession) -> dict:
     )
     cleaned_sold = len(sold_result.fetchall())
 
-    stale_result = await session.execute(
+    # Mark non-sold listings older than 8 weeks as outdated (no deletion — kept for history)
+    outdated_result = await session.execute(
         text("""
-            DELETE FROM listings
+            UPDATE listings
+            SET is_outdated = TRUE
             WHERE is_sold = FALSE
               AND posted_at < :cutoff
               AND posted_at IS NOT NULL
+              AND is_outdated = FALSE
             RETURNING id
         """),
         {"cutoff": eight_weeks_ago},
     )
-    deleted_stale = len(stale_result.fetchall())
+    marked_outdated = len(outdated_result.fetchall())
 
     await session.commit()
 
     logger.info(
-        "Phase 3: cleaned images from %d sold + deleted %d stale listings", cleaned_sold, deleted_stale
+        "Phase 3: cleaned images from %d sold + marked %d outdated listings", cleaned_sold, marked_outdated
     )
-    return {"cleaned_sold": cleaned_sold, "deleted_stale": deleted_stale}
+    return {"cleaned_sold": cleaned_sold, "marked_outdated": marked_outdated}

@@ -16,8 +16,8 @@ function formatEntry(entry: ScrapeLogEntry): string {
   const parts: string[] = [];
   if (s.rechecked > 0) parts.push(`${s.rechecked} geprüft`);
   if (s.sold_found > 0) parts.push(`${s.sold_found} verkauft`);
-  const deleted = (s.cleaned_sold ?? 0) + (s.deleted_stale ?? 0);
-  if (deleted > 0) parts.push(`${deleted} gelöscht`);
+  const outdated = (s.cleaned_sold ?? 0) + (s.marked_outdated ?? 0);
+  if (outdated > 0) parts.push(`${outdated} veraltet`);
   return parts.length > 0 ? parts.join(' · ') : 'keine Änderungen';
 }
 
