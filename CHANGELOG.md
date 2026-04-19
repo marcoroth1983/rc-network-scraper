@@ -1,5 +1,63 @@
 # Changelog
 
+## [2.3.0] - 2026-04-19
+
+### Removed
+
+**Preisbewertung (Median-System) entfernt (PLAN-025)**
+- Badge „Günstig / Fair / Teuer" auf Listing-Karten entfernt
+- Filter-Chip „Nur Günstige" entfernt (Mobile + Desktop)
+- DB-Spalten `price_indicator`, `price_indicator_median`, `price_indicator_count` gelöscht
+- Hintergrund-Job `recalculate_price_indicators` entfernt
+- Telegram-Benachrichtigung „Preisbewertung geändert" + Preference `fav_indicator` entfernt
+- `similarity.py` + Homogeneity-Bewertung entfernt — wurde nur vom Preis-Job gebraucht
+
+### Changed
+
+**Vergleichs-Popup („Ähnliche Inserate") vereinfacht**
+- Nur noch auf der Detailseite aufrufbar, nicht mehr aus der Karten-Übersicht
+- Harte Filter statt Similarity-Score: gleiche Kategorie + (falls am Inserat gesetzt) Modelltyp, Subtyp, Antrieb, Spannweite ±25 %
+- Sold + Outdated Inserate werden jetzt mit angezeigt (Preisvergleich)
+- Zeigt pro Treffer nur Titel + Preis + Link zur Original-Annonce
+- Max. 30 Treffer, nach Datum absteigend sortiert
+- Count wird beim Öffnen der Detailseite geladen und als Badge am Button angezeigt; Button ist disabled bei 0 Treffern
+
+### Fixed
+
+- Filter „Nur Verkaufte" und „Ältere anzeigen" wirken jetzt tatsächlich auf die Haupt-Liste. Der `useInfiniteListings`-Hook hat die beiden Flags aus der URL gelesen, aber nicht an die API weitergereicht — URL-Pill aktiv, aber Backend bekam den Default-Feed. Zusätzlich Filter-Dimensionen dedupliziert (`FilterDimensions` + `filterDimensionsEqual`), damit diese Drift-Klasse künftig typ-gesichert auffällt. Regressionstest deckt Pill → Netzwerkaufruf ab.
+
+### Breaking
+
+- `GET /api/listings?price_indicator=…` wird ignoriert (Param entfernt)
+- `GET /api/listings/{id}/comparables` liefert neues Response-Schema (`count` + `listings[]` mit `id/title/url/price/price_numeric/posted_at`). Keine `match_quality`, `median`, `similarity_score` mehr.
+- `ListingSummary` / `ListingDetail` haben `price_indicator*` nicht mehr
+
+---
+
+## [2.2.0] - 2026-04-19
+
+### Added
+
+**Filter-Toggles „Ältere anzeigen" und „Nur Verkaufte" (PLAN-024)**
+- Beide Filter in Mobile-Sheet (FilterPanel) und Desktop-Dropdown (PlzBar) unter „Ansicht"
+- „Ältere anzeigen" wird deaktiviert, sobald „Nur Verkaufte" aktiv ist
+- URL-Parameter `show_outdated` und `only_sold` für teilbare Filter-Links
+- ALT-Badge auf ListingCard für veraltete, nicht verkaufte Inserate
+
+### Changed
+
+**Phase 3: veraltete Inserate werden markiert statt gelöscht**
+- Inserate älter als 8 Wochen erhalten `is_outdated = TRUE` statt DB-Delete → Historie bleibt erhalten
+- Default-Feed (`GET /api/listings`) blendet verkaufte **und** veraltete Inserate aus; Favoriten bleiben unverändert vollständig sichtbar
+- ScrapeLog zeigt „X veraltet" statt „X gelöscht" (Feld `ScrapeSummary.marked_outdated` ersetzt `deleted_stale`)
+
+### Breaking
+
+- `GET /api/listings` filtert jetzt Default `is_sold = FALSE AND is_outdated = FALSE` (vorher: alle). Opt-in via `show_outdated=true` bzw. `only_sold=true`.
+- `ScrapeSummary.deleted_stale` → `marked_outdated` (Backend + Frontend)
+
+---
+
 ## [2.1.1] - 2026-04-19
 
 ### Fixed
