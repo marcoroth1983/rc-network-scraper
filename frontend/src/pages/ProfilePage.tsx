@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { version } from '../../package.json';
 import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
@@ -222,6 +223,13 @@ export function ProfilePage({ user, onLogout, onUserReload }: Props) {
             >
               Abmelden
             </button>
+
+            <p
+              className="text-center text-xs mt-4 select-none"
+              style={{ color: 'rgba(248, 250, 252, 0.25)' }}
+            >
+              v{version}
+            </p>
           </div>
         </aside>
 

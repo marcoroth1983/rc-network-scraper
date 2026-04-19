@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.3.1] - 2026-04-19
+
+### Added
+- Version number displayed in profile card (below logout button)
+
 ## [2.3.0] - 2026-04-19
 
 ### Removed
