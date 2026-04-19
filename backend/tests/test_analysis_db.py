@@ -22,7 +22,6 @@ EXPECTED_ANALYSIS_COLUMNS = [
     "completeness",
     "attributes",
     "llm_analyzed",
-    "price_indicator",
     "shipping_available",
 ]
 
@@ -100,25 +99,6 @@ class TestAnalysisColumnsExist:
         )
         llm_analyzed = row.scalar_one()
         assert llm_analyzed is False, f"Expected False, got {llm_analyzed!r}"
-
-    @pytest.mark.integration
-    async def test_price_indicator_defaults_to_null(self, db_session: AsyncSession) -> None:
-        """New rows must have price_indicator = NULL (not yet computed)."""
-        await db_session.execute(
-            text("""
-                INSERT INTO listings (external_id, url, title, description, images, tags,
-                    author, scraped_at)
-                VALUES ('test-price-indicator', 'https://example.com/3', 'Test3', '',
-                    '[]', '[]', 'tester', NOW())
-            """)
-        )
-        await db_session.commit()
-
-        row = await db_session.execute(
-            text("SELECT price_indicator FROM listings WHERE external_id = 'test-price-indicator'")
-        )
-        price_indicator = row.scalar_one_or_none()
-        assert price_indicator is None, f"Expected NULL, got {price_indicator!r}"
 
     @pytest.mark.integration
     async def test_shipping_available_defaults_to_null(self, db_session: AsyncSession) -> None:

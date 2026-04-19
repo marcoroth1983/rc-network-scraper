@@ -13,13 +13,10 @@ const baseListing = {
   plz: '49356', city: 'Diepholz', latitude: 52.6, longitude: 8.3,
   author: 'seller1', posted_at: '2026-03-01T10:00:00Z',
   scraped_at: '2026-04-01T10:00:00Z', distance_km: null,
-  images: ['https://rc-network.de/img/test.jpg'], is_sold: false, is_favorite: true,
+  images: ['https://rc-network.de/img/test.jpg'], is_sold: false, is_outdated: false, is_favorite: true,
   category: 'flugmodelle',
   manufacturer: null, model_name: null, model_type: null, model_subtype: null,
   drive_type: null, completeness: null, shipping_available: null,
-  price_indicator: null,
-  price_indicator_median: null,
-  price_indicator_count: null,
   source: 'rcnetwork' as const,
 };
 

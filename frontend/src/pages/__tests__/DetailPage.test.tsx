@@ -19,6 +19,11 @@ vi.mock('../../hooks/useAuth', () => ({
     logout: vi.fn(),
   }),
 }));
+// ConfirmDialog requires a Provider context — mock it so DetailPage renders without the provider
+vi.mock('../../components/ConfirmDialog', () => ({
+  useConfirm: () => vi.fn().mockResolvedValue(false),
+  ConfirmProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 // ---------------------------------------------------------------------------
 // Import AFTER mocks
@@ -50,6 +55,7 @@ const baseListing: ListingDetail = {
   scraped_at: '2026-04-01T10:00:00Z',
   tags: [],
   is_sold: false,
+  is_outdated: false,
   is_favorite: false,
   category: 'flugmodelle',
   manufacturer: null,
@@ -59,9 +65,6 @@ const baseListing: ListingDetail = {
   drive_type: null,
   completeness: null,
   attributes: {},
-  price_indicator: null,
-  price_indicator_median: null,
-  price_indicator_count: null,
   source: 'rcnetwork' as const,
 };
 
@@ -84,6 +87,7 @@ function makeAuthorListing(overrides: Partial<ListingSummary> = {}): ListingSumm
     distance_km: null,
     images: [],
     is_sold: false,
+    is_outdated: false,
     is_favorite: false,
     category: 'flugmodelle',
     manufacturer: null,
@@ -93,9 +97,6 @@ function makeAuthorListing(overrides: Partial<ListingSummary> = {}): ListingSumm
     drive_type: null,
     completeness: null,
     shipping_available: null,
-    price_indicator: null,
-    price_indicator_median: null,
-    price_indicator_count: null,
     ...overrides,
     source: overrides.source ?? 'rcnetwork',
   };
@@ -128,6 +129,7 @@ describe('DetailPage — case 12: share via navigator.share', () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
   });
 
   afterEach(() => {
@@ -166,6 +168,7 @@ describe('DetailPage — case 13: clipboard fallback', () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
   });
 
   afterEach(() => {
@@ -229,6 +232,7 @@ describe('DetailPage — case 14: AbortError swallowed', () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
   });
 
   afterEach(() => {
@@ -279,6 +283,7 @@ describe('DetailPage — case 15: author listings split', () => {
   it('shows two sections (aktuell + vergangen) with correct items', async () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([
       makeAuthorListing({ id: 10, title: 'Aktives Modell', is_sold: false }),
       makeAuthorListing({ id: 11, title: 'Verkauftes Modell', is_sold: true }),
@@ -301,6 +306,7 @@ describe('DetailPage — case 15: author listings split', () => {
   it('shows only aktuell section when all listings are active', async () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([
       makeAuthorListing({ id: 10, title: 'Aktives Modell 1', is_sold: false }),
       makeAuthorListing({ id: 11, title: 'Aktives Modell 2', is_sold: false }),
@@ -318,6 +324,7 @@ describe('DetailPage — case 15: author listings split', () => {
   it('shows only vergangen section when all listings are sold', async () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([
       makeAuthorListing({ id: 10, title: 'Verkauft 1', is_sold: true }),
     ]);
@@ -345,6 +352,7 @@ describe('DetailPage — case 16: desktop 3-column layout', () => {
     vi.clearAllMocks();
     vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
     vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
 
     Object.defineProperty(window, 'innerWidth', {
       writable: true,
@@ -359,5 +367,80 @@ describe('DetailPage — case 16: desktop 3-column layout', () => {
     // The plan specifies a grid div with class containing "lg:grid-cols-12"
     const gridContainer = document.querySelector('.lg\\:grid-cols-12');
     expect(gridContainer).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 17 — comparables button badge (PLAN-025)
+// ---------------------------------------------------------------------------
+describe('DetailPage — case 17: comparables button badge', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('button shows "Ähnliche Inserate (7)" when comparables count=7', async () => {
+    vi.clearAllMocks();
+    vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({
+      count: 7,
+      listings: Array.from({ length: 7 }, (_, i) => ({
+        id: i + 1,
+        title: `Listing ${i + 1}`,
+        url: `https://rc-network.de/t/${i + 1}`,
+        price: '100 €',
+        price_numeric: 100,
+        posted_at: null,
+      })),
+    });
+
+    renderDetailPage();
+    await waitForListing();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ähnliche inserate \(7\)/i })).toBeTruthy();
+    });
+
+    const btn = screen.getByRole('button', { name: /ähnliche inserate \(7\)/i });
+    // Button is enabled when count > 0
+    expect(btn).not.toBeDisabled();
+  });
+
+  it('button is disabled and shows "(0)" when comparables count=0', async () => {
+    vi.clearAllMocks();
+    vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    vi.mocked(client.getComparables).mockResolvedValue({ count: 0, listings: [] });
+
+    renderDetailPage();
+    await waitForListing();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ähnliche inserate \(0\)/i })).toBeTruthy();
+    });
+
+    const btn = screen.getByRole('button', { name: /ähnliche inserate \(0\)/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('button is disabled and shows "(…)" while loading', async () => {
+    vi.clearAllMocks();
+    vi.mocked(client.getListing).mockResolvedValue({ ...baseListing });
+    vi.mocked(client.getListingsByAuthor).mockResolvedValue([]);
+    // Never resolves — simulates infinite loading
+    vi.mocked(client.getComparables).mockReturnValue(new Promise(() => {}));
+
+    renderDetailPage();
+    await waitForListing();
+
+    // While loading, button should be disabled and show "…"
+    await waitFor(() => {
+      const btns = screen.getAllByRole('button');
+      const comparablesBtn = btns.find((b) => b.textContent?.includes('Ähnliche Inserate'));
+      expect(comparablesBtn).toBeTruthy();
+      expect(comparablesBtn).toBeDisabled();
+      expect(comparablesBtn?.textContent).toContain('…');
+    });
   });
 });

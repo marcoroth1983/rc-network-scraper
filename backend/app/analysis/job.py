@@ -2,16 +2,10 @@
 
 import asyncio
 import logging
-from collections import defaultdict
 
 from sqlalchemy import select, update
-from sqlalchemy import text
 
 from app.analysis.extractor import analyze_listing
-from app.analysis.similarity import (
-    score as similarity_score,
-    assess_homogeneity,
-)
 from app.config import settings
 from app.db import AsyncSessionLocal
 from app.models import Listing
@@ -86,76 +80,3 @@ async def run_analysis_job() -> None:
             logger.warning("Analysis job: id=%d saved with EMPTY result (LLM returned no data)", listing.id)
 
         await asyncio.sleep(DELAY_SECONDS)
-
-
-async def recalculate_price_indicators() -> None:
-    """Set price indicator only when the per-listing similarity cluster is homogeneous.
-
-    For each active priced listing with a non-NULL model_type:
-      - Build candidate pool from same model_type.
-      - Score + rank.
-      - Assess homogeneity of top-20.
-      - Set deal/fair/expensive only when homogeneous; otherwise NULL.
-    Listings without model_type get price_indicator = NULL (unscorable).
-    """
-    async with AsyncSessionLocal() as session:
-        all_rows = (await session.execute(
-            select(Listing).where(
-                Listing.is_sold == False,       # noqa: E712
-                Listing.price_numeric.is_not(None),
-            )
-        )).scalars().all()
-
-    by_type: dict[str | None, list[Listing]] = defaultdict(list)
-    for r in all_rows:
-        by_type[r.model_type].append(r)
-
-    updates: list[tuple[int, str | None, float | None, int]] = []
-
-    for base in all_rows:
-        if not base.model_type:
-            updates.append((base.id, None, None, 0))
-            continue
-
-        candidates = [c for c in by_type[base.model_type] if c.id != base.id]
-        scored = [(c, similarity_score(base, c)) for c in candidates]
-        scored = [(c, s) for c, s in scored if s > 0.0]
-        scored.sort(key=lambda t: (-t[1], float(t[0].price_numeric or 0)))
-        top = scored[:20]
-
-        quality, median_val = assess_homogeneity(base, top)
-
-        if quality != "homogeneous" or median_val is None:
-            updates.append((base.id, None, None, len(top)))
-            continue
-
-        base_p = float(base.price_numeric)
-        if base_p <= median_val * 0.75:
-            ind = "deal"
-        elif base_p >= median_val * 1.25:
-            ind = "expensive"
-        else:
-            ind = "fair"
-        updates.append((base.id, ind, median_val, len(top)))
-
-    # Bulk update in chunks via executemany-style loop. 3500 rows × ~1 ms round-trip
-    # is acceptable for a 15-min job.
-    async with AsyncSessionLocal() as session:
-        for lid, ind, med, cnt in updates:
-            await session.execute(
-                text("""
-                    UPDATE listings SET
-                        price_indicator = :ind,
-                        price_indicator_median = :med,
-                        price_indicator_count = :cnt
-                    WHERE id = :lid
-                """),
-                {"lid": lid, "ind": ind, "med": med, "cnt": cnt},
-            )
-        await session.commit()
-
-    logger.info(
-        "price_indicator recalc: processed %d listings, %d homogeneous",
-        len(updates),
-        sum(1 for _, ind, _, _ in updates if ind is not None),
-    )

@@ -24,6 +24,7 @@ export interface ListingSummary {
   distance_km: number | null;
   images: string[];
   is_sold: boolean;
+  is_outdated: boolean;
   is_favorite: boolean;
   category: string;
   source: ListingSource;
@@ -36,9 +37,6 @@ export interface ListingSummary {
   drive_type: string | null;
   completeness: string | null;
   shipping_available: boolean | null;
-  price_indicator: 'deal' | 'fair' | 'expensive' | null;
-  price_indicator_median: number | null;
-  price_indicator_count: number | null;
 }
 
 export interface ListingDetail {
@@ -62,6 +60,7 @@ export interface ListingDetail {
   scraped_at: string;
   tags: string[];
   is_sold: boolean;
+  is_outdated: boolean;
   is_favorite: boolean;
   category: string;
   source: ListingSource;
@@ -73,9 +72,6 @@ export interface ListingDetail {
   drive_type: string | null;
   completeness: string | null;
   attributes: Record<string, string>;
-  price_indicator: 'deal' | 'fair' | 'expensive' | null;
-  price_indicator_median: number | null;
-  price_indicator_count: number | null;
 }
 
 export interface PaginatedResponse {
@@ -99,7 +95,7 @@ export interface ScrapeSummary {
   rechecked: number;
   sold_found: number;
   cleaned_sold: number;
-  deleted_stale: number;
+  marked_outdated: number;
 }
 
 export type ScrapeJobStatus = 'idle' | 'running' | 'done' | 'error';
@@ -137,10 +133,11 @@ export interface ListingsQueryParams {
   drive_type?: string;
   completeness?: string;
   shipping_available?: boolean;
-  price_indicator?: string;
   model_type?: string;
   model_subtype?: string;
   source?: ListingSource;
+  show_outdated?: boolean;
+  only_sold?: boolean;
 }
 
 export class ApiError extends Error {
@@ -198,18 +195,10 @@ export interface ComparableListing {
   url: string;
   price: string | null;
   price_numeric: number | null;
-  condition: string | null;
-  city: string | null;
   posted_at: string | null;
-  is_favorite: boolean;
-  similarity_score: number;
 }
 
-export type MatchQuality = "homogeneous" | "heterogeneous" | "insufficient";
-
 export interface ComparablesResponse {
-  match_quality: MatchQuality;
-  median: number | null;
   count: number;
   listings: ComparableListing[];
 }
@@ -219,7 +208,6 @@ export interface NotificationPrefs {
   fav_sold: boolean;
   fav_price: boolean;
   fav_deleted: boolean;
-  fav_indicator: boolean;
 }
 
 export interface TelegramLinkResponse {

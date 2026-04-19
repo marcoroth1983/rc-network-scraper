@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getListing, toggleSold, toggleFavorite, getListingsByAuthor } from '../api/client';
+import { getListing, toggleSold, toggleFavorite, getListingsByAuthor, getComparables } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
 import { useConfirm } from '../components/ConfirmDialog';
 import ComparablesModal from '../components/ComparablesModal';
-import type { ListingDetail, ListingSummary } from '../types/api';
+import type { ListingDetail, ListingSummary, ComparablesResponse } from '../types/api';
 import { formatPrice } from '../utils/format';
 
 function formatDate(iso: string | null): string {
@@ -17,64 +17,6 @@ function formatDate(iso: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-type PriceIndicator = 'deal' | 'fair' | 'expensive' | null;
-
-interface PriceIndicatorBadgeProps {
-  indicator: PriceIndicator;
-  median?: number | null;
-  count?: number | null;
-  onClick?: () => void;
-  badgeRef?: React.RefObject<HTMLButtonElement | null>;
-}
-
-// <button> for reliable touch dispatch on iOS Safari; touchAction:manipulation
-// removes the 300ms tap delay. See ListingCard.tsx for the same rationale.
-const BADGE_CLASSES = "relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer";
-const BADGE_TOUCH_STYLE: React.CSSProperties = { touchAction: 'manipulation' };
-
-function PriceIndicatorBadge({ indicator, onClick, badgeRef }: PriceIndicatorBadgeProps) {
-  if (indicator === 'deal') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
-        onClick={onClick}
-      >
-        Günstig
-      </button>
-    );
-  }
-  if (indicator === 'fair') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
-        onClick={onClick}
-      >
-        Gut
-      </button>
-    );
-  }
-  if (indicator === 'expensive') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
-        onClick={onClick}
-      >
-        Teuer
-      </button>
-    );
-  }
-  return null;
 }
 
 /** Convert snake_case English attribute keys to readable German-friendly labels. */
@@ -312,7 +254,9 @@ export default function DetailPage() {
   const [authorListings, setAuthorListings] = useState<ListingSummary[]>([]);
   const [shareCopied, setShareCopied] = useState(false);
   const [comparablesOpen, setComparablesOpen] = useState(false);
-  const badgeRef = useRef<HTMLButtonElement>(null);
+  const comparablesAnchorRef = useRef<HTMLButtonElement>(null);
+  const [comparables, setComparables] = useState<ComparablesResponse | null>(null);
+  const [comparablesLoading, setComparablesLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -331,6 +275,20 @@ export default function DetailPage() {
         setLoading(false);
       });
   }, [id]);
+
+  // Prefetch comparables count on mount so the button badge is populated immediately.
+  // Error fallback: set count=0 to leave the button disabled without showing an error.
+  useEffect(() => {
+    if (!listing?.id) { setComparables(null); return; }
+    let cancelled = false;
+    setComparablesLoading(true);
+    getComparables(listing.id)
+      .then((res) => { if (!cancelled) { setComparables(res); setComparablesLoading(false); } })
+      .catch(() => { if (!cancelled) { setComparables({ count: 0, listings: [] }); setComparablesLoading(false); } });
+    return () => { cancelled = true; };
+  }, [listing?.id]);
+
+  const comparablesCount = comparables?.count ?? 0;
 
   if (loading) return <Spinner />;
 
@@ -499,19 +457,21 @@ export default function DetailPage() {
             {/* Meta column */}
             <div className="flex-1 flex flex-col gap-3 min-w-0">
 
-              {/* Price + indicator + action buttons row */}
+              {/* Price + comparables button + action buttons row */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-2xl font-bold" style={{ color: '#FDE68A' }}>
                     {formatPrice(listing.price_numeric, listing.price)}
                   </span>
-                  <PriceIndicatorBadge
-                    indicator={listing.price_indicator}
-                    median={listing.price_indicator_median}
-                    count={listing.price_indicator_count}
-                    badgeRef={badgeRef}
+                  <button
+                    ref={comparablesAnchorRef}
+                    type="button"
                     onClick={() => setComparablesOpen(true)}
-                  />
+                    disabled={comparablesLoading || comparablesCount === 0}
+                    className="px-3 py-1.5 rounded-full text-sm transition bg-white/10 text-white/80 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Ähnliche Inserate ({comparablesLoading ? '…' : comparablesCount})
+                  </button>
                 </div>
 
                 {/* Action buttons */}
@@ -713,11 +673,10 @@ export default function DetailPage() {
         );
       })()}
 
-      {comparablesOpen && listing.price_indicator && (
+      {comparablesOpen && comparables && (
         <ComparablesModal
-          listingId={listing.id}
-          currentListingId={listing.id}
-          anchorRef={badgeRef}
+          data={comparables}
+          anchorRef={comparablesAnchorRef}
           onClose={() => setComparablesOpen(false)}
         />
       )}

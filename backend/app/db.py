@@ -219,6 +219,40 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE listings ADD COLUMN IF NOT EXISTS sold_at TIMESTAMPTZ"
         ))
+        # PLAN-024: soft outdated flag
+        await conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_outdated BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        # Backfill: mark existing rows whose posted_at is older than 8 weeks and are not sold.
+        # Guard AND is_outdated = FALSE makes this idempotent — rows already marked are skipped.
+        # All statements run inside engine.begin() (single transaction), so now() is constant.
+        await conn.execute(text(
+            """
+            UPDATE listings
+            SET is_outdated = TRUE
+            WHERE is_sold = FALSE
+              AND posted_at IS NOT NULL
+              AND posted_at < NOW() - INTERVAL '8 weeks'
+              AND is_outdated = FALSE
+            """
+        ))
+        # PLAN-025: remove median-based price indicator system
+        await conn.execute(text(
+            "ALTER TABLE listings DROP COLUMN IF EXISTS price_indicator"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings DROP COLUMN IF EXISTS price_indicator_median"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE listings DROP COLUMN IF EXISTS price_indicator_count"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE user_favorites DROP COLUMN IF EXISTS last_known_price_indicator"
+        ))
+        # Telegram notification preference for price indicator changes — also gone.
+        await conn.execute(text(
+            "ALTER TABLE user_notification_prefs DROP COLUMN IF EXISTS fav_indicator"
+        ))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

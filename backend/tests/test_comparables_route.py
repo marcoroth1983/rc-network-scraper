@@ -1,11 +1,15 @@
 """End-to-end tests for GET /api/listings/{id}/comparables (routes.py).
 
-Uses the shared conftest fixtures (api_client, db_session, clean_listings).
+New hard-attribute filter logic (PLAN-025). All tests are integration tests that
+require a running PostgreSQL database (run via Docker Compose).
+
+Uses the ``authenticated_client`` fixture from conftest.py:303 (real user in DB).
 Run with: docker compose exec backend pytest tests/test_comparables_route.py -v
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,40 +22,49 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def _insert_listing(
     session: AsyncSession,
     external_id: str,
+    *,
+    category: str = "flugmodelle",
     price_numeric: float | None = 100.0,
     is_sold: bool = False,
-    manufacturer: str | None = None,
-    model_name: str | None = None,
+    is_outdated: bool = False,
     model_type: str | None = None,
     model_subtype: str | None = None,
-    completeness: str | None = None,
+    drive_type: str | None = None,
+    attributes: str = "{}",
+    posted_at: datetime | None = None,
+    title: str | None = None,
 ) -> int:
     """Insert a minimal listing and return its DB id."""
+    if posted_at is None:
+        posted_at = datetime.now(timezone.utc)
+    if title is None:
+        title = f"Listing {external_id}"
     await session.execute(
         text("""
             INSERT INTO listings (
                 external_id, url, title, description, author, scraped_at, images, tags,
-                price_numeric, is_sold, manufacturer, model_name, model_type, model_subtype,
-                completeness, llm_analyzed
+                price_numeric, is_sold, is_outdated, category,
+                model_type, model_subtype, drive_type, attributes, posted_at
             )
             VALUES (
-                :eid, :url, :title, :desc, :author, now(), '[]', '[]',
-                :price, :sold, :mfr, :mn, :mt, :ms, :cmp, true
+                :eid, :url, :title, '', 'seller', now(), '[]', '[]',
+                :price, :sold, :outdated, :category,
+                :mt, :ms, :dt, CAST(:attrs AS jsonb), :posted_at
             )
         """),
         {
             "eid": external_id,
             "url": f"http://example.com/{external_id}",
-            "title": f"Listing {external_id}",
-            "desc": "test",
-            "author": "seller",
+            "title": title,
             "price": price_numeric,
             "sold": is_sold,
-            "mfr": manufacturer,
-            "mn": model_name,
+            "outdated": is_outdated,
+            "category": category,
             "mt": model_type,
             "ms": model_subtype,
-            "cmp": completeness,
+            "dt": drive_type,
+            "attrs": attributes,
+            "posted_at": posted_at,
         },
     )
     await session.commit()
@@ -62,233 +75,376 @@ async def _insert_listing(
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Scenario 1 — No discriminating attribute on base → count=0
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-class TestComparablesRoute:
-    async def test_404_for_unknown_listing(self, api_client: AsyncClient) -> None:
-        """Non-existent listing_id returns 404."""
-        r = await api_client.get("/api/listings/999999/comparables")
-        assert r.status_code == 404
+@pytest.mark.integration
+async def test_no_discriminating_attribute_returns_count_zero(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Base with no model_type/subtype/drive_type/wingspan → count=0, listings=[]."""
+    base_id = await _insert_listing(
+        db_session, "s1-base",
+        category="flugmodelle",
+        model_type=None,
+        model_subtype=None,
+        drive_type=None,
+        attributes="{}",
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] == 0
+    assert data["listings"] == []
 
-    async def test_match_quality_field_present_in_response(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Response always contains match_quality in expected set."""
-        base_id = await _insert_listing(db_session, "base-mq-1", manufacturer="CARF", model_type="airplane")
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["match_quality"] in {"homogeneous", "heterogeneous", "insufficient"}
 
-    async def test_homogeneous_set_has_median(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Homogeneous top-N: median is set and listings are populated."""
-        # Insert 5 very similar listings to make a homogeneous cluster
-        base_id = await _insert_listing(
-            db_session, "hom-base",
-            price_numeric=500.0,
-            manufacturer="Multiplex",
-            model_subtype="thermal",
-            completeness="RTF",
-            model_type="glider",
-        )
-        for i in range(6):
-            await _insert_listing(
-                db_session, f"hom-cand-{i}",
-                price_numeric=400.0 + i * 20,  # 400, 420, 440, 460, 480, 500 — spread < 4×
-                manufacturer="Multiplex",
-                model_subtype="thermal",
-                completeness="RTF",
-                model_type="glider",
-            )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        data = r.json()
-        if data["match_quality"] == "homogeneous":
-            assert data["median"] is not None
-            assert isinstance(data["median"], float)
+# ---------------------------------------------------------------------------
+# Scenario 2 — Only model_type set → candidates with same type or NULL type match
+# ---------------------------------------------------------------------------
 
-    async def test_heterogeneous_set_has_null_median_but_listings(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Wide price spread → match_quality heterogeneous, median None, but listings populated."""
-        base_id = await _insert_listing(
-            db_session, "het-base",
-            price_numeric=500.0,
-            manufacturer="CARF",
-            model_type="airplane",
-            model_subtype="jet",
-            completeness="ARF",
-        )
-        # Deliberate spread: 100–600 = 6× spread (> MAX_PRICE_SPREAD=4.0)
-        prices = [100.0, 150.0, 200.0, 300.0, 500.0, 600.0]
-        for i, p in enumerate(prices):
-            await _insert_listing(
-                db_session, f"het-cand-{i}",
-                price_numeric=p,
-                manufacturer="CARF",
-                model_type="airplane",
-                model_subtype="jet",
-                completeness="ARF",
-            )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        data = r.json()
-        if data["match_quality"] == "heterogeneous":
-            assert data["median"] is None
-            assert len(data["listings"]) > 0
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_only_model_type_set_null_type_tolerated(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """model_type='airplane': candidates with same type or NULL match; different type does not."""
+    base_id = await _insert_listing(
+        db_session, "s2-base",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    id_a = await _insert_listing(
+        db_session, "s2-a",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    await _insert_listing(
+        db_session, "s2-b",
+        category="flugmodelle",
+        model_type="glider",  # different type — NO match
+    )
+    id_c = await _insert_listing(
+        db_session, "s2-c",
+        category="flugmodelle",
+        model_type=None,  # NULL tolerated — match
+    )
+    await _insert_listing(
+        db_session, "s2-d",
+        category="rc-cars",  # different category — NO match
+        model_type="airplane",
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] == 2
+    returned_ids = {item["id"] for item in data["listings"]}
+    assert id_a in returned_ids
+    assert id_c in returned_ids
 
-    async def test_similarity_score_descending_sorted(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Listings are returned sorted by similarity_score descending."""
-        base_id = await _insert_listing(
-            db_session, "sort-base",
-            price_numeric=500.0,
-            manufacturer="Multiplex",
-            model_name="Easy Glider",
-            model_type="glider",
-        )
-        # High similarity: same model_name + manufacturer
+
+# ---------------------------------------------------------------------------
+# Scenario 3 — model_subtype hard when set (jet vs. turbine stays strict)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_model_subtype_strict_when_set(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """model_subtype='jet': turbine does NOT match; NULL subtype is tolerated."""
+    base_id = await _insert_listing(
+        db_session, "s3-base",
+        category="flugmodelle",
+        model_type="airplane",
+        model_subtype="jet",
+    )
+    id_a = await _insert_listing(
+        db_session, "s3-a",
+        category="flugmodelle",
+        model_type="airplane",
+        model_subtype="jet",  # match
+    )
+    await _insert_listing(
+        db_session, "s3-b",
+        category="flugmodelle",
+        model_type="airplane",
+        model_subtype="turbine",  # different subtype — NO match
+    )
+    id_c = await _insert_listing(
+        db_session, "s3-c",
+        category="flugmodelle",
+        model_type="airplane",
+        model_subtype=None,  # NULL tolerated — match
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    returned_ids = {item["id"] for item in data["listings"]}
+    assert id_a in returned_ids
+    assert id_c in returned_ids
+    assert data["count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Scenario 4 — wingspan_mm ±25 % + NULL tolerance
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_wingspan_range_and_null_tolerance(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """wingspan_mm=2000: range 1500..2500. Boundaries inclusive; non-numeric treated as NULL (tolerated)."""
+    base_id = await _insert_listing(
+        db_session, "s4-base",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "2000"}',
+    )
+    # Below lower bound — NO
+    id_1499 = await _insert_listing(
+        db_session, "s4-1499",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "1499"}',
+    )
+    # Lower boundary — YES (BETWEEN inclusive)
+    id_1500 = await _insert_listing(
+        db_session, "s4-1500",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "1500"}',
+    )
+    # Upper boundary — YES
+    id_2500 = await _insert_listing(
+        db_session, "s4-2500",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "2500"}',
+    )
+    # Above upper bound — NO
+    id_2501 = await _insert_listing(
+        db_session, "s4-2501",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "2501"}',
+    )
+    # No key — YES (tolerated, treated as NULL)
+    id_nokey = await _insert_listing(
+        db_session, "s4-nokey",
+        category="flugmodelle",
+        attributes="{}",
+    )
+    # Non-numeric value — YES (regex guard treats as NULL, tolerated)
+    id_nonnumeric = await _insert_listing(
+        db_session, "s4-nonnumeric",
+        category="flugmodelle",
+        attributes='{"wingspan_mm": "ca. 2000"}',
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    returned_ids = {item["id"] for item in data["listings"]}
+    assert id_1500 in returned_ids
+    assert id_2500 in returned_ids
+    assert id_nokey in returned_ids
+    assert id_nonnumeric in returned_ids
+    # Base, 1499, and 2501 must not appear
+    assert base_id not in returned_ids
+    assert id_1499 not in returned_ids
+    assert id_2501 not in returned_ids
+
+
+# ---------------------------------------------------------------------------
+# Scenario 5 — drive_type hard when set
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_drive_type_strict_when_set(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """drive_type='electric': combustion does NOT match; NULL drive_type is tolerated."""
+    base_id = await _insert_listing(
+        db_session, "s5-base",
+        category="flugmodelle",
+        model_type="airplane",
+        drive_type="electric",
+    )
+    await _insert_listing(
+        db_session, "s5-combustion",
+        category="flugmodelle",
+        model_type="airplane",
+        drive_type="combustion",  # NO match
+    )
+    id_null_drive = await _insert_listing(
+        db_session, "s5-null-drive",
+        category="flugmodelle",
+        model_type="airplane",
+        drive_type=None,  # NULL tolerated — YES
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    returned_ids = {item["id"] for item in data["listings"]}
+    assert id_null_drive in returned_ids
+    assert data["count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 6 — Sold + outdated listings included (explicit)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_sold_and_outdated_included(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Sold and outdated listings are included in comparables (product decision)."""
+    base_id = await _insert_listing(
+        db_session, "s6-base",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    id_sold = await _insert_listing(
+        db_session, "s6-sold",
+        category="flugmodelle",
+        model_type="airplane",
+        is_sold=True,
+    )
+    id_outdated = await _insert_listing(
+        db_session, "s6-outdated",
+        category="flugmodelle",
+        model_type="airplane",
+        is_outdated=True,
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    returned_ids = {item["id"] for item in data["listings"]}
+    assert id_sold in returned_ids
+    assert id_outdated in returned_ids
+
+
+# ---------------------------------------------------------------------------
+# Scenario 7 — Order by posted_at DESC
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_order_by_posted_at_desc(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Listings are returned ordered by posted_at descending (newest first)."""
+    now = datetime.now(timezone.utc)
+    base_id = await _insert_listing(
+        db_session, "s7-base",
+        category="flugmodelle",
+        model_type="airplane",
+        posted_at=now,
+    )
+    await _insert_listing(
+        db_session, "s7-old",
+        category="flugmodelle",
+        model_type="airplane",
+        posted_at=now - timedelta(days=10),
+    )
+    await _insert_listing(
+        db_session, "s7-new",
+        category="flugmodelle",
+        model_type="airplane",
+        posted_at=now - timedelta(days=1),
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    listings = r.json()["listings"]
+    assert len(listings) == 2
+    # Newer must come first
+    dt0 = datetime.fromisoformat(listings[0]["posted_at"])
+    dt1 = datetime.fromisoformat(listings[1]["posted_at"])
+    assert dt0 > dt1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 8 — Limit clamped at 30
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_limit_clamped_at_30(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Default limit returns at most 30; count reflects total; limit=999 → 422; limit=5 works."""
+    base_id = await _insert_listing(
+        db_session, "s8-base",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    for i in range(35):
         await _insert_listing(
-            db_session, "sort-high",
-            price_numeric=400.0,
-            manufacturer="Multiplex",
-            model_name="Easy Glider",
-            model_type="glider",
+            db_session, f"s8-cand-{i}",
+            category="flugmodelle",
+            model_type="airplane",
         )
-        # Low similarity: only model_type matches
-        await _insert_listing(
-            db_session, "sort-low",
-            price_numeric=300.0,
-            manufacturer="Robbe",
-            model_name="Arcus",
-            model_type="glider",
-        )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        data = r.json()
-        scores = [item["similarity_score"] for item in data["listings"]]
-        assert scores == sorted(scores, reverse=True), "listings must be sorted by similarity_score desc"
+    # Default limit (30)
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["count"] == 35
+    assert len(data["listings"]) == 30
 
-    async def test_no_self_match_in_listings(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """The base listing itself must never appear in the comparables response."""
-        base_id = await _insert_listing(
-            db_session, "self-base",
-            price_numeric=300.0,
-            manufacturer="CARF",
-            model_type="airplane",
-        )
-        await _insert_listing(
-            db_session, "self-other",
-            price_numeric=350.0,
-            manufacturer="CARF",
-            model_type="airplane",
-        )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        listing_ids = [item["id"] for item in r.json()["listings"]]
-        assert base_id not in listing_ids, "base listing must not appear in its own comparables"
+    # Out-of-range limit → 422
+    r2 = await authenticated_client.get(f"/api/listings/{base_id}/comparables?limit=999")
+    assert r2.status_code == 422
 
-    async def test_base_listing_without_model_type_returns_result(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Base listing without model_type: no SQL filter, response still valid."""
-        base_id = await _insert_listing(
-            db_session, "notype-base",
-            price_numeric=200.0,
-            manufacturer="Graupner",
-            model_type=None,
-        )
-        await _insert_listing(
-            db_session, "notype-other",
-            price_numeric=250.0,
-            manufacturer="Graupner",
-            model_type="airplane",
-        )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["match_quality"] in {"homogeneous", "heterogeneous", "insufficient"}
+    # Custom limit within range
+    r3 = await authenticated_client.get(f"/api/listings/{base_id}/comparables?limit=5")
+    assert r3.status_code == 200
+    assert len(r3.json()["listings"]) == 5
 
-    async def test_base_without_manufacturer_and_subtype_returns_heterogeneous(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Base with no manufacturer and no subtype/completeness → insufficient or heterogeneous."""
-        base_id = await _insert_listing(
-            db_session, "noattr-base",
-            price_numeric=100.0,
-            manufacturer=None,
-            model_subtype=None,
-            completeness=None,
-            model_type="airplane",
-        )
-        for i in range(6):
-            await _insert_listing(
-                db_session, f"noattr-cand-{i}",
-                price_numeric=200.0 + i * 50,
-                manufacturer="CARF",
-                model_type="airplane",
-            )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        assert r.json()["match_quality"] in {"heterogeneous", "insufficient"}
 
-    async def test_limit_parameter_caps_result_count(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """?limit=3 returns at most 3 listings."""
-        base_id = await _insert_listing(
-            db_session, "lim-base",
-            price_numeric=300.0,
-            manufacturer="Multiplex",
-            model_type="glider",
-        )
-        for i in range(8):
-            await _insert_listing(
-                db_session, f"lim-cand-{i}",
-                price_numeric=250.0 + i * 10,
-                manufacturer="Multiplex",
-                model_type="glider",
-            )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables?limit=3")
-        assert r.status_code == 200
-        assert len(r.json()["listings"]) <= 3
+# ---------------------------------------------------------------------------
+# Scenario 9 — Base listing not found
+# ---------------------------------------------------------------------------
 
-    async def test_tie_break_by_price_ascending(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """When two listings have the same score, lower price comes first."""
-        base_id = await _insert_listing(
-            db_session, "tie-base",
-            price_numeric=500.0,
-            manufacturer="CARF",
-            model_type="airplane",
-        )
-        # Same score (same manufacturer + model_type), different prices
-        id_expensive = await _insert_listing(
-            db_session, "tie-expensive",
-            price_numeric=800.0,
-            manufacturer="CARF",
-            model_type="airplane",
-        )
-        id_cheap = await _insert_listing(
-            db_session, "tie-cheap",
-            price_numeric=200.0,
-            manufacturer="CARF",
-            model_type="airplane",
-        )
-        r = await api_client.get(f"/api/listings/{base_id}/comparables")
-        assert r.status_code == 200
-        listings = r.json()["listings"]
-        # Find these two in the result list (other candidates may exist)
-        ids_in_order = [item["id"] for item in listings]
-        if id_cheap in ids_in_order and id_expensive in ids_in_order:
-            assert ids_in_order.index(id_cheap) < ids_in_order.index(id_expensive), (
-                "cheaper listing must appear before more expensive listing on tie"
-            )
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_base_listing_not_found(authenticated_client: AsyncClient) -> None:
+    """GET /api/listings/99999/comparables → 404."""
+    r = await authenticated_client.get("/api/listings/99999/comparables")
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Scenario 10 — Response shape
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_response_shape(
+    authenticated_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Successful response has exactly count + listings; each listing has id/title/url/price/price_numeric/posted_at."""
+    base_id = await _insert_listing(
+        db_session, "s10-base",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    await _insert_listing(
+        db_session, "s10-cand",
+        category="flugmodelle",
+        model_type="airplane",
+    )
+    r = await authenticated_client.get(f"/api/listings/{base_id}/comparables")
+    assert r.status_code == 200
+    data = r.json()
+
+    # Top-level keys
+    assert set(data.keys()) == {"count", "listings"}
+
+    # Per-listing keys
+    for item in data["listings"]:
+        assert set(item.keys()) == {"id", "title", "url", "price", "price_numeric", "posted_at"}
+        # Removed keys must not be present
+        assert "match_quality" not in item
+        assert "median" not in item
+        assert "similarity_score" not in item
+        assert "is_favorite" not in item
+        assert "condition" not in item
+        assert "city" not in item

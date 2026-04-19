@@ -23,7 +23,7 @@ from app.config import settings
 from app.notifications.log_plugin import LogPlugin
 from app.notifications.registry import notification_registry
 from app.telegram.plugin import TelegramPlugin
-from app.analysis.job import run_analysis_job, recalculate_price_indicators
+from app.analysis.job import run_analysis_job
 from app.analysis import model_cascade
 from app.db import AsyncSessionLocal
 from app.scrape_runner import start_update_job, start_recheck_job
@@ -98,14 +98,6 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),  # run once on boot with live data
         replace_existing=True,
     )
-    scheduler.add_job(
-        recalculate_price_indicators,
-        trigger="interval",
-        minutes=15,
-        id="price_indicator_recalc",
-        replace_existing=True,
-    )
-
     if settings.telegram_enabled:
         from app.telegram import fav_sweep  # local import — only when telegram is active
         scheduler.add_job(
@@ -115,17 +107,6 @@ async def lifespan(app: FastAPI):
             id="telegram_fav_status_sweep",
             replace_existing=True,
         )
-
-    # PLAN-020 one-shot — remove in next release
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("""
-            UPDATE listings SET
-                price_indicator = NULL,
-                price_indicator_median = NULL,
-                price_indicator_count = NULL
-            WHERE price_indicator IS NOT NULL
-        """))
-        await session.commit()
 
     # PLAN-021 one-shot — remove in next release
     # asyncpg requires one statement per execute() call — no multi-statement strings.
@@ -208,7 +189,7 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Scheduler started — update every 30min, recheck every 1h, "
         "analysis every 2min, llm_cascade_refresh every %gh, "
-        "price_indicator_recalc every 15min, ebay_fetch every 30min",
+        "ebay_fetch every 30min",
         settings.LLM_CASCADE_REFRESH_HOURS,
     )
 

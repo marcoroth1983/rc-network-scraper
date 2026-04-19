@@ -86,6 +86,7 @@ rc-markt-scout/
 4. **Deduplication:** Use `external_id` (globally unique XenForo thread ID) as unique key; update existing records on re-scrape
 5. **Incremental:** Stop-early per category when a full overview page contains only known IDs (listings are newest-first); hard cap of 40 pages per category
 6. **Sold recheck:** Phase 2 re-fetches the 250 oldest non-sold listings per hourly run to detect sold status
+7. **Outdated retention (Phase 3):** Listings with `posted_at` older than 8 weeks are marked `is_outdated = TRUE` instead of being deleted — history is preserved. The `GET /api/listings` default hides both sold and outdated rows; two independent query params (`show_outdated`, `only_sold`) opt into each group. `GET /api/favorites` is unaffected — pinned listings always appear regardless of status.
 
 ## Geodata
 
@@ -116,22 +117,6 @@ rc-markt-scout/
 - **Private access only** — no public exposure, firewall/VPN restricted to owner
 - No auth layer needed (single user behind network restriction)
 
-## Preisvergleich & Similarity-Ranking
+## Ähnliche Inserate (Vergleichs-Popup)
 
-**Entscheidung:** Attribut-gewichteter Scorer statt starrer L1/L2-Gruppen (Manufacturer + Model vs. Fallback-Typ-Gruppe). Starre Gruppen erzeugten irreführende Mediane bei heterogenem Cluster (gemessen: 60× Preisspanne in einer L2-Gruppe).
-
-**Zentrale Module:**
-- `backend/app/analysis/similarity.py` — `score()` (Attribute-weighted scoring zwischen zwei Listings) + `assess_homogeneity()` (entscheidet ob Top-N homogen genug für einen Median)
-- `backend/app/api/routes.py::get_comparables` — nutzt `score()` + `assess_homogeneity()` für die API-Response
-- `backend/app/analysis/job.py::recalculate_price_indicators` — nutzt dieselben Funktionen für den Batch-Indikator-Job
-
-**Scoring-Gewichte** (`SimilarityWeights`, tunable an einer Stelle):
-- `model_name`: 5.0, `manufacturer`: 3.0, `model_subtype`: 2.0, `completeness`: 2.0, `model_type`: 1.0
-- Wingspan-Penalty: 0.002 per mm Differenz (500 mm → −1.0)
-
-**Homogenitäts-Schwellen** (tunable in `similarity.py`):
-- `MIN_TOP_SIZE = 4` — weniger Kandidaten → `insufficient`
-- `MIN_ATTR_AGREEMENT = 0.7` — mind. 70 % des Top-N müssen das Base-Attribut teilen
-- `MAX_PRICE_SPREAD = 4.0` — max/min-Preis-Ratio im Top-N
-
-**Scheduling:** Eigenständiger APScheduler-Job alle 15 Minuten, unabhängig von der LLM-Analyse-Queue. Indikator wird **nur bei homogenem Cluster** gesetzt — bewusste Stille-by-default. Listings ohne `model_type` bekommen keinen Indikator (kein sinnvoller Kandidaten-Pool).
+`GET /api/listings/{id}/comparables` liefert bis zu 30 Inserate gleicher Kategorie, gefiltert nach harten Attributen — `model_type`, `model_subtype`, `drive_type` (strikt, falls am Base gesetzt; Kandidaten mit NULL werden toleriert) und `wingspan_mm` ±25 % (ebenfalls NULL-tolerant). Sold + outdated Inserate werden eingeschlossen. Keine Median-/Similarity-Bewertung mehr — rein kategoriale Filterung.

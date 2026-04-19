@@ -731,162 +731,6 @@ class TestCategoryFilter:
 
 
 # ---------------------------------------------------------------------------
-# PLAN-014 Step 4: Price indicator (DB-stored)
-# ---------------------------------------------------------------------------
-
-async def _insert_listing_with_indicator(
-    session: AsyncSession,
-    *,
-    external_id: str,
-    title: str = "Test listing",
-    price_numeric: float | None = None,
-    price_indicator: str | None = None,
-    manufacturer: str | None = None,
-    model_name: str | None = None,
-    category: str = "flugmodelle",
-    is_sold: bool = False,
-) -> int:
-    """Insert a listing with optional price_indicator set, returning the auto-incremented id."""
-    result = await session.execute(
-        text("""
-            INSERT INTO listings (
-                external_id, url, title, price, price_numeric, condition, shipping,
-                description, images, tags, author, posted_at, posted_at_raw, plz, city,
-                latitude, longitude, scraped_at, is_sold, category,
-                manufacturer, model_name, llm_analyzed, price_indicator
-            ) VALUES (
-                :eid, :url, :title, NULL, :price_numeric, NULL, NULL,
-                '', '[]', '[]', 'TestUser', NOW(), NULL, NULL, NULL,
-                NULL, NULL, NOW(), :is_sold, :category,
-                :manufacturer, :model_name, true, :price_indicator
-            ) RETURNING id
-        """),
-        {
-            "eid": external_id,
-            "url": f"https://example.com/{external_id}",
-            "title": title,
-            "price_numeric": price_numeric,
-            "is_sold": is_sold,
-            "category": category,
-            "manufacturer": manufacturer,
-            "model_name": model_name,
-            "price_indicator": price_indicator,
-        },
-    )
-    await session.commit()
-    return result.fetchone()[0]
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-class TestPriceIndicator:
-    """price_indicator is a DB-stored column, set by recalculate_price_indicators().
-
-    These tests verify that the value flows correctly from the DB through the API.
-    The computation logic itself is tested in test_analysis_job.py.
-    """
-
-    async def test_deal_indicator_returned_from_list_endpoint(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Listing with price_indicator='deal' in DB is returned correctly via list endpoint."""
-        await _insert_listing_with_indicator(
-            db_session,
-            external_id="deal-listing",
-            price_numeric=100.0,
-            manufacturer="Multiplex",
-            model_name="EasyStar 3",
-            price_indicator="deal",
-        )
-
-        resp = await api_client.get("/api/listings")
-        assert resp.status_code == 200
-        items = resp.json()["items"]
-        active = next(i for i in items if i["external_id"] == "deal-listing")
-        assert active["price_indicator"] == "deal"
-
-    async def test_expensive_indicator_returned_from_detail_endpoint(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Listing with price_indicator='expensive' in DB is returned by detail endpoint."""
-        listing_id = await _insert_listing_with_indicator(
-            db_session,
-            external_id="expensive-listing",
-            price_numeric=999.0,
-            manufacturer="Black Horse",
-            model_name="L-39",
-            price_indicator="expensive",
-        )
-
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        assert resp.json()["price_indicator"] == "expensive"
-
-    async def test_fair_indicator_returned_from_detail_endpoint(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """Listing with price_indicator='fair' in DB is returned by detail endpoint."""
-        listing_id = await _insert_listing_with_indicator(
-            db_session,
-            external_id="fair-listing",
-            price_numeric=300.0,
-            manufacturer="FMS",
-            model_name="P-47",
-            price_indicator="fair",
-        )
-
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        assert resp.json()["price_indicator"] == "fair"
-
-    async def test_no_indicator_when_not_set(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """price_indicator is null when not set in DB."""
-        listing_id = await _insert_listing_with_indicator(
-            db_session,
-            external_id="no-indicator",
-            price_numeric=300.0,
-            manufacturer="Robbe",
-            model_name="Arcus",
-            price_indicator=None,
-        )
-
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        assert resp.json()["price_indicator"] is None
-
-    async def test_no_indicator_when_manufacturer_or_model_null(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """price_indicator is null for unanalyzed listings (manufacturer/model_name null)."""
-        listing_id = await _insert_listing_full(
-            db_session, external_id="unanalyzed", title="No analysis"
-        )
-
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        assert resp.json()["price_indicator"] is None
-
-    async def test_no_indicator_when_listing_has_no_price(
-        self, api_client: AsyncClient, db_session: AsyncSession
-    ) -> None:
-        """price_indicator is null when the listing itself has no price_numeric."""
-        listing_id = await _insert_listing_with_indicator(
-            db_session,
-            external_id="active-noprice",
-            price_numeric=None,
-            manufacturer="Graupner",
-            model_name="ASK-21",
-            price_indicator=None,
-        )
-
-        resp = await api_client.get(f"/api/listings/{listing_id}")
-        assert resp.status_code == 200
-        assert resp.json()["price_indicator"] is None
-
-
-# ---------------------------------------------------------------------------
 # PLAN-007: sold_at lifecycle tests via PATCH /listings/{id}/sold
 # ---------------------------------------------------------------------------
 
@@ -961,3 +805,117 @@ class TestToggleSoldAt:
         )
         sold_at_second = row.fetchone()[0]
         assert sold_at_second == sold_at_first
+
+
+# ---------------------------------------------------------------------------
+# PLAN-024: is_outdated / is_sold filter params
+# ---------------------------------------------------------------------------
+
+async def _insert_listing_with_flags(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    title: str,
+    is_sold: bool = False,
+    is_outdated: bool = False,
+) -> None:
+    """Insert a minimal test listing with explicit sold/outdated flags."""
+    await session.execute(
+        text("""
+            INSERT INTO listings (external_id, url, title, description, images, tags,
+                author, scraped_at, posted_at, is_sold, is_outdated)
+            VALUES (:eid, :url, :title, '', '[]', '[]', 'TestUser', NOW(),
+                    NOW() - INTERVAL '1 day', :is_sold, :is_outdated)
+        """),
+        {
+            "eid": external_id,
+            "url": f"https://example.com/{external_id}",
+            "title": title,
+            "is_sold": is_sold,
+            "is_outdated": is_outdated,
+        },
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestOutdatedSoldFilter:
+    async def test_default_hides_sold_and_outdated(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings (default) returns only active non-outdated listings."""
+        await _insert_listing_with_flags(db_session, external_id="active-1", title="Active listing")
+        await _insert_listing_with_flags(db_session, external_id="sold-1", title="Sold listing", is_sold=True)
+        await _insert_listing_with_flags(db_session, external_id="outdated-1", title="Outdated listing", is_outdated=True)
+
+        resp = await api_client.get("/api/listings")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["external_id"] for item in data["items"]}
+        assert "active-1" in returned_ids
+        assert "sold-1" not in returned_ids
+        assert "outdated-1" not in returned_ids
+        assert data["total"] == 1
+
+    async def test_default_hides_both_flags_set(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings (default) hides listings that are both sold and outdated."""
+        await _insert_listing_with_flags(
+            db_session, external_id="sold-outdated-1", title="Sold and outdated",
+            is_sold=True, is_outdated=True
+        )
+
+        resp = await api_client.get("/api/listings")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+
+    async def test_show_outdated_includes_outdated_non_sold(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings?show_outdated=true returns active and outdated non-sold listings."""
+        await _insert_listing_with_flags(db_session, external_id="active-2", title="Active")
+        await _insert_listing_with_flags(db_session, external_id="outdated-2", title="Outdated", is_outdated=True)
+
+        resp = await api_client.get("/api/listings?show_outdated=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["external_id"] for item in data["items"]}
+        assert "active-2" in returned_ids
+        assert "outdated-2" in returned_ids
+        assert data["total"] == 2
+
+    async def test_only_sold_shows_only_sold_listings(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings?only_sold=true returns only sold listings."""
+        await _insert_listing_with_flags(db_session, external_id="active-3", title="Active")
+        await _insert_listing_with_flags(db_session, external_id="sold-2", title="Sold", is_sold=True)
+        await _insert_listing_with_flags(db_session, external_id="outdated-3", title="Outdated", is_outdated=True)
+
+        resp = await api_client.get("/api/listings?only_sold=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["external_id"] for item in data["items"]}
+        assert "sold-2" in returned_ids
+        assert "active-3" not in returned_ids
+        assert "outdated-3" not in returned_ids
+        assert data["total"] == 1
+
+    async def test_only_sold_includes_sold_outdated_listings(
+        self, api_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
+        """GET /api/listings?only_sold=true includes listings that are both sold and outdated."""
+        await _insert_listing_with_flags(
+            db_session, external_id="sold-outdated-2", title="Sold and outdated",
+            is_sold=True, is_outdated=True
+        )
+
+        resp = await api_client.get("/api/listings?only_sold=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["external_id"] for item in data["items"]}
+        assert "sold-outdated-2" in returned_ids
+        assert data["total"] == 1

@@ -26,6 +26,7 @@ const base: ListingSummary = {
   distance_km: null,
   images: [],
   is_sold: false,
+  is_outdated: false,
   is_favorite: false,
   category: 'flugmodelle',
   manufacturer: null,
@@ -35,9 +36,6 @@ const base: ListingSummary = {
   drive_type: null,
   completeness: null,
   shipping_available: null,
-  price_indicator: null,
-  price_indicator_median: null,
-  price_indicator_count: null,
   source: 'rcnetwork' as const,
 };
 

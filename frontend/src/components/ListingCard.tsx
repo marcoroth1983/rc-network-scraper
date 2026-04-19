@@ -1,10 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ListingSummary } from '../types/api';
 import { getBackground } from '../lib/modalLocation';
 import { toggleFavorite } from '../api/client';
 import { formatPrice, formatDate } from '../utils/format';
-import ComparablesModal from './ComparablesModal';
 
 // Pin icon matching the mockup SVG
 function PinIcon() {
@@ -21,64 +20,6 @@ function PinIcon() {
       <circle cx="12" cy="11" r="3" />
     </svg>
   );
-}
-
-interface PriceIndicatorBadgeProps {
-  indicator: ListingSummary['price_indicator'];
-  median?: number | null;
-  count?: number | null;
-  onClick?: (e: React.MouseEvent) => void;
-  badgeRef?: React.RefObject<HTMLButtonElement | null>;
-}
-
-// <button> instead of <span onClick>: iOS Safari reliably dispatches click
-// events on native-clickable elements (button/a) but is flaky on spans with
-// synthetic onClick handlers. touch-action:manipulation kills the 300ms tap
-// delay and the double-tap-zoom gesture, so taps register instantly.
-const BADGE_CLASSES = "relative z-10 text-xs font-semibold px-2 py-0.5 rounded-full cursor-pointer";
-const BADGE_TOUCH_STYLE: React.CSSProperties = { touchAction: 'manipulation' };
-
-function PriceIndicatorBadge({ indicator, onClick, badgeRef }: PriceIndicatorBadgeProps) {
-  if (indicator === 'deal') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(52,211,153,0.15)', color: '#34D399', border: '1px solid rgba(52,211,153,0.3)' }}
-        onClick={onClick}
-      >
-        Günstig
-      </button>
-    );
-  }
-  if (indicator === 'fair') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
-        onClick={onClick}
-      >
-        Gut
-      </button>
-    );
-  }
-  if (indicator === 'expensive') {
-    return (
-      <button
-        type="button"
-        ref={badgeRef}
-        className={BADGE_CLASSES}
-        style={{ ...BADGE_TOUCH_STYLE, background: 'rgba(251,146,60,0.15)', color: '#FB923C', border: '1px solid rgba(251,146,60,0.3)' }}
-        onClick={onClick}
-      >
-        Teuer
-      </button>
-    );
-  }
-  return null;
 }
 
 interface Props {
@@ -106,8 +47,6 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
 
   const [favorite, setFavorite] = useState(listing.is_favorite);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const [comparablesOpen, setComparablesOpen] = useState(false);
-  const badgeRef = useRef<HTMLButtonElement>(null);
 
   async function handleFavorite(e: React.MouseEvent) {
     e.preventDefault();
@@ -147,12 +86,20 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
             </span>
           </div>
         )}
-        {isNew && !listing.is_sold && (
+        {isNew && !listing.is_sold && !listing.is_outdated && (
           <span
             className="absolute top-2 left-2 z-10 text-xs font-bold px-2 py-0.5 rounded-full shadow pointer-events-none"
             style={{ background: '#34D399', color: '#0f0f23' }}
           >
             NEU
+          </span>
+        )}
+        {listing.is_outdated && !listing.is_sold && (
+          <span
+            className="absolute top-2 left-2 z-10 text-xs font-semibold px-2 py-0.5 rounded-full pointer-events-none"
+            style={{ background: 'rgba(148,163,184,0.15)', color: '#94A3B8', border: '1px solid rgba(148,163,184,0.25)' }}
+          >
+            ALT
           </span>
         )}
         {listing.is_sold && listing.images.length === 0 && (
@@ -215,17 +162,6 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
             {formatPrice(listing.price_numeric, listing.price)}
           </span>
           <div className="flex items-center gap-2">
-            <PriceIndicatorBadge
-              indicator={listing.price_indicator}
-              median={listing.price_indicator_median}
-              count={listing.price_indicator_count}
-              badgeRef={badgeRef}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setComparablesOpen(true);
-              }}
-            />
             {listing.source === 'ebay' && (
               <span
                 className="text-xs font-medium px-1.5 py-0.5 rounded"
@@ -284,14 +220,6 @@ export default function ListingCard({ listing, onFavoriteChange }: Props) {
 
       </div>
 
-      {comparablesOpen && (
-        <ComparablesModal
-          listingId={listing.id}
-          currentListingId={listing.id}
-          anchorRef={badgeRef}
-          onClose={() => setComparablesOpen(false)}
-        />
-      )}
     </article>
   );
 }

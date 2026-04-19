@@ -16,7 +16,6 @@ class NotificationPrefs:
     fav_sold: bool
     fav_price: bool
     fav_deleted: bool
-    fav_indicator: bool
 
 
 async def get_prefs(user_id: int) -> NotificationPrefs:
@@ -28,21 +27,21 @@ async def get_prefs(user_id: int) -> NotificationPrefs:
         )
         result = await session.execute(
             text("""
-                SELECT new_search_results, fav_sold, fav_price, fav_deleted, fav_indicator
+                SELECT new_search_results, fav_sold, fav_price, fav_deleted
                 FROM user_notification_prefs WHERE user_id = :uid
             """),
             {"uid": user_id},
         )
         r = result.one()
         await session.commit()
-    return NotificationPrefs(user_id, r[0], r[1], r[2], r[3], r[4])
+    return NotificationPrefs(user_id, r[0], r[1], r[2], r[3])
 
 
 async def set_prefs(user_id: int, **partial: bool | None) -> NotificationPrefs:
     """Partial update: only fields passed as non-None are written."""
     updates = []
     params: dict = {"uid": user_id}
-    for field in ("new_search_results", "fav_sold", "fav_price", "fav_deleted", "fav_indicator"):
+    for field in ("new_search_results", "fav_sold", "fav_price", "fav_deleted"):
         val = partial.get(field)
         if val is not None:
             updates.append(f"{field} = :{field}")

@@ -8,10 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.similarity import (
-    score as similarity_score,
-    assess_homogeneity,
-)
 from app.api.admin import router as admin_router
 from app.api.telegram import router as telegram_api_router
 from app.api.deps import get_current_user
@@ -136,7 +132,8 @@ async def list_listings(
     model_subtype: str | None = Query(default=None),
     source: Literal["rcnetwork", "ebay"] | None = Query(default=None),
     shipping_available: bool | None = Query(default=None),
-    price_indicator: str | None = Query(default=None),
+    show_outdated: bool = Query(default=False),
+    only_sold: bool = Query(default=False),
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
@@ -182,8 +179,14 @@ async def list_listings(
         stmt = stmt.where(Listing.source == source)
     if shipping_available is not None:
         stmt = stmt.where(Listing.shipping_available == shipping_available)
-    if price_indicator:
-        stmt = stmt.where(Listing.price_indicator == price_indicator)
+
+    # Default: hide sold and outdated. Toggles opt into each group.
+    if only_sold:
+        stmt = stmt.where(Listing.is_sold == True)  # noqa: E712
+    else:
+        stmt = stmt.where(Listing.is_sold == False)  # noqa: E712
+        if not show_outdated:
+            stmt = stmt.where(Listing.is_outdated == False)  # noqa: E712
 
     if sort == "date" and max_distance is None:
         # SQL-side sort and count
@@ -296,62 +299,105 @@ async def get_listings_by_author(
 @router.get("/listings/{listing_id}/comparables", response_model=ComparablesResponse)
 async def get_comparables(
     listing_id: int,
-    limit: int = 20,
+    limit: int = Query(default=30, ge=1, le=30),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),  # noqa: ARG001  — gates access, return data does not depend on user
 ) -> ComparablesResponse:
-    """Return the top-N most similar listings, ranked by attribute similarity."""
+    """Return up to N comparable listings by hard-attribute filter.
+
+    Filter rules:
+    - `category` is always required (hard).
+    - `model_type`, `model_subtype`, `drive_type`, `wingspan_mm` are applied ONLY if set on
+      the base listing. Candidates with NULL on a filtered attribute are tolerated (included).
+    - `model_subtype` is the discriminator the user cares about (e.g. jet vs. turbine within
+      `model_type='airplane'`). Matching both `model_type` and `model_subtype` keeps the
+      general class coherent AND the specialised variant coherent.
+    - `wingspan_mm`: ±25 % range around the base value. Stored as a digit-only string under
+      `attributes.wingspan_mm` (see `backend/app/analysis/extractor.py`; parser only accepts
+      integer strings in 100–10000 mm — we inherit that constraint by requiring digits).
+    - If NONE of {model_type, model_subtype, drive_type, wingspan_mm} is set on the base
+      → return count=0. `category` alone is too coarse for meaningful price comparison.
+    - Includes sold + outdated listings (user wants full price history).
+
+    Order: posted_at DESC (newest first). Limit: 30 (hard upper bound via Query).
+    """
     result = await session.execute(select(Listing).where(Listing.id == listing_id))
-    listing = result.scalar_one_or_none()
-    if listing is None:
+    base = result.scalar_one_or_none()
+    if base is None:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    fav_ids = await _get_favorite_listing_ids(current_user.id, session)
+    has_type = bool(base.model_type)
+    has_subtype = bool(base.model_subtype)
+    has_drive = bool(base.drive_type)
+    # wingspan is stored as a digit-only string inside attributes JSONB under key "wingspan_mm".
+    wingspan_raw = (base.attributes or {}).get("wingspan_mm")
+    base_wingspan: int | None = None
+    if isinstance(wingspan_raw, str) and wingspan_raw.isdigit():
+        base_wingspan = int(wingspan_raw)
+    has_wingspan = base_wingspan is not None
 
-    base_q = (
+    if not (has_type or has_subtype or has_drive or has_wingspan):
+        return ComparablesResponse(count=0, listings=[])
+
+    stmt = (
         select(Listing)
-        .where(Listing.is_sold == False)  # noqa: E712
-        .where(Listing.price_numeric.is_not(None))
+        .where(Listing.category == base.category)
         .where(Listing.id != listing_id)
+        .where(Listing.price_numeric.is_not(None))
     )
-    if listing.model_type:
-        base_q = base_q.where(Listing.model_type == listing.model_type)
+    if has_type:
+        stmt = stmt.where(
+            (Listing.model_type == base.model_type) | (Listing.model_type.is_(None))
+        )
+    if has_subtype:
+        stmt = stmt.where(
+            (Listing.model_subtype == base.model_subtype) | (Listing.model_subtype.is_(None))
+        )
+    if has_drive:
+        stmt = stmt.where(
+            (Listing.drive_type == base.drive_type) | (Listing.drive_type.is_(None))
+        )
+    if has_wingspan:
+        low = int(base_wingspan * 0.75)
+        high = int(base_wingspan * 1.25)
+        # Guard the ::int cast from non-numeric strings using CASE. PostgreSQL does NOT
+        # guarantee short-circuit evaluation on OR — using OR with a regex guard risks
+        # `invalid input syntax for type integer` if the planner reorders. CASE is the
+        # only construct guaranteed to short-circuit. NULL BETWEEN x AND y is NULL (falsy),
+        # so non-digit / absent rows fall through to the `IS NULL` branch and are tolerated.
+        # The outer parentheses are required: SQLAlchemy appends text() verbatim into the
+        # WHERE clause and the bare OR would escape the AND scope of the surrounding filters.
+        stmt = stmt.where(
+            text(
+                "((CASE WHEN attributes->>'wingspan_mm' ~ '^[0-9]+$' "
+                "       THEN (attributes->>'wingspan_mm')::int "
+                "       ELSE NULL END) IS NULL "
+                " OR (CASE WHEN attributes->>'wingspan_mm' ~ '^[0-9]+$' "
+                "          THEN (attributes->>'wingspan_mm')::int "
+                "          ELSE NULL END) BETWEEN :low AND :high)"
+            ).bindparams(low=low, high=high)
+        )
 
-    candidates = list((await session.execute(base_q)).scalars().all())
+    # Count (independent of limit) — used for the badge even if user never opens the popup
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = int((await session.execute(count_stmt)).scalar_one())
 
-    scored = [(c, similarity_score(listing, c)) for c in candidates]
-    # Filter > 0.0: without any attribute match, the comparison is not meaningful.
-    # Negative scores (pure wingspan diff without attribute match) are discarded —
-    # with few candidates this results in 'insufficient', which is more honest than bad comparisons.
-    scored = [(c, s) for c, s in scored if s > 0.0]
-    # Deterministic tie-break: score desc, price asc, id asc (stable for snapshot tests).
-    scored.sort(key=lambda t: (-t[1], float(t[0].price_numeric or 0), t[0].id))
-    top = scored[:limit]
-
-    quality, median_val = assess_homogeneity(listing, top)
+    stmt = stmt.order_by(Listing.posted_at.desc().nullslast()).limit(limit)
+    rows = list((await session.execute(stmt)).scalars().all())
 
     return ComparablesResponse(
-        match_quality=quality,
-        median=median_val,
-        count=len(top),
-        listings=[_to_comparable(c, s, fav_ids) for c, s in top],
-    )
-
-
-def _to_comparable(row: Listing, score_val: float, fav_ids: set[int]) -> ComparableListing:
-    # Construct via explicit kwargs — model_validate() would fail on similarity_score
-    # which is not an ORM attribute.
-    return ComparableListing(
-        id=row.id,
-        title=row.title,
-        url=row.url,
-        price=row.price,
-        price_numeric=float(row.price_numeric) if row.price_numeric is not None else None,
-        condition=row.condition,
-        city=row.city,
-        posted_at=row.posted_at,
-        is_favorite=row.id in fav_ids,
-        similarity_score=round(score_val, 2),
+        count=total,
+        listings=[
+            ComparableListing(
+                id=row.id,
+                title=row.title,
+                url=row.url,
+                price=row.price,
+                price_numeric=float(row.price_numeric) if row.price_numeric is not None else None,
+                posted_at=row.posted_at,
+            )
+            for row in rows
+        ],
     )
 
 

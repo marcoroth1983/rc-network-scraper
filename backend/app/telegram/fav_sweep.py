@@ -1,4 +1,4 @@
-"""Favorites-status sweep: detect sold/price/deleted/indicator changes.
+"""Favorites-status sweep: detect sold/price/deleted changes.
 
 Runs every TELEGRAM_FAV_SWEEP_INTERVAL_MIN minutes via APScheduler (registered in main.py).
 """
@@ -31,10 +31,16 @@ def _decimal_eq(a: object, b: object) -> bool:
     return Decimal(str(a)) == Decimal(str(b))
 
 
-def _detect_events(row: tuple, deleted_cutoff: datetime, user_prefs: prefs_module.NotificationPrefs) -> list[str]:
+def _detect_events(row: dict, deleted_cutoff: datetime, user_prefs: prefs_module.NotificationPrefs) -> list[str]:
     """Return list of formatted event lines based on diffs + per-user prefs."""
     events = []
-    (_, _, lk_sold, lk_price, lk_ind, lk_scr, title, _, is_sold, price, ind, scraped_at, _) = row
+    lk_sold = row["last_known_is_sold"]
+    lk_price = row["last_known_price_numeric"]
+    lk_scr = row["last_known_scraped_at"]
+    title = row["title"]
+    is_sold = row["is_sold"]
+    price = row["price_numeric"]
+    scraped_at = row["scraped_at"]
 
     if lk_sold is not None and lk_sold is False and is_sold is True and user_prefs.fav_sold:
         events.append(f"🏷️ <b>Verkauft:</b> {_escape_html(title)}")
@@ -57,9 +63,6 @@ def _detect_events(row: tuple, deleted_cutoff: datetime, user_prefs: prefs_modul
     if listing_gone and snapshot_alive and user_prefs.fav_deleted:
         events.append(f"🗑️ <b>Gelöscht:</b> {_escape_html(title)}")
 
-    if lk_ind is not None and ind is not None and lk_ind != ind and user_prefs.fav_indicator:
-        events.append(f"📊 <b>Preisbewertung:</b> {_escape_html(title)} — {lk_ind} → {ind}")
-
     return events
 
 
@@ -81,9 +84,9 @@ async def run_fav_status_sweep() -> int:
                 text("""
                     SELECT uf.user_id, uf.listing_id,
                            uf.last_known_is_sold, uf.last_known_price_numeric,
-                           uf.last_known_price_indicator, uf.last_known_scraped_at,
+                           uf.last_known_scraped_at,
                            l.title, l.url,
-                           l.is_sold, l.price_numeric, l.price_indicator, l.scraped_at,
+                           l.is_sold, l.price_numeric, l.scraped_at,
                            u.telegram_chat_id
                     FROM user_favorites uf
                     JOIN listings l ON l.id = uf.listing_id
@@ -91,19 +94,20 @@ async def run_fav_status_sweep() -> int:
                     WHERE u.telegram_chat_id IS NOT NULL
                 """)
             )
-            favorites = rows.all()
+            favorites = [row._asdict() for row in rows.all()]
     except Exception:
         logger.exception("telegram.sweep.fav: load FAILED — aborting sweep")
         return 0
 
     for fav in favorites:
-        user_id, listing_id = fav[0], fav[1]
+        user_id = fav["user_id"]
+        listing_id = fav["listing_id"]
         try:
             user_prefs = await prefs_module.get_prefs(user_id)
             events = _detect_events(fav, deleted_cutoff, user_prefs)
 
             if events:
-                chat_id = fav[-1]
+                chat_id = fav["telegram_chat_id"]
                 msg = (
                     "\n\n".join(events)
                     + f'\n\n<a href="{settings.PUBLIC_BASE_URL}/listings/{listing_id}">Zum Inserat</a>'
@@ -124,15 +128,13 @@ async def run_fav_status_sweep() -> int:
                         UPDATE user_favorites
                         SET last_known_is_sold = :sold,
                             last_known_price_numeric = :price,
-                            last_known_price_indicator = :ind,
                             last_known_scraped_at = :scr
                         WHERE user_id = :u AND listing_id = :l
                     """),
                     {
-                        "sold": fav[8],
-                        "price": fav[9],
-                        "ind": fav[10],
-                        "scr": fav[11],
+                        "sold": fav["is_sold"],
+                        "price": fav["price_numeric"],
+                        "scr": fav["scraped_at"],
                         "u": user_id,
                         "l": listing_id,
                     },

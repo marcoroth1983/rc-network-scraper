@@ -7,7 +7,7 @@ from app.telegram import prefs
 @pytest.mark.asyncio
 async def test_get_defaults_all_true(db_user):
     p = await prefs.get_prefs(db_user.id)
-    assert all([p.new_search_results, p.fav_sold, p.fav_price, p.fav_deleted, p.fav_indicator])
+    assert all([p.new_search_results, p.fav_sold, p.fav_price, p.fav_deleted])
 
 
 @pytest.mark.asyncio

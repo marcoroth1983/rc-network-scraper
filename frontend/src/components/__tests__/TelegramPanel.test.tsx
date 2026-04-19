@@ -41,7 +41,6 @@ const defaultPrefs: NotificationPrefs = {
   fav_sold: true,
   fav_price: false,
   fav_deleted: false,
-  fav_indicator: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,12 +125,11 @@ describe('TelegramPanel', () => {
       expect(screen.getByText(/Verbunden seit/)).toBeInTheDocument();
     });
 
-    // All 5 toggle labels visible
+    // All 4 toggle labels visible
     expect(screen.getByText('Neue Suchtreffer')).toBeInTheDocument();
     expect(screen.getByText('Verkauft')).toBeInTheDocument();
     expect(screen.getByText('Preis')).toBeInTheDocument();
     expect(screen.getByText('Gelöscht')).toBeInTheDocument();
-    expect(screen.getByText('Preisbewertung')).toBeInTheDocument();
 
     // Trennen button present
     expect(screen.getByRole('button', { name: /telegram-verbindung trennen/i })).toBeInTheDocument();

@@ -22,11 +22,16 @@ async def _insert_favorite(user_id: int, listing_id: int, snapshot: dict | None 
                     UPDATE user_favorites SET
                       last_known_is_sold = :sold,
                       last_known_price_numeric = :price,
-                      last_known_price_indicator = :ind,
                       last_known_scraped_at = :scr
                     WHERE user_id = :u AND listing_id = :l
                 """),
-                {**snapshot, "u": user_id, "l": listing_id},
+                {
+                    "sold": snapshot.get("sold"),
+                    "price": snapshot.get("price"),
+                    "scr": snapshot.get("scr"),
+                    "u": user_id,
+                    "l": listing_id,
+                },
             )
         await s.commit()
 
@@ -99,29 +104,6 @@ async def test_deleted_triggers_when_scraped_at_stale(db_user_linked, db_listing
         sent = await fav_sweep.run_fav_status_sweep()
     assert sent == 1
     assert "Gelöscht" in mock.call_args.kwargs["text_body"]
-
-
-@pytest.mark.asyncio
-async def test_indicator_change_triggers(db_user_linked, db_listing, monkeypatch):
-    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "T")
-    monkeypatch.setattr(settings, "TELEGRAM_BOT_USERNAME", "b")
-    monkeypatch.setattr(settings, "TELEGRAM_WEBHOOK_SECRET", "s")
-    now = datetime.now(timezone.utc)
-    await _insert_favorite(
-        db_user_linked.user_id,
-        db_listing.id,
-        snapshot={"sold": False, "price": None, "ind": "fair", "scr": now},
-    )
-    async with _app_db.AsyncSessionLocal() as s:
-        await s.execute(
-            text("UPDATE listings SET price_indicator = 'overpriced' WHERE id = :i"),
-            {"i": db_listing.id},
-        )
-        await s.commit()
-    with patch("app.telegram.fav_sweep.bot.send_message", new=AsyncMock(return_value=True)) as mock:
-        sent = await fav_sweep.run_fav_status_sweep()
-    assert sent == 1
-    assert "Preisbewertung" in mock.call_args.kwargs["text_body"]
 
 
 @pytest.mark.asyncio

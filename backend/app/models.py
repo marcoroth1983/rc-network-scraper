@@ -48,9 +48,6 @@ class Listing(Base):
     completeness: Mapped[str | None] = mapped_column(String(30), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
     llm_analyzed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    price_indicator: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    price_indicator_median: Mapped[float | None] = mapped_column(Float, nullable=True)
-    price_indicator_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shipping_available: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # PLAN-007: lifecycle timestamps
@@ -58,6 +55,9 @@ class Listing(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     sold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # PLAN-024: soft outdated flag (replaces Phase 3 hard-delete)
+    is_outdated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class PlzGeodata(Base):

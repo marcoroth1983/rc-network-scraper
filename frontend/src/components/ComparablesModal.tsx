@@ -1,50 +1,21 @@
 import { useRef, useLayoutEffect, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
-import { useComparables } from '../hooks/useComparables';
-import type { MatchQuality } from '../types/api';
+import type { ComparablesResponse } from '../types/api';
 
 interface Props {
-  listingId: number | null;
-  currentListingId: number;
+  data: ComparablesResponse;
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
 }
 
-/** Similarity label based on index position in the sorted Top-N list (3 equal tiers). */
-function similarityLabel(idx: number, count: number): string {
-  if (idx < count / 3) return 'sehr ähnlich';
-  if (idx < (2 * count) / 3) return 'ähnlich';
-  return 'entfernt';
-}
-
-/** Build the header subtitle text based on match quality. */
-function buildSubtitle(matchQuality: MatchQuality, count: number, median: number | null): string {
-  switch (matchQuality) {
-    case 'homogeneous':
-      return median !== null
-        ? `${count} ähnliche Inserate · Median ${median.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`
-        : `${count} ähnliche Inserate`;
-    case 'heterogeneous':
-      return `${count} ähnliche Inserate · Preisspanne zu groß für Median`;
-    case 'insufficient':
-      return `Zu wenige vergleichbare Inserate (${count})`;
-  }
-}
-
-export default function ComparablesModal({ listingId, currentListingId, anchorRef, onClose }: Props) {
-  const isOpen = listingId !== null;
-  const { data, loading, error } = useComparables(listingId);
+export default function ComparablesModal({ data, anchorRef, onClose }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const swipeStartY = useRef<number | null>(null);
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
 
   useLayoutEffect(() => {
-    if (!isOpen || !anchorRef.current) return;
+    if (!anchorRef.current) return;
     const rect = anchorRef.current.getBoundingClientRect();
-    // Desktop popover: wider than the narrow 400px default. Long titles like
-    // "Graupner Mini Viper Jet EDF PNP ..." need space before the trailing
-    // price column, otherwise everything truncates aggressively.
     const POPOVER_WIDTH = Math.min(640, window.innerWidth - 32);
     const POPOVER_MAX_H = window.innerHeight * 0.6;
     const spaceBelow = window.innerHeight - rect.bottom - 8;
@@ -56,34 +27,20 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
       window.innerWidth + window.scrollX - POPOVER_WIDTH - 16,
     );
     setPopoverStyle({ top, left, width: POPOVER_WIDTH });
-  }, [isOpen, anchorRef, data]);
+  }, [anchorRef, data]);
 
   useEffect(() => {
-    if (!isOpen) return;
     closeRef.current?.focus();
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  }, [onClose]);
 
   useEffect(() => {
-    if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  // Median line: find the last index where price_numeric <= median, only when median is set.
-  const medianValue = data?.median ?? null;
-  let medianInsertIdx = -1;
-  if (data && medianValue !== null) {
-    for (let i = data.listings.length - 1; i >= 0; i--) {
-      const p = data.listings[i].price_numeric;
-      if (p !== null && p <= medianValue) { medianInsertIdx = i; break; }
-    }
-  }
+  }, []);
 
   const panelStyle: React.CSSProperties = {
     background: 'rgba(12, 12, 28, 0.98)',
@@ -93,13 +50,15 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
     boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
   };
 
-  const header = data ? (
+  const isEmpty = data.count === 0 || data.listings.length === 0;
+
+  const header = (
     <div className="px-4 py-3 flex items-center justify-between shrink-0"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
       <div>
         <p className="text-xs font-semibold" style={{ color: '#F8FAFC' }}>Preisvergleich</p>
         <p className="text-[10px]" style={{ color: 'rgba(248,250,252,0.4)' }}>
-          {buildSubtitle(data.match_quality, data.count, data.median)}
+          {data.count} ähnliche Inserate
         </p>
       </div>
       <button ref={closeRef} onClick={onClose} aria-label="Schließen"
@@ -109,76 +68,38 @@ export default function ComparablesModal({ listingId, currentListingId, anchorRe
         </svg>
       </button>
     </div>
-  ) : null;
+  );
 
-  const listBody = (
-    <>
-      {loading && (
-        <div className="flex justify-center py-10">
-          <div className="animate-spin h-6 w-6 border-4 rounded-full"
-            style={{ borderColor: '#A78BFA', borderTopColor: 'transparent' }} />
-        </div>
-      )}
-      {error && (
-        <p className="px-4 py-6 text-sm text-center" style={{ color: '#EC4899' }}>
-          Fehler: {error}
-        </p>
-      )}
-      {data && data.listings.length === 0 && !loading && (
-        <p className="px-4 py-6 text-sm text-center" style={{ color: 'rgba(248,250,252,0.4)' }}>
-          Keine Vergleichsinserate gefunden.
-        </p>
-      )}
-      {data?.listings.map((item, idx) => (
-        <div key={item.id}>
-          {/* Median divider line — only rendered when median is set (homogeneous cluster) */}
-          {medianInsertIdx >= 0 && idx === medianInsertIdx && medianValue !== null && (
-            <div className="flex items-center gap-2 px-4 py-1">
-              <div className="flex-1 h-px" style={{ background: 'rgba(167,139,250,0.35)' }} />
-              <span className="text-[10px] font-semibold" style={{ color: '#A78BFA' }}>
-                Median {medianValue.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'rgba(167,139,250,0.35)' }} />
-            </div>
-          )}
-          <Link
-            to={`/listings/${item.id}`}
-            onClick={onClose}
-            className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-white/5"
-            style={{
-              background: item.id === currentListingId ? 'rgba(99,102,241,0.12)' : 'transparent',
-              borderLeft: item.id === currentListingId ? '2px solid #6366F1' : '2px solid transparent',
-            }}
+  const listBody = isEmpty ? (
+    <p className="px-4 py-6 text-sm text-center" style={{ color: 'rgba(248,250,252,0.4)' }}>
+      Keine vergleichbaren Inserate.
+    </p>
+  ) : (
+    <ul>
+      {data.listings.map((listing) => (
+        <li
+          key={listing.id}
+          className="flex items-center gap-3 px-4 py-2 border-b last:border-0 border-white/5"
+        >
+          <span className="flex-1 truncate text-sm text-white/90">{listing.title}</span>
+          <span className="shrink-0 text-sm tabular-nums text-white/70">
+            {listing.price ?? '—'}
+          </span>
+          <a
+            href={listing.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 p-1.5 rounded hover:bg-white/10 text-white/50 hover:text-white/90 transition"
+            aria-label="Zum Inserat öffnen"
+            onClick={(e) => e.stopPropagation()}
           >
-            <span className="text-sm line-clamp-1 flex-1"
-              style={{ color: item.id === currentListingId ? '#F8FAFC' : 'rgba(248,250,252,0.75)' }}>
-              {item.title}
-            </span>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Per-listing similarity tier label */}
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(248,250,252,0.5)' }}>
-                {similarityLabel(idx, data.count)}
-              </span>
-              {item.condition && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(248,250,252,0.5)' }}>
-                  {item.condition}
-                </span>
-              )}
-              {item.city && (
-                <span className="text-[10px]" style={{ color: 'rgba(248,250,252,0.4)' }}>{item.city}</span>
-              )}
-              <span className="text-sm font-bold" style={{ color: '#FDE68A' }}>
-                {item.price_numeric != null
-                  ? item.price_numeric.toLocaleString('de-DE', { maximumFractionDigits: 0 }) + ' €'
-                  : (item.price ?? '–')}
-              </span>
-            </div>
-          </Link>
-        </div>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path d="M14 3h7v7M10 14L21 3M21 14v5a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h5" />
+            </svg>
+          </a>
+        </li>
       ))}
-    </>
+    </ul>
   );
 
   return createPortal(

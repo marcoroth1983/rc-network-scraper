@@ -25,7 +25,6 @@ const TOGGLE_ROWS: ToggleRow[] = [
   { key: 'fav_sold',           label: 'Verkauft' },
   { key: 'fav_price',          label: 'Preis' },
   { key: 'fav_deleted',        label: 'Gelöscht' },
-  { key: 'fav_indicator',      label: 'Preisbewertung' },
 ];
 
 // Spinner used for in-flight PUT requests

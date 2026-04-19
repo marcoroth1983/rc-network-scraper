@@ -22,7 +22,6 @@ class PrefsBody(BaseModel):
     fav_sold: bool | None = None
     fav_price: bool | None = None
     fav_deleted: bool | None = None
-    fav_indicator: bool | None = None
 
 
 class PrefsResponse(BaseModel):
@@ -30,7 +29,6 @@ class PrefsResponse(BaseModel):
     fav_sold: bool
     fav_price: bool
     fav_deleted: bool
-    fav_indicator: bool
 
 
 def _prefs_to_response(p: prefs.NotificationPrefs) -> PrefsResponse:
@@ -39,7 +37,6 @@ def _prefs_to_response(p: prefs.NotificationPrefs) -> PrefsResponse:
         fav_sold=p.fav_sold,
         fav_price=p.fav_price,
         fav_deleted=p.fav_deleted,
-        fav_indicator=p.fav_indicator,
     )
 
 

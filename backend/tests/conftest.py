@@ -57,7 +57,6 @@ async def test_engine(test_db_url: str):
         # but the snapshot columns are not in the ORM model — add them here
         await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_is_sold BOOLEAN"))
         await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_numeric NUMERIC(10,2)"))
-        await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_price_indicator VARCHAR(20)"))
         await conn.execute(text("ALTER TABLE user_favorites ADD COLUMN IF NOT EXISTS last_known_scraped_at TIMESTAMPTZ"))
         # PLAN-019: Telegram columns on users
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT"))
@@ -85,7 +84,6 @@ async def test_engine(test_db_url: str):
                 fav_sold           BOOLEAN NOT NULL DEFAULT TRUE,
                 fav_price          BOOLEAN NOT NULL DEFAULT TRUE,
                 fav_deleted        BOOLEAN NOT NULL DEFAULT TRUE,
-                fav_indicator      BOOLEAN NOT NULL DEFAULT TRUE,
                 updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """))

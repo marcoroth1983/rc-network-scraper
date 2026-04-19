@@ -49,9 +49,10 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
   const hasSecondaryFilters =
     filter.category !== 'all' || !!filter.max_distance || filter.sort !== 'date' ||
     filter.sort_dir !== 'desc' || !!filter.price_min || !!filter.price_max ||
-    filter.shipping_available === true || !!filter.price_indicator ||
+    filter.shipping_available === true ||
     !!filter.drive_type || !!filter.completeness ||
-    !!filter.model_type || !!filter.model_subtype;
+    !!filter.model_type || !!filter.model_subtype ||
+    filter.show_outdated === true || filter.only_sold === true;
 
   const inputClass =
     'placeholder:text-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition';
@@ -250,27 +251,6 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
             </div>
           </div>
 
-          {/* Schnäppchen */}
-          <div>
-            <div className={sectionLabel} style={sectionLabelColor}>Preis-Bewertung</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className={`px-3 py-1.5 rounded-full text-sm transition ${
-                  filter.price_indicator === 'deal'
-                    ? 'bg-aurora-indigo text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-                onClick={() => onChange({
-                  ...filter,
-                  price_indicator: filter.price_indicator === 'deal' ? undefined : 'deal',
-                  page: 1,
-                })}
-              >
-                Nur Günstige
-              </button>
-            </div>
-          </div>
-
           {/* Modelltyp — hidden when category already implies the type */}
           {(() => {
             const types = availableModelTypes(filter.category);
@@ -328,6 +308,45 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
               </select>
             </div>
           )}
+
+          {/* Ansicht */}
+          <div>
+            <div className={sectionLabel} style={sectionLabelColor}>Ansicht</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-full text-sm transition ${
+                  filter.only_sold === true
+                    ? 'bg-aurora-indigo text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+                onClick={() => onChange({
+                  ...filter,
+                  only_sold: filter.only_sold === true ? undefined : true,
+                  show_outdated: undefined,
+                  page: 1,
+                })}
+              >
+                Nur Verkaufte
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 rounded-full text-sm transition ${
+                  filter.show_outdated === true
+                    ? 'bg-aurora-indigo text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+                disabled={filter.only_sold === true}
+                onClick={() => onChange({
+                  ...filter,
+                  show_outdated: filter.show_outdated === true ? undefined : true,
+                  page: 1,
+                })}
+              >
+                Ältere anzeigen
+              </button>
+            </div>
+          </div>
 
         </div>
       </div>

@@ -172,8 +172,11 @@ export default function PlzBar({
   }
 
   const hasValidPlz = !!filter.plz;
-  const hasActiveFilterBadge = filter.category !== 'all' || !!filter.max_distance || !!filter.price_min || !!filter.price_max ||
-    filter.shipping_available === true || !!filter.price_indicator || !!filter.model_type || !!filter.model_subtype;
+  const hasActiveFilterBadge = filter.category !== 'all' || !!filter.max_distance ||
+    !!filter.price_min || !!filter.price_max ||
+    filter.shipping_available === true ||
+    !!filter.model_type || !!filter.model_subtype ||
+    filter.show_outdated === true || filter.only_sold === true;
   const emailInitial = userEmail.charAt(0).toUpperCase();
 
   const inputClass =
@@ -474,30 +477,6 @@ export default function PlzBar({
                 </div>
               </div>
 
-              {divider}
-
-              {/* Preis-Bewertung */}
-              <div className="px-4 pt-3 pb-3">
-                <p className={sectionLabel} style={sectionLabelColor}>Preis-Bewertung</p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={`px-3 py-1.5 rounded-full text-sm transition ${
-                      filter.price_indicator === 'deal'
-                        ? 'bg-aurora-indigo text-white'
-                        : 'bg-white/10 text-white/70 hover:bg-white/20'
-                    }`}
-                    onClick={() => writeFiltersToParams({
-                      ...filter,
-                      price_indicator: filter.price_indicator === 'deal' ? undefined : 'deal',
-                      page: 1,
-                    }, setSearchParams)}
-                  >
-                    Nur Günstige
-                  </button>
-                </div>
-              </div>
-
               {/* Modelltyp + Subtyp — only shown when category implies model types */}
               {availableModelTypes(filter.category).length > 0 && (
                 <>
@@ -548,6 +527,47 @@ export default function PlzBar({
                   </div>
                 </>
               )}
+
+              {divider}
+
+              {/* Ansicht */}
+              <div className="px-4 pt-3 pb-4">
+                <p className={sectionLabel} style={sectionLabelColor}>Ansicht</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${
+                      filter.only_sold === true
+                        ? 'bg-aurora-indigo text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                    onClick={() => writeFiltersToParams({
+                      ...filter,
+                      only_sold: filter.only_sold === true ? undefined : true,
+                      show_outdated: undefined,
+                      page: 1,
+                    }, setSearchParams)}
+                  >
+                    Nur Verkaufte
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${
+                      filter.show_outdated === true
+                        ? 'bg-aurora-indigo text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                    disabled={filter.only_sold === true}
+                    onClick={() => writeFiltersToParams({
+                      ...filter,
+                      show_outdated: filter.show_outdated === true ? undefined : true,
+                      page: 1,
+                    }, setSearchParams)}
+                  >
+                    Ältere anzeigen
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

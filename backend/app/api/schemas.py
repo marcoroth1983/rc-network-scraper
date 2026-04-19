@@ -28,6 +28,7 @@ class ListingSummary(BaseModel):
     distance_km: float | None = None  # populated only when ?plz is provided
     images: list[str] = []
     is_sold: bool = False
+    is_outdated: bool = False
     is_favorite: bool = False
     category: str = "flugmodelle"
     # LLM-extracted product fields
@@ -38,9 +39,6 @@ class ListingSummary(BaseModel):
     drive_type: str | None = None
     completeness: str | None = None
     shipping_available: bool | None = None
-    price_indicator: str | None = None
-    price_indicator_median: float | None = None
-    price_indicator_count: int | None = None
     source: str = "rcnetwork"
 
 
@@ -67,6 +65,7 @@ class ListingDetail(BaseModel):
     longitude: float | None
     scraped_at: datetime
     is_sold: bool
+    is_outdated: bool = False
     is_favorite: bool = False
     category: str = "flugmodelle"
     # LLM-extracted product fields
@@ -78,9 +77,6 @@ class ListingDetail(BaseModel):
     completeness: str | None = None
     attributes: dict[str, str] = {}
     shipping_available: bool | None = None
-    price_indicator: str | None = None
-    price_indicator_median: float | None = None
-    price_indicator_count: int | None = None
     source: str = "rcnetwork"
 
 
@@ -100,7 +96,7 @@ class ScrapeSummary(BaseModel):
     rechecked: int = 0
     sold_found: int = 0
     cleaned_sold: int = 0
-    deleted_stale: int = 0
+    marked_outdated: int = 0
 
 
 class ScrapeStatus(BaseModel):
@@ -136,20 +132,10 @@ class ComparableListing(BaseModel):
     url: str
     price: str | None = None
     price_numeric: float | None = None
-    condition: str | None = None
-    city: str | None = None
     posted_at: datetime | None = None
-    is_favorite: bool = False
-    similarity_score: float = 0.0  # descending sorted; default needed because ORM does not have this field
 
 
 class ComparablesResponse(BaseModel):
-    # Semantics change: no rigid group anymore, but Top-N ranked by similarity.
-    match_quality: Literal["homogeneous", "heterogeneous", "insufficient"]
-    # homogeneous:     Top-N similar enough to each other → median set, UI shows it
-    # heterogeneous:   Top-N spread too wide → median = None
-    # insufficient:    < 4 scorable candidates → median = None, listings may contain 1–3 partial matches
-    median: float | None
     count: int
     listings: list[ComparableListing]
 
