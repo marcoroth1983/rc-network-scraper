@@ -4,9 +4,11 @@ Two job types:
 - update  (Phase 1 only): crawl overview, upsert new listings
 - regular (Phase 2+3):    sold-recheck + cleanup rotation
 
-Single module-level _state tracks the currently-running job — safe for
-single-process uvicorn. The check-and-set is synchronous (no await between
-the guard and the state mutation) — safe in asyncio's cooperative model.
+_state tracks the most recently started job for the UI — it does NOT gate
+concurrency. Each job type has its own boolean guard (_update_running,
+_recheck_running) so the two jobs can run concurrently without blocking each
+other. The check-and-set of those flags is synchronous (no await between
+guard and mutation) — safe in asyncio's cooperative model.
 
 Completed runs are appended to _log (deque, maxlen=50) for the UI log view.
 """
@@ -28,7 +30,7 @@ from app.services.search_matcher import check_new_matches
 
 logger = logging.getLogger(__name__)
 
-# Current job state — one job runs at a time
+# Current job state — reflects the most recently started job (UI indicator only)
 _state: dict[str, Any] = {
     "status": "idle",    # "idle" | "running" | "done" | "error"
     "job_type": None,    # "update" | "regular" | None
@@ -39,6 +41,10 @@ _state: dict[str, Any] = {
     "summary": None,
     "error": None,
 }
+
+# Per-job concurrency guards — independent so update and recheck can overlap
+_update_running: bool = False
+_recheck_running: bool = False
 
 # Completed run history — survives until process restart
 _log: deque[dict[str, Any]] = deque(maxlen=50)
@@ -59,6 +65,9 @@ def get_log() -> list[dict[str, Any]]:
 
 def reset_state() -> None:
     """Reset state to idle and clear log. Used in tests only."""
+    global _update_running, _recheck_running
+    _update_running = False
+    _recheck_running = False
     _state.update({
         "status": "idle",
         "job_type": None,
@@ -88,9 +97,9 @@ def _append_log(job_type: str, summary: dict | None, error: str | None) -> None:
 async def start_update_job() -> bool:
     """Schedule run_update_job as a background task.
 
-    Returns True if started, False if already running.
+    Returns True if started, False if this job type is already running.
     """
-    if _state["status"] == "running":
+    if _update_running:
         return False
     task = asyncio.create_task(run_update_job())
     _background_tasks.add(task)
@@ -101,9 +110,9 @@ async def start_update_job() -> bool:
 async def start_recheck_job() -> bool:
     """Schedule run_recheck_job as a background task.
 
-    Returns True if started, False if already running.
+    Returns True if started, False if this job type is already running.
     """
-    if _state["status"] == "running":
+    if _recheck_running:
         return False
     task = asyncio.create_task(run_recheck_job())
     _background_tasks.add(task)
@@ -113,9 +122,11 @@ async def start_recheck_job() -> bool:
 
 async def run_update_job() -> None:
     """Phase 1 only: crawl overview pages and upsert new listings."""
-    if _state["status"] == "running":
-        logger.info("Scrape already running — skipping update job")
+    global _update_running
+    if _update_running:
+        logger.info("Update job already running — skipping")
         return
+    _update_running = True
 
     _update(
         status="running",
@@ -163,13 +174,17 @@ async def run_update_job() -> None:
             error=str(exc),
         )
         _append_log("update", None, str(exc))
+    finally:
+        _update_running = False
 
 
 async def run_recheck_job() -> None:
     """Phase 2+3: sold-recheck rotation and cleanup."""
-    if _state["status"] == "running":
-        logger.info("Scrape already running — skipping recheck job")
+    global _recheck_running
+    if _recheck_running:
+        logger.info("Recheck job already running — skipping")
         return
+    _recheck_running = True
 
     _update(
         status="running",
@@ -224,3 +239,5 @@ async def run_recheck_job() -> None:
             error=str(exc),
         )
         _append_log("regular", None, str(exc))
+    finally:
+        _recheck_running = False

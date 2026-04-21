@@ -63,17 +63,31 @@ async def test_run_update_job_sets_error_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_run_update_job_noop_when_running():
-    """run_update_job returns immediately if already running."""
+async def test_run_update_job_clears_flag_on_error():
+    """_update_running is always cleared even when the job raises."""
     reset_state()
     import app.scrape_runner as runner
-    runner._state["status"] = "running"
+
+    with patch("app.scrape_runner._phase1_new_listings",
+               new_callable=AsyncMock, side_effect=RuntimeError("boom")), \
+         patch("app.scrape_runner.AsyncSessionLocal", return_value=_mock_session()):
+        await run_update_job()
+
+    assert runner._update_running is False
+
+
+@pytest.mark.asyncio
+async def test_run_update_job_noop_when_running():
+    """run_update_job returns immediately if _update_running is True."""
+    reset_state()
+    import app.scrape_runner as runner
+    runner._update_running = True
 
     with patch("app.scrape_runner._phase1_new_listings", new_callable=AsyncMock) as mock_p1:
         await run_update_job()
         assert not mock_p1.called
 
-    runner._state["status"] = "idle"
+    runner._update_running = False
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +132,20 @@ async def test_run_recheck_job_sets_error_on_failure():
     assert "DB gone" in state["error"]
 
 
+@pytest.mark.asyncio
+async def test_run_recheck_job_clears_flag_on_error():
+    """_recheck_running is always cleared even when the job raises."""
+    reset_state()
+    import app.scrape_runner as runner
+
+    with patch("app.scrape_runner._phase2_sold_recheck",
+               new_callable=AsyncMock, side_effect=RuntimeError("crash")), \
+         patch("app.scrape_runner.AsyncSessionLocal", return_value=_mock_session()):
+        await run_recheck_job()
+
+    assert runner._recheck_running is False
+
+
 # ---------------------------------------------------------------------------
 # Log ring buffer
 # ---------------------------------------------------------------------------
@@ -146,30 +174,64 @@ async def test_log_accumulates_multiple_runs():
 
 
 # ---------------------------------------------------------------------------
-# start_* guards
+# start_* per-job guards
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_start_update_job_rejects_when_running():
-    """start_update_job returns False if already running."""
+async def test_start_update_job_rejects_when_update_running():
+    """start_update_job returns False if _update_running is True."""
     reset_state()
     import app.scrape_runner as runner
-    runner._state["status"] = "running"
+    runner._update_running = True
 
     result = await start_update_job()
     assert result is False
 
-    runner._state["status"] = "idle"
+    runner._update_running = False
 
 
 @pytest.mark.asyncio
-async def test_start_recheck_job_rejects_when_running():
-    """start_recheck_job returns False if already running."""
+async def test_start_recheck_job_rejects_when_recheck_running():
+    """start_recheck_job returns False if _recheck_running is True."""
     reset_state()
     import app.scrape_runner as runner
-    runner._state["status"] = "running"
+    runner._recheck_running = True
 
     result = await start_recheck_job()
     assert result is False
 
-    runner._state["status"] = "idle"
+    runner._recheck_running = False
+
+
+@pytest.mark.asyncio
+async def test_start_update_job_accepts_when_only_recheck_running():
+    """start_update_job returns True even if recheck is running (independent guards)."""
+    reset_state()
+    import app.scrape_runner as runner
+    runner._recheck_running = True
+
+    # We don't want the spawned task to actually execute — cancel it immediately.
+    result = await start_update_job()
+    assert result is True
+
+    # Clean up the spawned task and flags
+    for task in list(runner._background_tasks):
+        task.cancel()
+    runner._update_running = False
+    runner._recheck_running = False
+
+
+@pytest.mark.asyncio
+async def test_start_recheck_job_accepts_when_only_update_running():
+    """start_recheck_job returns True even if update is running (independent guards)."""
+    reset_state()
+    import app.scrape_runner as runner
+    runner._update_running = True
+
+    result = await start_recheck_job()
+    assert result is True
+
+    for task in list(runner._background_tasks):
+        task.cancel()
+    runner._update_running = False
+    runner._recheck_running = False
