@@ -3,8 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.analysis.vocabulary import MODEL_SUBTYPES, MODEL_TYPES
 from app.config import CATEGORY_KEYS
 
 
@@ -147,13 +148,13 @@ class SavedSearchCreate(BaseModel):
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
     category: str | None = None
-    price_min: float | None = None
-    price_max: float | None = None
-    drive_type: str | None = None
-    completeness: str | None = None
+    price_min: float | None = Field(default=None, ge=0)
+    price_max: float | None = Field(default=None, ge=0)
+    drive_type: str | None = Field(default=None, max_length=50)
+    completeness: str | None = Field(default=None, max_length=50)
     shipping_available: bool | None = None
-    model_type: str | None = None
-    model_subtype: str | None = None
+    model_type: str | None = Field(default=None, max_length=50)
+    model_subtype: str | None = Field(default=None, max_length=50)
     show_outdated: bool | None = None
     only_sold: bool | None = None
 
@@ -164,10 +165,35 @@ class SavedSearchCreate(BaseModel):
             raise ValueError(f"Unknown category: '{v}'")
         return v
 
+    @field_validator("model_type")
+    @classmethod
+    def validate_model_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in MODEL_TYPES:
+            raise ValueError(f"Unknown model_type: '{v}'. Valid values: {sorted(MODEL_TYPES)}")
+        return v
+
     @model_validator(mode="after")
     def validate_distance_requires_plz(self) -> "SavedSearchCreate":
         if self.max_distance is not None and self.plz is None:
             raise ValueError("max_distance requires plz to be set")
+        return self
+
+    @model_validator(mode="after")
+    def validate_model_subtype(self) -> "SavedSearchCreate":
+        if self.model_type is not None and self.model_subtype is not None:
+            allowed = MODEL_SUBTYPES.get(self.model_type, set())
+            if self.model_subtype not in allowed:
+                raise ValueError(
+                    f"Unknown model_subtype '{self.model_subtype}' for model_type '{self.model_type}'. "
+                    f"Valid values: {sorted(allowed)}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> "SavedSearchCreate":
+        if self.price_min is not None and self.price_max is not None:
+            if self.price_min > self.price_max:
+                raise ValueError("price_min must be <= price_max")
         return self
 
 
@@ -178,13 +204,13 @@ class SavedSearchUpdate(BaseModel):
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
     category: str | None = None
-    price_min: float | None = None
-    price_max: float | None = None
-    drive_type: str | None = None
-    completeness: str | None = None
+    price_min: float | None = Field(default=None, ge=0)
+    price_max: float | None = Field(default=None, ge=0)
+    drive_type: str | None = Field(default=None, max_length=50)
+    completeness: str | None = Field(default=None, max_length=50)
     shipping_available: bool | None = None
-    model_type: str | None = None
-    model_subtype: str | None = None
+    model_type: str | None = Field(default=None, max_length=50)
+    model_subtype: str | None = Field(default=None, max_length=50)
     show_outdated: bool | None = None
     only_sold: bool | None = None
 
@@ -195,10 +221,35 @@ class SavedSearchUpdate(BaseModel):
             raise ValueError(f"Unknown category: '{v}'")
         return v
 
+    @field_validator("model_type")
+    @classmethod
+    def validate_model_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in MODEL_TYPES:
+            raise ValueError(f"Unknown model_type: '{v}'. Valid values: {sorted(MODEL_TYPES)}")
+        return v
+
     @model_validator(mode="after")
     def validate_distance_requires_plz(self) -> "SavedSearchUpdate":
         if self.max_distance is not None and self.plz is None:
             raise ValueError("max_distance requires plz to be set")
+        return self
+
+    @model_validator(mode="after")
+    def validate_model_subtype(self) -> "SavedSearchUpdate":
+        if self.model_type is not None and self.model_subtype is not None:
+            allowed = MODEL_SUBTYPES.get(self.model_type, set())
+            if self.model_subtype not in allowed:
+                raise ValueError(
+                    f"Unknown model_subtype '{self.model_subtype}' for model_type '{self.model_type}'. "
+                    f"Valid values: {sorted(allowed)}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> "SavedSearchUpdate":
+        if self.price_min is not None and self.price_max is not None:
+            if self.price_min > self.price_max:
+                raise ValueError("price_min must be <= price_max")
         return self
 
 
