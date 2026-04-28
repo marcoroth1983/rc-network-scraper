@@ -156,6 +156,15 @@ export interface SearchCriteria {
   sort?: 'date' | 'price' | 'distance';
   sort_dir?: 'asc' | 'desc';
   category?: string;  // undefined = all categories; never send "all" to the backend
+  price_min?: number | null;
+  price_max?: number | null;
+  drive_type?: string | null;
+  completeness?: string | null;
+  shipping_available?: boolean | null;
+  model_type?: string | null;
+  model_subtype?: string | null;
+  show_outdated?: boolean | null;
+  only_sold?: boolean | null;
 }
 
 export interface SavedSearch {
@@ -173,6 +182,15 @@ export interface SavedSearch {
   created_at: string;              // ISO 8601
   match_count: number;
   category?: string | null;  // null = all categories
+  price_min?: number | null;
+  price_max?: number | null;
+  drive_type?: string | null;
+  completeness?: string | null;
+  shipping_available?: boolean | null;
+  model_type?: string | null;
+  model_subtype?: string | null;
+  show_outdated?: boolean | null;
+  only_sold?: boolean | null;
 }
 
 export interface LLMModelRow {
