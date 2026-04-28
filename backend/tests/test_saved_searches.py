@@ -245,6 +245,75 @@ async def test_toggle_search_not_found(api_client: AsyncClient):
 
 
 # ---------------------------------------------------------------------------
+# Filter-field persistence (PLAN-026)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_search_persists_all_filter_fields(api_client: AsyncClient):
+    """POST /api/searches mit allen Feldern → alle in Response zurückgegeben."""
+    payload = {
+        "search": "Multiplex",
+        "model_type": "flugzeug",
+        "model_subtype": "Jet",
+        "price_min": 100.0,
+        "price_max": 500.0,
+        "drive_type": "elektro",
+        "completeness": "rtf",
+        "shipping_available": True,
+        "show_outdated": False,
+        "only_sold": True,
+        "sort": "distance",
+        "sort_dir": "asc",
+    }
+    resp = await api_client.post("/api/searches", json=payload)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["model_type"] == "flugzeug"
+    assert data["model_subtype"] == "Jet"
+    assert data["price_min"] == 100.0
+    assert data["price_max"] == 500.0
+    assert data["drive_type"] == "elektro"
+    assert data["completeness"] == "rtf"
+    assert data["shipping_available"] is True
+    assert data["show_outdated"] is False
+    assert data["only_sold"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_search_overwrites_filter_fields(api_client: AsyncClient):
+    """PUT /api/searches/{id} ersetzt alle Filter-Felder (auch zurück auf None)."""
+    create = await api_client.post(
+        "/api/searches",
+        json={"search": "x", "model_type": "flugzeug", "model_subtype": "Jet", "price_min": 50.0},
+    )
+    sid = create.json()["id"]
+
+    update = await api_client.put(
+        f"/api/searches/{sid}",
+        json={"search": "x", "model_type": "auto", "model_subtype": None, "price_min": None},
+    )
+    assert update.status_code == 200
+    data = update.json()
+    assert data["model_type"] == "auto"
+    assert data["model_subtype"] is None
+    assert data["price_min"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_search_omitted_filter_fields_default_to_null(api_client: AsyncClient):
+    """POST /api/searches ohne Filter-Felder → alle neuen Felder NULL/None."""
+    resp = await api_client.post("/api/searches", json={"search": "y"})
+    assert resp.status_code == 201
+    data = resp.json()
+    for field in (
+        "price_min", "price_max", "drive_type", "completeness",
+        "shipping_available", "model_type", "model_subtype",
+        "show_outdated", "only_sold",
+    ):
+        assert data[field] is None, f"{field} should default to None"
+
+
+# ---------------------------------------------------------------------------
 # POST /api/searches/mark-viewed
 # ---------------------------------------------------------------------------
 
