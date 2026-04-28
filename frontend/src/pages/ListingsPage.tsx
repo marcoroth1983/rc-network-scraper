@@ -94,12 +94,42 @@ export default function ListingsPage({
   // Sentinel ref for IntersectionObserver-based infinite scroll trigger
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // When all filter fields are cleared, clear the active saved search ID
+  // When ALL filter fields are cleared, clear the active saved search ID.
+  // Guard covers all 12 filter fields so the active-search state is only
+  // discarded when the user has truly reset everything.
   useEffect(() => {
-    if (!filter.search && !filter.plz && !filter.max_distance && activeSavedSearchId != null) {
+    const allEmpty =
+      !filter.search &&
+      !filter.plz &&
+      !filter.max_distance &&
+      !filter.model_type &&
+      !filter.model_subtype &&
+      filter.price_min == null &&
+      filter.price_max == null &&
+      !filter.drive_type &&
+      !filter.completeness &&
+      !filter.shipping_available &&
+      !filter.show_outdated &&
+      !filter.only_sold;
+    if (allEmpty && activeSavedSearchId != null) {
       onClearActiveSavedSearch();
     }
-  }, [filter.search, filter.plz, filter.max_distance, activeSavedSearchId, onClearActiveSavedSearch]);
+  }, [
+    filter.search,
+    filter.plz,
+    filter.max_distance,
+    filter.model_type,
+    filter.model_subtype,
+    filter.price_min,
+    filter.price_max,
+    filter.drive_type,
+    filter.completeness,
+    filter.shipping_available,
+    filter.show_outdated,
+    filter.only_sold,
+    activeSavedSearchId,
+    onClearActiveSavedSearch,
+  ]);
 
   // Stable loadMore ref so the observer effect doesn't re-run on every render
   const loadMoreRef = useRef(loadMore);
