@@ -585,6 +585,15 @@ async def create_search(
         sort=body.sort,
         sort_dir=body.sort_dir,
         category=body.category,
+        price_min=body.price_min,
+        price_max=body.price_max,
+        drive_type=body.drive_type,
+        completeness=body.completeness,
+        shipping_available=body.shipping_available,
+        model_type=body.model_type,
+        model_subtype=body.model_subtype,
+        show_outdated=body.show_outdated,
+        only_sold=body.only_sold,
     )
     session.add(saved)
     await session.commit()
@@ -636,6 +645,15 @@ async def update_search(
     saved.sort = body.sort
     saved.sort_dir = body.sort_dir
     saved.category = body.category
+    saved.price_min = body.price_min
+    saved.price_max = body.price_max
+    saved.drive_type = body.drive_type
+    saved.completeness = body.completeness
+    saved.shipping_available = body.shipping_available
+    saved.model_type = body.model_type
+    saved.model_subtype = body.model_subtype
+    saved.show_outdated = body.show_outdated
+    saved.only_sold = body.only_sold
     saved.name = _generate_search_name(body.search, body.plz, body.max_distance)
     await session.commit()
     await session.refresh(saved)
