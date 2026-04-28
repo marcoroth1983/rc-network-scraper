@@ -147,6 +147,15 @@ class SavedSearchCreate(BaseModel):
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
     category: str | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    drive_type: str | None = None
+    completeness: str | None = None
+    shipping_available: bool | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    show_outdated: bool | None = None
+    only_sold: bool | None = None
 
     @field_validator("category")
     @classmethod
@@ -169,6 +178,15 @@ class SavedSearchUpdate(BaseModel):
     sort: Literal["date", "price", "distance"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
     category: str | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    drive_type: str | None = None
+    completeness: str | None = None
+    shipping_available: bool | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    show_outdated: bool | None = None
+    only_sold: bool | None = None
 
     @field_validator("category")
     @classmethod
@@ -201,3 +219,12 @@ class SavedSearchResponse(BaseModel):
     last_viewed_at: datetime | None
     created_at: datetime
     match_count: int = 0
+    price_min: float | None = None
+    price_max: float | None = None
+    drive_type: str | None = None
+    completeness: str | None = None
+    shipping_available: bool | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    show_outdated: bool | None = None
+    only_sold: bool | None = None
