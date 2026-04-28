@@ -56,6 +56,18 @@ function SavedSearchCard({ search, categoryLabel, onActivate, onToggle, onRemove
   if (search.plz) filterParts.push(`PLZ ${search.plz}`);
   if (hasDistance) filterParts.push(`bis ${search.max_distance} km`);
   if (search.sort) filterParts.push(`${sortLabel[search.sort] ?? search.sort} ${sortDir}`);
+  if (search.model_type) filterParts.push(search.model_type);
+  if (search.model_subtype) filterParts.push(search.model_subtype);
+  if (search.price_min != null || search.price_max != null) {
+    const lo = search.price_min ?? '';
+    const hi = search.price_max ?? '';
+    filterParts.push(`${lo}–${hi} €`);
+  }
+  if (search.drive_type) filterParts.push(search.drive_type);
+  if (search.completeness) filterParts.push(search.completeness);
+  if (search.shipping_available) filterParts.push('Versand');
+  if (search.only_sold) filterParts.push('Verkauft');
+  if (search.show_outdated) filterParts.push('inkl. veraltet');
   const filterSummary = filterParts.join(', ');
 
   return (
