@@ -155,7 +155,7 @@ export function useInfiniteListings(): UseInfiniteListingsResult {
   const setFilter = useCallback(
     (next: Omit<ListingsFilter, 'page'>) => {
       // Always write page: 1 so the page param never appears in the URL.
-      writeFiltersToParams({ ...next, page: 1 }, setSearchParams);
+      setSearchParams(writeFiltersToParams({ ...next, page: 1 }));
     },
     [setSearchParams],
   );

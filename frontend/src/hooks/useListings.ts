@@ -75,10 +75,7 @@ export function readFiltersFromParams(params: URLSearchParams): ListingsFilter {
   };
 }
 
-export function writeFiltersToParams(
-  filter: ListingsFilter,
-  setParams: (p: URLSearchParams) => void,
-) {
+export function writeFiltersToParams(filter: ListingsFilter): URLSearchParams {
   const p = new URLSearchParams();
   if (filter.search) p.set('search', filter.search);
   if (filter.plz) p.set('plz', filter.plz);
@@ -95,7 +92,7 @@ export function writeFiltersToParams(
   if (filter.show_outdated) p.set('show_outdated', 'true');
   if (filter.only_sold) p.set('only_sold', 'true');
   if (filter.page > 1) p.set('page', String(filter.page));
-  setParams(p);
+  return p;
 }
 
 interface UseListingsResult {
@@ -115,7 +112,7 @@ export function useListings(): UseListingsResult {
   const [error, setError] = useState<string | null>(null);
 
   const setFilter = useCallback((next: ListingsFilter) => {
-    writeFiltersToParams(next, setSearchParams);
+    setSearchParams(writeFiltersToParams(next));
   }, [setSearchParams]);
 
   useEffect(() => {
