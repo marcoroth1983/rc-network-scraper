@@ -5,6 +5,7 @@ import CategoryModal from '../components/CategoryModal';
 import { useInfiniteListings } from '../hooks/useInfiniteListings';
 import { useListingsScrollPreservation } from '../hooks/useListingsScrollPreservation';
 import type { Category, SavedSearch, SearchCriteria } from '../types/api';
+import { criteriaFromFilter, criteriaDiffers } from '../lib/savedSearchCriteria';
 
 interface Props {
   activeSavedSearchId: number | null;
@@ -59,22 +60,6 @@ function RefreshIcon() {
   );
 }
 
-// Returns true if the current filter differs from the saved search criteria
-function criteriaChanged(
-  filter: { search: string; plz: string; sort: string; sort_dir: string; max_distance: string },
-  saved: SavedSearch,
-): boolean {
-  const savedSearch = saved.search ?? '';
-  const savedPlz = saved.plz ?? '';
-  const savedMaxDistance = saved.max_distance != null ? String(saved.max_distance) : '';
-  return (
-    filter.search !== savedSearch ||
-    filter.plz !== savedPlz ||
-    filter.sort !== saved.sort ||
-    filter.sort_dir !== saved.sort_dir ||
-    filter.max_distance !== savedMaxDistance
-  );
-}
 
 export default function ListingsPage({
   activeSavedSearchId,
@@ -138,7 +123,7 @@ export default function ListingsPage({
   const isExistingSearch = activeSavedSearchId != null;
   const hasCriteriaChanged =
     isExistingSearch && activeSavedSearchCriteria != null
-      ? criteriaChanged(filter, activeSavedSearchCriteria)
+      ? criteriaDiffers(filter, activeSavedSearchCriteria)
       : false;
 
   // Mode 1: new search — filters active, no saved search selected
@@ -153,28 +138,13 @@ export default function ListingsPage({
   }
 
   async function handleSave() {
-    await onSaveSearch({
-      search: filter.search || null,
-      plz: filter.plz || null,
-      max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
-      sort: filter.sort,
-      sort_dir: filter.sort_dir,
-      // Pass undefined (not "all") when no specific category — backend stores NULL for "all"
-      category: filter.category !== 'all' ? filter.category : undefined,
-    });
+    await onSaveSearch(criteriaFromFilter(filter));
     showFeedback('saved');
   }
 
   async function handleUpdate() {
     if (activeSavedSearchId == null) return;
-    await onUpdateSearch(activeSavedSearchId, {
-      search: filter.search || null,
-      plz: filter.plz || null,
-      max_distance: filter.max_distance ? parseInt(filter.max_distance, 10) : null,
-      sort: filter.sort,
-      sort_dir: filter.sort_dir,
-      category: filter.category !== 'all' ? filter.category : undefined,
-    });
+    await onUpdateSearch(activeSavedSearchId, criteriaFromFilter(filter));
     showFeedback('updated');
   }
 

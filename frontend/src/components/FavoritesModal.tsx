@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import React from 'react';
 import { getFavorites } from '../api/client';
-import type { Category, ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
+import type { Category, ListingSummary, SavedSearch } from '../types/api';
 import FavoriteCard from './FavoriteCard';
 import { useConfirm } from './ConfirmDialog';
 
@@ -14,7 +14,7 @@ interface Props {
   onRemoveSearch: (id: number) => Promise<void>;
   onToggleSearchActive: (id: number) => Promise<void>;
   onMarkViewed: () => Promise<void>;
-  onActivateSearch: (id: number, criteria: SearchCriteria) => void;
+  onActivateSearch: (id: number, saved: SavedSearch) => void;
   categories: Category[];
 }
 
@@ -403,13 +403,7 @@ export default function FavoritesModal({
                         : null
                     }
                     onActivate={() => {
-                      onActivateSearch(search.id, {
-                        search: search.search,
-                        plz: search.plz,
-                        max_distance: search.max_distance,
-                        sort: search.sort as 'date' | 'price' | 'distance',
-                        sort_dir: search.sort_dir as 'asc' | 'desc',
-                      });
+                      onActivateSearch(search.id, search);
                     }}
                     onToggle={() => onToggleSearchActive(search.id)}
                     onRemove={() => onRemoveSearch(search.id)}

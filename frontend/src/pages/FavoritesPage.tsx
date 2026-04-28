@@ -3,7 +3,9 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFavorites } from '../api/client';
 import { useSavedSearches } from '../hooks/useSavedSearches';
-import type { ListingSummary, SavedSearch, SearchCriteria } from '../types/api';
+import type { ListingSummary, SavedSearch } from '../types/api';
+import { writeFiltersToParams } from '../hooks/useListings';
+import { filterFromSavedSearch } from '../lib/savedSearchCriteria';
 import FavoriteCard from '../components/FavoriteCard';
 import { useConfirm } from '../components/ConfirmDialog';
 
@@ -253,16 +255,11 @@ export function FavoritesPage() {
     setFavorites((prev) => prev.filter((f) => !f.is_sold));
   }
 
-  function handleActivateSearch(_id: number, criteria: SearchCriteria) {
-    const p = new URLSearchParams();
-    if (criteria.search) p.set('search', criteria.search);
-    if (criteria.plz) p.set('plz', criteria.plz);
-    if (criteria.sort && criteria.sort !== 'date') p.set('sort', criteria.sort);
-    if (criteria.sort_dir && criteria.sort_dir !== 'desc') p.set('sort_dir', criteria.sort_dir);
-    if (criteria.max_distance != null) p.set('max_distance', String(criteria.max_distance));
-    const cat = localStorage.getItem('rcn_category') ?? 'all';
-    if (cat !== 'all') p.set('category', cat);
-    const qs = p.toString();
+  function handleActivateSearch(_id: number, saved: SavedSearch) {
+    // Saved searches do not override the currently chosen category — preserve it.
+    const currentCategory = localStorage.getItem('rcn_category') ?? 'all';
+    const f = filterFromSavedSearch(saved, currentCategory);
+    const qs = writeFiltersToParams(f).toString();
     navigate(qs ? `/?${qs}` : '/');
   }
 
@@ -370,15 +367,7 @@ export function FavoritesPage() {
                   <SavedSearchCard
                     key={search.id}
                     search={search}
-                    onActivate={() =>
-                      handleActivateSearch(search.id, {
-                        search: search.search,
-                        plz: search.plz,
-                        max_distance: search.max_distance,
-                        sort: search.sort as 'date' | 'price' | 'distance',
-                        sort_dir: search.sort_dir as 'asc' | 'desc',
-                      })
-                    }
+                    onActivate={() => handleActivateSearch(search.id, search)}
                     onToggle={() => toggleActive(search.id)}
                     onRemove={() => removeSearch(search.id)}
                   />

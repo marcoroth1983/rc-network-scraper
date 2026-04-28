@@ -16,7 +16,9 @@ import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
 import { useSavedSearches } from './hooks/useSavedSearches';
-import type { Category, SearchCriteria, SavedSearch } from './types/api';
+import type { Category, SavedSearch } from './types/api';
+import { writeFiltersToParams } from './hooks/useListings';
+import { filterFromSavedSearch } from './lib/savedSearchCriteria';
 import { getCategories } from './api/client';
 
 function PlaneIcon() {
@@ -77,19 +79,13 @@ function AuthenticatedAppInner({ user, logout, reloadUser }: { user: AuthUser; l
     : undefined;
 
   const handleActivateSearch = useCallback(
-    (id: number, criteria: SearchCriteria) => {
+    (id: number, saved: SavedSearch) => {
       setActiveSavedSearchId(id);
       setFavoritesOpen(false);
-      const p = new URLSearchParams();
-      if (criteria.search) p.set('search', criteria.search);
-      if (criteria.plz) p.set('plz', criteria.plz);
-      if (criteria.sort && criteria.sort !== 'date') p.set('sort', criteria.sort);
-      if (criteria.sort_dir && criteria.sort_dir !== 'desc') p.set('sort_dir', criteria.sort_dir);
-      if (criteria.max_distance != null) p.set('max_distance', String(criteria.max_distance));
-      // Preserve the currently active category — saved searches don't override it
-      const cat = localStorage.getItem('rcn_category') ?? 'all';
-      if (cat !== 'all') p.set('category', cat);
-      const qs = p.toString();
+      // Saved searches do not override the currently chosen category — preserve it.
+      const currentCategory = localStorage.getItem('rcn_category') ?? 'all';
+      const f = filterFromSavedSearch(saved, currentCategory);
+      const qs = writeFiltersToParams(f).toString();
       navigate(qs ? `/?${qs}` : '/');
     },
     [navigate],
