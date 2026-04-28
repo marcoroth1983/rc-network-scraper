@@ -85,7 +85,7 @@ export default function PlzBar({
       if (saved && savedCity) {
         setPlzInput(saved);
         setPlzCity(savedCity);
-        writeFiltersToParams({ ...filter, plz: saved, page: 1 }, setSearchParams);
+        setSearchParams(writeFiltersToParams({ ...filter, plz: saved, page: 1 }));
         if (!localStorage.getItem(PLZ_LAT_KEY)) {
           resolvePlz(saved)
             .then((result) => {
@@ -139,7 +139,7 @@ export default function PlzBar({
       localStorage.setItem(PLZ_CITY_STORAGE_KEY, result.city);
       localStorage.setItem(PLZ_LAT_KEY, String(result.lat));
       localStorage.setItem(PLZ_LON_KEY, String(result.lon));
-      writeFiltersToParams({ ...filter, plz: value, page: 1 }, setSearchParams);
+      setSearchParams(writeFiltersToParams({ ...filter, plz: value, page: 1 }));
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setPlzError('PLZ nicht gefunden');
@@ -159,7 +159,7 @@ export default function PlzBar({
     localStorage.removeItem(PLZ_CITY_STORAGE_KEY);
     localStorage.removeItem(PLZ_LAT_KEY);
     localStorage.removeItem(PLZ_LON_KEY);
-    writeFiltersToParams(
+    setSearchParams(writeFiltersToParams(
       {
         ...filter,
         plz: '',
@@ -167,8 +167,7 @@ export default function PlzBar({
         max_distance: '',
         page: 1,
       },
-      setSearchParams,
-    );
+    ));
   }
 
   const hasValidPlz = !!filter.plz;
@@ -259,8 +258,8 @@ export default function PlzBar({
             placeholder="Suche nach Titel oder Beschreibung…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onBlur={() => writeFiltersToParams({ ...filter, search: searchInput, page: 1 }, setSearchParams)}
-            onKeyDown={(e) => e.key === 'Enter' && writeFiltersToParams({ ...filter, search: searchInput, page: 1 }, setSearchParams)}
+            onBlur={() => setSearchParams(writeFiltersToParams({ ...filter, search: searchInput, page: 1 }))}
+            onKeyDown={(e) => e.key === 'Enter' && setSearchParams(writeFiltersToParams({ ...filter, search: searchInput, page: 1 }))}
             className={`w-full pl-10 py-2 rounded-xl ${inputClass}`}
             style={{ ...inputStyle, paddingRight: hasValidPlz ? '4.5rem' : '2.25rem' }}
           />
@@ -309,7 +308,7 @@ export default function PlzBar({
           onChange={(e) => {
             const [field, dir] = e.target.value.split('_') as [ListingsFilter['sort'], 'asc' | 'desc'];
             if (field === 'distance' && !hasValidPlz) return;
-            writeFiltersToParams({ ...filter, sort: field, sort_dir: dir, page: 1 }, setSearchParams);
+            setSearchParams(writeFiltersToParams({ ...filter, sort: field, sort_dir: dir, page: 1 }));
           }}
           className={`w-36 px-3 py-2 rounded-xl ${inputClass} appearance-none cursor-pointer`}
           style={inputStyle}
@@ -398,8 +397,8 @@ export default function PlzBar({
                     disabled={!hasValidPlz}
                     value={distanceInput}
                     onChange={(e) => setDistanceInput(e.target.value)}
-                    onBlur={() => writeFiltersToParams({ ...filter, max_distance: distanceInput, page: 1 }, setSearchParams)}
-                    onKeyDown={(e) => e.key === 'Enter' && writeFiltersToParams({ ...filter, max_distance: distanceInput, page: 1 }, setSearchParams)}
+                    onBlur={() => setSearchParams(writeFiltersToParams({ ...filter, max_distance: distanceInput, page: 1 }))}
+                    onKeyDown={(e) => e.key === 'Enter' && setSearchParams(writeFiltersToParams({ ...filter, max_distance: distanceInput, page: 1 }))}
                     className={`w-full pr-10 pl-3 py-2.5 rounded-xl ${inputClass} disabled:opacity-35 disabled:cursor-not-allowed`}
                     style={inputStyle}
                   />
@@ -427,8 +426,8 @@ export default function PlzBar({
                       aria-label="Mindestpreis"
                       value={priceMinInput}
                       onChange={(e) => setPriceMinInput(e.target.value)}
-                      onBlur={() => writeFiltersToParams({ ...filter, price_min: priceMinInput, page: 1 }, setSearchParams)}
-                      onKeyDown={(e) => e.key === 'Enter' && writeFiltersToParams({ ...filter, price_min: priceMinInput, page: 1 }, setSearchParams)}
+                      onBlur={() => setSearchParams(writeFiltersToParams({ ...filter, price_min: priceMinInput, page: 1 }))}
+                      onKeyDown={(e) => e.key === 'Enter' && setSearchParams(writeFiltersToParams({ ...filter, price_min: priceMinInput, page: 1 }))}
                       className={`w-full pl-3 pr-7 py-2.5 rounded-xl ${inputClass}`}
                       style={inputStyle}
                     />
@@ -443,8 +442,8 @@ export default function PlzBar({
                       aria-label="Höchstpreis"
                       value={priceMaxInput}
                       onChange={(e) => setPriceMaxInput(e.target.value)}
-                      onBlur={() => writeFiltersToParams({ ...filter, price_max: priceMaxInput, page: 1 }, setSearchParams)}
-                      onKeyDown={(e) => e.key === 'Enter' && writeFiltersToParams({ ...filter, price_max: priceMaxInput, page: 1 }, setSearchParams)}
+                      onBlur={() => setSearchParams(writeFiltersToParams({ ...filter, price_max: priceMaxInput, page: 1 }))}
+                      onKeyDown={(e) => e.key === 'Enter' && setSearchParams(writeFiltersToParams({ ...filter, price_max: priceMaxInput, page: 1 }))}
                       className={`w-full pl-3 pr-7 py-2.5 rounded-xl ${inputClass}`}
                       style={inputStyle}
                     />
@@ -466,11 +465,11 @@ export default function PlzBar({
                         ? 'bg-aurora-indigo text-white'
                         : 'bg-white/10 text-white/70 hover:bg-white/20'
                     }`}
-                    onClick={() => writeFiltersToParams({
+                    onClick={() => setSearchParams(writeFiltersToParams({
                       ...filter,
                       shipping_available: filter.shipping_available === true ? undefined : true,
                       page: 1,
-                    }, setSearchParams)}
+                    }))}
                   >
                     Versand möglich
                   </button>
@@ -487,12 +486,12 @@ export default function PlzBar({
                       value={filter.model_type ?? ''}
                       onChange={(e) => {
                         const val = e.target.value;
-                        writeFiltersToParams({
+                        setSearchParams(writeFiltersToParams({
                           ...filter,
                           model_type: val || undefined,
                           model_subtype: undefined,
                           page: 1,
-                        }, setSearchParams);
+                        }));
                       }}
                       className={`w-full px-3 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition appearance-none cursor-pointer`}
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(248,250,252,0.85)' }}
@@ -510,7 +509,7 @@ export default function PlzBar({
                     <p className={sectionLabel} style={sectionLabelColor}>Subtyp</p>
                     <select
                       value={filter.model_subtype ?? ''}
-                      onChange={(e) => writeFiltersToParams({ ...filter, model_subtype: e.target.value || undefined, page: 1 }, setSearchParams)}
+                      onChange={(e) => setSearchParams(writeFiltersToParams({ ...filter, model_subtype: e.target.value || undefined, page: 1 }))}
                       disabled={!filter.model_type}
                       className={`w-full px-3 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-aurora-indigo/40 transition appearance-none cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed`}
                       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(248,250,252,0.85)' }}
@@ -541,12 +540,12 @@ export default function PlzBar({
                         ? 'bg-aurora-indigo text-white'
                         : 'bg-white/10 text-white/70 hover:bg-white/20'
                     }`}
-                    onClick={() => writeFiltersToParams({
+                    onClick={() => setSearchParams(writeFiltersToParams({
                       ...filter,
                       only_sold: filter.only_sold === true ? undefined : true,
                       show_outdated: undefined,
                       page: 1,
-                    }, setSearchParams)}
+                    }))}
                   >
                     Nur Verkaufte
                   </button>
@@ -558,11 +557,11 @@ export default function PlzBar({
                         : 'bg-white/10 text-white/70 hover:bg-white/20'
                     }`}
                     disabled={filter.only_sold === true}
-                    onClick={() => writeFiltersToParams({
+                    onClick={() => setSearchParams(writeFiltersToParams({
                       ...filter,
                       show_outdated: filter.show_outdated === true ? undefined : true,
                       page: 1,
-                    }, setSearchParams)}
+                    }))}
                   >
                     Ältere anzeigen
                   </button>
