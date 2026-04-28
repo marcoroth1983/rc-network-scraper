@@ -63,7 +63,7 @@
 
 ## Tasks
 
-### Task 1: ORM-Modell erweitern [ ]
+### Task 1: ORM-Modell erweitern [DONE]
 
 **Files:**
 - Modify: `backend/app/models.py:97-115`
@@ -99,7 +99,7 @@ git commit -m "feat(saved-searches): add filter columns to SavedSearch model"
 
 ---
 
-### Task 2: Pydantic-Schemata erweitern [ ]
+### Task 2: Pydantic-Schemata erweitern [DONE]
 
 **Depends on:** Task 1
 
@@ -147,7 +147,7 @@ git commit -m "feat(saved-searches): add filter fields to Create/Update/Response
 
 ---
 
-### Task 3: Routen-Persistenz [ ]
+### Task 3: Routen-Persistenz [DONE]
 
 **Depends on:** Task 2
 
@@ -196,7 +196,7 @@ git commit -m "feat(saved-searches): persist all filter fields in create/update 
 
 ---
 
-### Task 4: Backend-Tests [ ]
+### Task 4: Backend-Tests [DONE]
 
 **Depends on:** Task 3
 
@@ -280,7 +280,7 @@ git commit -m "test(saved-searches): cover full filter-field persistence"
 
 ---
 
-### Task 5: Frontend-Typen erweitern [ ]
+### Task 5: Frontend-Typen erweitern [DONE]
 
 **Depends on:** Task 2
 
@@ -316,7 +316,7 @@ git commit -m "feat(saved-searches): extend SearchCriteria and SavedSearch types
 
 ---
 
-### Task 6: Helper-Modul `savedSearchCriteria.ts` anlegen [ ]
+### Task 6: Helper-Modul `savedSearchCriteria.ts` anlegen [DONE]
 
 **Depends on:** Task 5
 
@@ -403,7 +403,7 @@ git commit -m "feat(saved-searches): add criteriaFromFilter / filterFromSavedSea
 
 ---
 
-### Task 7: `writeFiltersToParams` refactoren — pure Funktion [ ]
+### Task 7: `writeFiltersToParams` refactoren — pure Funktion [DONE]
 
 **Depends on:** Task 5
 
@@ -468,7 +468,7 @@ git commit -m "refactor(filters): writeFiltersToParams returns URLSearchParams"
 
 ---
 
-### Task 8: Save/Update + Aktivierung + Drift nutzen Helper-Modul [ ]
+### Task 8: Save/Update + Aktivierung + Drift nutzen Helper-Modul [DONE]
 
 **Depends on:** Task 6, Task 7
 
@@ -549,7 +549,7 @@ git commit -m "fix(saved-searches): persist and restore all filter fields end-to
 
 ---
 
-### Task 9: FavoritesModal/Page Anzeige (optional anzeigen) [ ]
+### Task 9: FavoritesModal/Page Anzeige (optional anzeigen) [DONE]
 
 **Depends on:** Task 5
 
@@ -587,7 +587,7 @@ git commit -m "feat(saved-searches): show extended filter summary on saved-searc
 
 ---
 
-### Task 10: Frontend-Tests für Helper-Modul [ ]
+### Task 10: Frontend-Tests für Helper-Modul [DONE]
 
 **Depends on:** Task 8
 

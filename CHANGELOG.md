@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.4.0] - 2026-04-28
+
+### Fixed
+
+**Saved Searches speichern jetzt alle Filter (PLAN-026)**
+- Beim Speichern einer Suche werden Modelltyp, Subtyp, Preisspanne, Antrieb, Vollständigkeit, Versand-Toggle sowie die Ansicht-Toggles „Ältere anzeigen"/„Nur Verkaufte" mitpersistiert. Vorher gingen all diese Felder verloren — gespeichert wurden nur PLZ/Distanz/Sort/Suchbegriff/Kategorie.
+- Beim Aktivieren einer gespeicherten Suche werden alle Felder als URL-Parameter wiederhergestellt; FilterPanel zeigt die ursprünglichen Werte.
+- Drift-Detection (FAB „Aktualisieren") reagiert auf Änderungen aller Filter, nicht nur der fünf Kern-Felder.
+- Filter-Summary-Chip in der Merkliste zeigt die zusätzlichen Filter (z. B. „Flugzeug, Jet, ab 100 €, Versand").
+
+### Added
+
+- Whitelist-Validierung für `model_type`/`model_subtype` und `ge=0`-Constraint für `price_min`/`price_max` in den Saved-Search-Schemata — verhindert stille Null-Treffer und 422-Fehler beim Re-Aktivieren.
+- Helper-Modul `frontend/src/lib/savedSearchCriteria.ts` als zentrale Stelle für Filter↔SavedSearch-Konvertierung.
+
+### Changed
+
+- `writeFiltersToParams` ist jetzt eine reine Funktion (`URLSearchParams` returnen), kein Side-Effect-Setter mehr.
+- `handleActivateSearch` nimmt direkt ein `SavedSearch`-Objekt entgegen statt eines partiellen `SearchCriteria`.
+
+### Breaking
+
+- `saved_searches`-Tabelle erweitert um 9 neue Spalten (`price_min`, `price_max`, `drive_type`, `completeness`, `shipping_available`, `model_type`, `model_subtype`, `show_outdated`, `only_sold`). Bestehende Reihen erhalten NULL — kein Datenverlust. Auf Prod manuelles `ALTER TABLE` nötig (siehe PLAN_026 Verification-Block), da das Projekt kein Alembic nutzt.
+
+---
+
 ## [2.3.1] - 2026-04-19
 
 ### Added
