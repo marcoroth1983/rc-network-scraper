@@ -815,6 +815,103 @@ Bestehende Reihen erhalten NULL — `SavedSearchResponse` toleriert das (Default
 
 _Plan review closed 2026-04-28: 2 blocking + applicable non-blocking findings addressed; 1 blocking (status-field format) dismissed — `[ ]` markers are the canonical format defined by `dglabs.writing-plans` skill; reviewer's "required `status:` field" claim conflicts with the active skill spec._
 
+## Code Review — frontend
+<!-- dglabs.agent.review-frontend — 2026-04-28, cycle 1 -->
+
+**Files Reviewed:**
+- `frontend/src/types/api.ts` (lines 152–194) — commit db73a1a
+- `frontend/src/lib/savedSearchCriteria.ts` — commit 1df1ec3
+- `frontend/src/hooks/useListings.ts` — commit 4c8c1df
+- `frontend/src/hooks/useInfiniteListings.ts` — commit 4c8c1df
+- `frontend/src/App.tsx` — commit 2923ffc
+- `frontend/src/components/FavoritesModal.tsx` — commits 2923ffc, 7f64e1d
+- `frontend/src/pages/FavoritesPage.tsx` — commits 2923ffc, 7f64e1d
+- `frontend/src/pages/ListingsPage.tsx` — commit 2923ffc
+- `frontend/src/lib/savedSearchCriteria.test.ts` — commit 6487d27
+
+**Overall:** Approved w/ reservations
+
+> Codex parallel pass: `CLAUDE_PLUGIN_ROOT` not set in this environment; fallback invocation launched as background process and did not complete within the review window. All findings below are from the agent pass only.
+
+### 🔴 CRITICAL
+_None._
+
+### 🟠 HIGH
+_None._
+
+### 🟡 MEDIUM
+
+**[M1] `clearActiveSavedSearch` detection gap after new fields** — `frontend/src/pages/ListingsPage.tsx:99–102`
+
+Problem: The effect that calls `onClearActiveSavedSearch()` triggers only when `filter.search`, `filter.plz`, and `filter.max_distance` are all falsy. The new fields (`model_type`, `model_subtype`, `price_min`, `price_max`, etc.) are not included in this guard. A user who resets all three legacy fields but still has `model_type=flugzeug` set will see the UI remain in "active saved search" mode (update-FAB stays visible) even though the intent was to start a fresh search. Conversely, if the user clears the new fields but leaves `plz` set, the guard also misfires. The guard was already imprecise before this PR; the new fields make the inconsistency more visible.
+
+Fix: Either extend the guard to include all relevant new fields, or remove the implicit clear-on-empty heuristic entirely and rely only on the explicit "clear" action (e.g., a dedicated reset button). The latter is architecturally cleaner and removes the fragile field enumeration. Note: this was a pre-existing partial coverage; this PR widens the gap rather than introducing it.
+
+**[M2] Price summary renders asymmetric bounds without unit context** — `frontend/src/components/FavoritesModal.tsx:61–64`, `frontend/src/pages/FavoritesPage.tsx:61–64`
+
+Problem: `${lo}–${hi} €` produces `"–500 €"` when only `price_max` is set and `"100– €"` when only `price_min` is set. The dash at the start or the trailing dash before the currency symbol looks like a formatting error to the user and is visually ambiguous (could be read as a negative number).
+
+Fix: Use conditional formatting:
+```typescript
+const pricePart = search.price_min != null && search.price_max != null
+  ? `${search.price_min}–${search.price_max} €`
+  : search.price_min != null
+  ? `ab ${search.price_min} €`
+  : `bis ${search.price_max} €`;
+filterParts.push(pricePart);
+```
+The same fix applies identically to both `FavoritesModal.tsx` and `FavoritesPage.tsx`. Note: flagged as non-blocking in the plan review but not fixed in implementation.
+
+### 🟢 LOW
+
+**[L1] `FavoritesPage.handleActivateSearch` carries dead `_id` parameter** — `frontend/src/pages/FavoritesPage.tsx:270`
+
+Problem: `function handleActivateSearch(_id: number, saved: SavedSearch)` — the `_id` argument is never used in the function body and exists only to satisfy the `onActivateSearch: (id: number, saved: SavedSearch) => void` interface from `FavoritesModal`. In `FavoritesPage`, this function is a local handler defined inline (not passed via props) and is called as `handleActivateSearch(search.id, search)` at line 382. Since `FavoritesPage` owns the call site and does not expose the callback as a prop, the `_id` parameter is structurally dead. Its presence suggests the old `SearchCriteria` API shape was never cleaned up when the signature was widened.
+
+Fix: Simplify the signature to `function handleActivateSearch(saved: SavedSearch)` and update the call site to `onActivate={() => handleActivateSearch(search)}`. No behavioral change.
+
+**[L2] `criteriaDiffers` is sensitive to `Object.keys` key enumeration order but not to extra keys in `b`** — `frontend/src/lib/savedSearchCriteria.ts:56–62`
+
+Problem: `Object.keys(a)` enumerates the keys of `a = criteriaFromFilter(filter)`. Because `criteriaFromFilter` always constructs an object with all keys explicitly (including `category: undefined`), `Object.keys` does return all keys for `a`. However, the check iterates keys of `a` only — if `b` ever had a key not present in `a`, it would be silently ignored. In the current implementation this cannot happen since both `a` and `b` are produced by the same `criteriaFromFilter` function, but the correctness depends on that invariant being maintained. This is fragile across future edits.
+
+Fix: Consider using a union of both key sets, or document the invariant explicitly in a comment: `// Both objects are produced by criteriaFromFilter; key sets are identical.`
+
+**[L3] `baseFilter` in test file omits new optional fields** — `frontend/src/lib/savedSearchCriteria.test.ts:10–20`
+
+Problem: `baseFilter` does not declare `drive_type`, `completeness`, `shipping_available`, `model_type`, `model_subtype`, `show_outdated`, or `only_sold`. TypeScript accepts this because these fields are optional (`?`), so `baseFilter` satisfies `ListingsFilter`. However, when tests spread `...baseFilter` and then add specific overrides, the resulting object also has no values for these optional fields, which means `criteriaFromFilter` receives `undefined` and converts them to `null` via the `?? null` pattern. This is correct behavior, but there is no test case that explicitly asserts that `undefined` optional fields serialize to `null` rather than `undefined`. The existing test "parses price strings into numbers" covers the parse path but not the null-coercion path for boolean/string optional fields.
+
+Fix (suggestion, not required): Add one assertion in `criteriaFromFilter` tests: `expect(criteriaFromFilter(baseFilter).drive_type).toBeNull()` to lock in the `undefined → null` serialization contract.
+
+### 💡 SUGGESTIONS
+
+**[S1] Caller consistency: `handleActivateSearch` signature widened to `SavedSearch` — plan deviation confirmed correct**
+
+The plan flagged this as "check callers." Verified: both `FavoritesModal.tsx:417–418` and `FavoritesPage.tsx:382` now pass `search` (a `SavedSearch` object) directly instead of constructing a partial `SearchCriteria`. The `handleActivateSearch` prop in `FavoritesModal.Props` is correctly typed as `(id: number, saved: SavedSearch) => void`. The cast that was anticipated in the plan (`criteria as SavedSearch`) was eliminated entirely — the cleaner approach was taken. No further action needed; confirming plan compliance.
+
+**[S2] `filterFromSavedSearch` always resets `page` to 1**
+
+This is correct behavior (activating a saved search should always start at page 1), but it is not explicitly tested. The existing test for `filterFromSavedSearch` asserts sort, model_type, price, etc. — adding `expect(f.page).toBe(1)` would make the contract explicit.
+
+**[S3] `writeFiltersToParams` does not write `category` to URL**
+
+`readFiltersFromParams` reads category from `localStorage`, not from `URLSearchParams` (line 53). `writeFiltersToParams` therefore correctly omits category from the URL. This asymmetry is intentional by design (category is global localStorage state, not per-URL state), and both sides are consistent. Worth a one-line comment in `writeFiltersToParams` near the `shipping_available` handling to make this intentional omission explicit for future contributors.
+
+### Architecture Observations
+
+The extracted `savedSearchCriteria.ts` helper module is architecturally sound: it is a pure transformation layer with no side effects, no React dependencies, and a clear single responsibility (serialize/deserialize between `ListingsFilter` ↔ `SavedSearch`/`SearchCriteria`). The `writeFiltersToParams` refactor (Task 7) correctly converts the function from a procedure with side effects to a pure function returning `URLSearchParams` — this was a plan review blocking item and is cleanly resolved.
+
+The `handleActivateSearch` signature widening to `SavedSearch` (vs the plan's intermediate cast approach) is strictly better: it eliminates the unsafe `as SavedSearch` cast, provides full type coverage, and is consistent across both callers. This deviation from the plan was the correct choice.
+
+The `SavedSearchCard` component is duplicated between `FavoritesModal.tsx` and `FavoritesPage.tsx` (same logic, same JSX structure). This is a pre-existing pattern noted with "kept local to avoid coupling" comment in `FavoritesPage.tsx:37`. The Task 9 additions are correctly applied to both copies — no drift introduced.
+
+### Verdict
+
+Approved with reservations. No CRITICAL or HIGH findings. M1 (clearActiveSavedSearch gap) and M2 (price display) are functional issues worth fixing before the next user-facing interaction with the feature; neither is a data loss or security risk. L1–L3 are clean-up items. The plan-flagged deviation (`handleActivateSearch` signature) is confirmed as the correct implementation choice.
+
+---
+
+_Code review closed 2026-04-28 (python, cycle 1): 2 wichtig + 2 empfohlen addressed; 1 empfohlen (Numeric import) info-only._
+
 <!-- Original review preserved below for reference until Human approval. -->
 
 ## Plan Review (closed)
