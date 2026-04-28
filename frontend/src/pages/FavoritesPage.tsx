@@ -59,9 +59,12 @@ function SavedSearchCard({ search, onActivate, onToggle, onRemove }: SavedSearch
   if (search.model_type) filterParts.push(search.model_type);
   if (search.model_subtype) filterParts.push(search.model_subtype);
   if (search.price_min != null || search.price_max != null) {
-    const lo = search.price_min ?? '';
-    const hi = search.price_max ?? '';
-    filterParts.push(`${lo}–${hi} €`);
+    const pricePart = search.price_min != null && search.price_max != null
+      ? `${search.price_min}–${search.price_max} €`
+      : search.price_min != null
+      ? `ab ${search.price_min} €`
+      : `bis ${search.price_max} €`;
+    filterParts.push(pricePart);
   }
   if (search.drive_type) filterParts.push(search.drive_type);
   if (search.completeness) filterParts.push(search.completeness);
