@@ -253,8 +253,8 @@ async def test_create_search_persists_all_filter_fields(api_client: AsyncClient)
     """POST /api/searches mit allen Feldern → alle in Response zurückgegeben."""
     payload = {
         "search": "Multiplex",
-        "model_type": "flugzeug",
-        "model_subtype": "Jet",
+        "model_type": "airplane",
+        "model_subtype": "jet",
         "price_min": 100.0,
         "price_max": 500.0,
         "drive_type": "elektro",
@@ -268,8 +268,8 @@ async def test_create_search_persists_all_filter_fields(api_client: AsyncClient)
     resp = await api_client.post("/api/searches", json=payload)
     assert resp.status_code == 201
     data = resp.json()
-    assert data["model_type"] == "flugzeug"
-    assert data["model_subtype"] == "Jet"
+    assert data["model_type"] == "airplane"
+    assert data["model_subtype"] == "jet"
     assert data["price_min"] == 100.0
     assert data["price_max"] == 500.0
     assert data["drive_type"] == "elektro"
@@ -284,17 +284,17 @@ async def test_update_search_overwrites_filter_fields(api_client: AsyncClient):
     """PUT /api/searches/{id} ersetzt alle Filter-Felder (auch zurück auf None)."""
     create = await api_client.post(
         "/api/searches",
-        json={"search": "x", "model_type": "flugzeug", "model_subtype": "Jet", "price_min": 50.0},
+        json={"search": "x", "model_type": "airplane", "model_subtype": "jet", "price_min": 50.0},
     )
     sid = create.json()["id"]
 
     update = await api_client.put(
         f"/api/searches/{sid}",
-        json={"search": "x", "model_type": "auto", "model_subtype": None, "price_min": None},
+        json={"search": "x", "model_type": "car", "model_subtype": None, "price_min": None},
     )
     assert update.status_code == 200
     data = update.json()
-    assert data["model_type"] == "auto"
+    assert data["model_type"] == "car"
     assert data["model_subtype"] is None
     assert data["price_min"] is None
 
