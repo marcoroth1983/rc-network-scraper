@@ -4,7 +4,15 @@
       "WebFetch(domain:www.rc-network.de)",
       "WebFetch(domain:openrouter.ai)",
       "Bash(ps -W)",
-      "Bash(docker version *)"
+      "Bash(docker version *)",
+      "Bash(mkdir -p \"C:/Users/marco/.claude/skills_disabled\")",
+      "Bash(mv \"C:/Users/marco/.claude/skills/dglabs.sql-pro\" \"C:/Users/marco/.claude/skills_disabled/\")",
+      "Bash(mv \"C:/Users/marco/.claude/skills/dglabs.database-optimizer\" \"C:/Users/marco/.claude/skills_disabled/\")",
+      "Bash(mv \"C:/Users/marco/.claude/skills/mempalace\" \"C:/Users/marco/.claude/skills_disabled/\")",
+      "Bash(cp \"C:/Users/marco/.claude.json\" \"C:/Users/marco/.claude.json.bak_prebleach\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const p='C:/Users/marco/.claude.json'; const d=JSON.parse\\(fs.readFileSync\\(p,'utf8'\\)\\); const before=d.mcpServers?Object.keys\\(d.mcpServers\\):[]; if\\(d.mcpServers && d.mcpServers.mempalace\\){delete d.mcpServers.mempalace;} fs.writeFileSync\\(p, JSON.stringify\\(d,null,2\\)\\); const after=d.mcpServers?Object.keys\\(d.mcpServers\\):[]; console.log\\('before:',before,'after:',after\\);\")",
+      "Bash(rm \"C:/Users/marco/.claude/hooks/mempal_save_hook.sh\" \"C:/Users/marco/.claude/hooks/mempal_precompact_hook.sh\")",
+      "Bash(rm -rf \"C:/Users/marco/.claude/skills_disabled/mempalace\")"
     ]
   }
 }

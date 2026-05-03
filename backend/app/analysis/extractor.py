@@ -23,8 +23,33 @@ model_type — NUR wenn es sich um ein RC-Modell handelt:
   "airplane", "helicopter", "multicopter", "glider", "boat", "car"
   Elektronik, Akkus, Sender, Regler, Motoren, Ersatzteile → model_type = null
 
-model_subtype — wähle EXAKT einen der erlaubten Werte für den jeweiligen model_type:
-  airplane:    jet | warbird | trainer | scale | 3d | nurflügler | hochdecker | tiefdecker | mitteldecker | delta | biplane | aerobatic | kit | hotliner | funflyer | speed | pylon
+model_subtype — wähle EXAKT einen Wert. Kurze Definitionen für airplane:
+  jet        — EDF/Impeller oder Turbine. Nur wenn Jet/EDF/Impeller/Turbine
+               im Text genannt ist. KEIN Propellerantrieb.
+  warbird    — militärisches Vorbild mit Propeller (Spitfire, Mustang,
+               Focke-Wulf, Corsair …). Auch wenn der Name nach Kampfflugzeug
+               klingt: wenn Propeller → warbird, nicht jet.
+  pylon      — Propeller-Rennmodell / Pylon-Racer (z. B. RaceWulf, Shark).
+               "Rennmodell" + Propeller → pylon, nicht jet.
+  trainer    — Anfänger-/Schulungsmodell.
+  scale      — zivile Scale-Nachbauten (keine Warbirds).
+  3d         — 3D-/Kunstflug-Modelle (Edge, Extra …).
+  aerobatic  — klassischer Kunstflug (nicht unbedingt 3D).
+  hotliner   — Hotliner / F5B-Stil.
+  nurflügler — Nurflügel / Flying Wing.
+  hochdecker — Tragfläche oberhalb des Rumpfs.
+  tiefdecker — Tragfläche unterhalb.
+  mitteldecker — Tragfläche mittig.
+  delta      — Deltaflügel.
+  biplane    — Doppeldecker.
+  kit        — Bausatz ohne klare Stilzuordnung.
+  funflyer   — Funflyer / Park-Flyer.
+  speed      — Speed-Modell (Non-EDF).
+
+Regel: Wenn im Text "Motor, Regler" genannt wird und KEIN EDF/Impeller/
+Turbine erwähnt ist → NICHT jet.
+
+Für alle anderen model_type-Werte gelten diese erlaubten Subtypes:
   helicopter:  700 | 580 | 600 | 550 | 500 | 450 | 420 | 380 | scale
   glider:      thermik | hotliner | f3b | f3k | f3j | f5j | f5b | f5k | f3f | f3l | hangflug | dlg | scale | motorglider
   multicopter: quadcopter | hexacopter | fpv
