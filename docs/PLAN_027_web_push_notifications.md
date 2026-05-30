@@ -245,7 +245,7 @@ frontend/src/components/__tests__/NotificationsPanel.test.tsx
 
 ---
 
-### Task 1: Backend dependency [ ]
+### Task 1: Backend dependency [IMPLEMENTED]
 
 **Files:** Modify `backend/requirements.txt`
 
@@ -264,7 +264,7 @@ git commit -m "chore(backend): add pywebpush for PLAN-027"
 
 ---
 
-### Task 2: Backend config — VAPID, remove Telegram, rename fav-sweep settings [ ]
+### Task 2: Backend config — VAPID, remove Telegram, rename fav-sweep settings [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -298,7 +298,7 @@ git commit -m "feat(config): add VAPID, remove Telegram settings, rename fav-swe
 
 ---
 
-### Task 3: Backend schema — push_subscriptions, web_push_enabled, drop Telegram DDL, test bootstrap [ ]
+### Task 3: Backend schema — push_subscriptions, web_push_enabled, drop Telegram DDL, test bootstrap [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -457,7 +457,7 @@ git commit -m "feat(db): push_subscriptions + web_push_enabled; drop telegram sc
 
 ---
 
-### Task 4: Move NotificationPrefs to app/notifications/prefs.py [ ]
+### Task 4: Move NotificationPrefs to app/notifications/prefs.py [IMPLEMENTED]
 
 **Depends on:** Task 3
 
@@ -582,7 +582,7 @@ git commit -m "feat(notifications): move NotificationPrefs out of telegram, add 
 
 ---
 
-### Task 5: WebPushPlugin + shared send helper [ ]
+### Task 5: WebPushPlugin + shared send helper [IMPLEMENTED]
 
 **Depends on:** Tasks 2, 3, 4
 
@@ -729,7 +729,7 @@ git commit -m "feat(notifications): WebPushPlugin + shared send_web_push_to_user
 
 ---
 
-### Task 6: WebPushPlugin + helper tests + new fixtures [ ]
+### Task 6: WebPushPlugin + helper tests + new fixtures [IMPLEMENTED]
 
 **Depends on:** Task 5
 
@@ -937,7 +937,7 @@ git commit -m "test(notifications): cover WebPushPlugin + send helper (incl. use
 
 ---
 
-### Task 7: Notifications REST API [ ]
+### Task 7: Notifications REST API [IMPLEMENTED]
 
 **Depends on:** Tasks 2, 3, 4
 
@@ -1128,7 +1128,7 @@ git commit -m "feat(api): notifications router — subscriptions + preferences +
 
 ---
 
-### Task 7.5: Remove Telegram API router from routes.py [ ]
+### Task 7.5: Remove Telegram API router from routes.py [IMPLEMENTED]
 
 **Depends on:** Task 7
 
@@ -1145,7 +1145,7 @@ git commit -m "refactor(api): drop telegram router include"
 
 ---
 
-### Task 7.6: Strip telegram fields from /auth/me [ ]
+### Task 7.6: Strip telegram fields from /auth/me [IMPLEMENTED]
 
 **Depends on:** Task 3
 
@@ -1211,7 +1211,7 @@ git commit -m "chore: remove Telegram subsystem (PLAN-027)"
 
 ---
 
-### Task 8: REST API tests [ ]
+### Task 8: REST API tests [IMPLEMENTED]
 
 **Depends on:** Tasks 7, 7.5
 
@@ -1345,7 +1345,7 @@ git commit -m "test(api): cover /api/notifications/* endpoints"
 
 ---
 
-### Task 9: Migrate favorites sweep to Web Push [ ]
+### Task 9: Migrate favorites sweep to Web Push [IMPLEMENTED]
 
 **Depends on:** Tasks 4, 5
 
@@ -1624,7 +1624,7 @@ git commit -m "feat(notifications): migrate favorites sweep to Web Push"
 
 ---
 
-### Task 9.5: Wire main.py + docker-compose + env example [ ]
+### Task 9.5: Wire main.py + docker-compose + env example [IMPLEMENTED]
 
 **Depends on:** Tasks 5, 7, 9
 
