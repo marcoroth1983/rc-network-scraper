@@ -74,22 +74,18 @@ class Settings(BaseSettings):
     ebay_client_id: str = ""
     ebay_client_secret: str = ""
 
-    # Telegram notifications — disabled entirely when any required field is empty
-    TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_BOT_USERNAME: str = ""
-    TELEGRAM_WEBHOOK_SECRET: str = ""
-    TELEGRAM_LINK_TOKEN_TTL_MIN: int = 15
-    TELEGRAM_DIGEST_TOP_N: int = 5
-    TELEGRAM_FAV_SWEEP_INTERVAL_MIN: int = 60
-    TELEGRAM_FAV_DELETED_DAYS: int = 3
+    # Favorites status sweep (was TELEGRAM_FAV_*)
+    FAV_SWEEP_INTERVAL_MIN: int = 60
+    FAV_DELETED_DAYS: int = 3
+
+    # Web Push (VAPID) — push disabled (no crash) when any field is empty
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_SUBJECT: str = "mailto:marco.roth1983@googlemail.com"
 
     @property
-    def telegram_enabled(self) -> bool:
-        return bool(
-            self.TELEGRAM_BOT_TOKEN
-            and self.TELEGRAM_BOT_USERNAME
-            and self.TELEGRAM_WEBHOOK_SECRET
-        )
+    def web_push_enabled(self) -> bool:
+        return bool(self.VAPID_PUBLIC_KEY and self.VAPID_PRIVATE_KEY and self.VAPID_SUBJECT)
 
     @property
     def openrouter_free_models_list(self) -> list[str]:
