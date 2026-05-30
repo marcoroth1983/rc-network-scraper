@@ -66,6 +66,7 @@ vi.mock('../components/FavoritesModal', () => ({ default: () => null }));
 vi.mock('../components/CategoryModal', () => ({ default: () => null }));
 vi.mock('../components/MobileFooter', () => ({ MobileFooter: () => null }));
 vi.mock('../components/InstallPrompt', () => ({ InstallPrompt: () => null }));
+vi.mock('../notifications/FirstStartPushPrompt', () => ({ FirstStartPushPrompt: () => null }));
 vi.mock('../pages/ListingsPage', () => ({
   default: () => <div data-testid="listings-page">Listings</div>,
 }));
