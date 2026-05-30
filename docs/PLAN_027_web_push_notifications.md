@@ -1173,7 +1173,7 @@ git commit -m "refactor(api): drop telegram fields from /auth/me"
 
 ---
 
-### Task 7.7: Delete Telegram backend + frontend modules and tests [ ]
+### Task 7.7: Delete Telegram backend + frontend modules and tests [IMPLEMENTED]
 
 **Depends on:** Tasks 4, 7.5, 7.6, 9 (fav_sweep migrated), and frontend Tasks 14 + 19 (importers retargeted)
 
