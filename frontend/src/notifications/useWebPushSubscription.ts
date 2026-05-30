@@ -20,7 +20,12 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 export function useWebPushSubscription() {
-  const [state, setState] = useState<PushState>({ status: 'default' });
+  // Lazy initializer: if push is not supported we start in 'unsupported' immediately,
+  // so the component never flashes a 'default' state on unsupported browsers.
+  const [state, setState] = useState<PushState>(() =>
+    pushSupported() ? { status: 'default' } : { status: 'unsupported' },
+  );
+  // Derive `supported` from the same predicate so it stays consistent with the initial state.
   const supported = pushSupported();
 
   const refresh = useCallback(async () => {
@@ -66,7 +71,19 @@ export function useWebPushSubscription() {
   const unsubscribeCurrent = useCallback(async () => {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (sub) await sub.unsubscribe();
+    if (sub) {
+      // Remove from browser push service first, then clean up the backend record
+      // so we don't leave an orphaned subscription that would cause silent delivery failures.
+      await sub.unsubscribe();
+      try {
+        const backendSubs = await notificationsApi.listSubscriptions();
+        const match = backendSubs.find((s) => s.endpoint === sub.endpoint);
+        if (match) await notificationsApi.deleteSubscription(match.id);
+      } catch {
+        // Non-fatal: browser-side unsubscription already succeeded; backend cleanup
+        // is best-effort. The push service will eventually reject dead endpoints.
+      }
+    }
     await refresh();
   }, [refresh]);
 
