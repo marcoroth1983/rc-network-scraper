@@ -14,7 +14,9 @@ self.addEventListener('activate', (event) => {
 // registerType change ever leaves a new SW in "waiting".
 self.addEventListener('message', (event) => {
   if ((event.data as { type?: string } | null)?.type === 'SKIP_WAITING') {
-    event.waitUntil(self.skipWaiting());
+    // skipWaiting() returns a Promise<void> but it is not an async operation that needs
+    // to block the install phase — wrapping it in waitUntil() is unnecessary and misleading.
+    void self.skipWaiting();
   }
 });
 

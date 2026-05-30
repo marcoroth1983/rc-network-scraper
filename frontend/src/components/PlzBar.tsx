@@ -655,7 +655,7 @@ export default function PlzBar({
 
               {divider}
 
-              {/* Weitere Einstellungen (Telegram, Admin-Panel, ...) */}
+              {/* Weitere Einstellungen (Admin-Panel, ...) */}
               <button
                 type="button"
                 onClick={() => { setPersonOpen(false); navigate('/profile'); }}
