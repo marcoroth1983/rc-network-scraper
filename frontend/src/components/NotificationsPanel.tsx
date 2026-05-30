@@ -28,7 +28,9 @@ export function NotificationsPanel() {
   }, []);
 
   useEffect(() => {
+    // Async effects: reload functions call setState asynchronously after fetching data.
     if (state.status === 'granted-subscribed' || state.status === 'granted-no-subscription') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void reloadSubs();
     }
     void reloadPrefs();

@@ -34,6 +34,8 @@ export function useWebPushSubscription() {
   }, []);
 
   useEffect(() => {
+    // Async effect: refresh() reads browser APIs and calls setState asynchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 

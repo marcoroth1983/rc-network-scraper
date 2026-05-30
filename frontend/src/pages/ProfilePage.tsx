@@ -22,6 +22,7 @@ function getInitials(email: string): string {
   return local.slice(0, 2).toUpperCase();
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function ProfilePage({ user, onLogout, onUserReload }: Props) {
   // The page renders on all viewports — desktop reaches it via the
   // "Einstellungen" link in the PlzBar person-popover; mobile via bottom nav.
