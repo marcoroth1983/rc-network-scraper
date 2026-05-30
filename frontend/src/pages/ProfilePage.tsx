@@ -4,7 +4,7 @@ import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
 import { LLMAdminPanel } from '../components/LLMAdminPanel';
-import { TelegramPanel } from '../components/TelegramPanel';
+import { NotificationsPanel } from '../components/NotificationsPanel';
 
 const PLZ_STORAGE_KEY = 'rcn_ref_plz';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -235,7 +235,7 @@ export function ProfilePage({ user, onLogout, onUserReload }: Props) {
 
         {/* ── Column 2: Settings stack ──────────────────────────────────── */}
         <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
-          <TelegramPanel user={user} onUserReload={onUserReload} />
+          <NotificationsPanel />
           {user.role === 'admin' && <LLMAdminPanel />}
         </div>
       </div>

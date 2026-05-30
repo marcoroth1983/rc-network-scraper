@@ -12,6 +12,7 @@ import FavoritesModal from './components/FavoritesModal';
 import CategoryModal from './components/CategoryModal';
 import { MobileFooter } from './components/MobileFooter';
 import { InstallPrompt } from './components/InstallPrompt';
+import { FirstStartPushPrompt } from './notifications/FirstStartPushPrompt';
 import PlzBar from './components/PlzBar';
 import AuroraBackground from './components/AuroraBackground';
 import { useAuth, type AuthUser } from './hooks/useAuth';
@@ -221,6 +222,7 @@ function AuthenticatedAppInner({ user, logout, reloadUser }: { user: AuthUser; l
         onClose={() => setCategoryModalOpen(false)}
       />
       <InstallPrompt />
+      <FirstStartPushPrompt />
       <MobileFooter totalUnread={totalUnread} />
     </AuroraBackground>
   );
