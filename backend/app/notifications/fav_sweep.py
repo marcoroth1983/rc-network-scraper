@@ -110,7 +110,11 @@ async def run_fav_status_sweep() -> int:
                         user_id, listing_id, len(events),
                     )
 
-            # Always update snapshot (even when no push sent / pref disabled)
+            # Always advance the snapshot — even when no push was sent, when
+            # web_push_enabled is False, or when fav_sold/fav_price/fav_deleted
+            # prefs are off.  This is intentional: events that occur while the
+            # user is opted out are NOT delivered retroactively after they opt
+            # back in.  Identical semantics to the former Telegram sweep.
             async with AsyncSessionLocal() as session:
                 await session.execute(
                     text("""

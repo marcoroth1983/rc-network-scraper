@@ -231,13 +231,13 @@ from dataclasses import dataclass  # noqa: E402
 
 @pytest_asyncio.fixture()
 async def db_user(db_session: AsyncSession):
-    """Insert a test user (no Telegram link) and return the ORM object."""
+    """Insert a test user and return the ORM object."""
     from app.models import User  # noqa: PLC0415
 
     user = User(
         google_id="test-google-tg",
         email="tg_test@example.com",
-        name="TG Test",
+        name="Test User",
         is_approved=True,
     )
     db_session.add(user)

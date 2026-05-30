@@ -154,7 +154,7 @@ async def delete_subscription(
     )
     await session.commit()
     if (result.rowcount or 0) == 0:
-        raise HTTPException(status.HTTP_404_NOT_FOUND)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Subscription not found")
 
 
 @router.get("/preferences", response_model=PreferencesDto)
