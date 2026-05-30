@@ -266,6 +266,65 @@ async def db_listing(db_session: AsyncSession):
     return type("Listing", (), {"id": row.scalar_one()})()
 
 
+@dataclass
+class _UserWithSubs:
+    user_id: int
+    sub_ids: list[int]
+
+
+@pytest_asyncio.fixture()
+async def seeded_user_with_subs(db_session: AsyncSession) -> _UserWithSubs:
+    """Insert a user + two push_subscription rows."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved)
+            VALUES ('seed-subs-google', 'seed_subs@example.com', 'Seed Subs', TRUE)
+        """)
+    )
+    user_id = (
+        await db_session.execute(_text("SELECT id FROM users WHERE google_id = 'seed-subs-google'"))
+    ).scalar_one()
+    sub_ids: list[int] = []
+    for endpoint in ("https://fcm.example/1", "https://fcm.example/2"):
+        row = await db_session.execute(
+            _text("""
+                INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_label)
+                VALUES (:uid, :ep, 'P', 'A', 'Test Device') RETURNING id
+            """),
+            {"uid": user_id, "ep": endpoint},
+        )
+        sub_ids.append(row.scalar_one())
+    await db_session.commit()
+    return _UserWithSubs(user_id=user_id, sub_ids=sub_ids)
+
+
+@pytest_asyncio.fixture()
+async def other_user_with_sub(db_session: AsyncSession) -> _UserWithSubs:
+    """Insert a different user + one subscription — for ownership-isolation tests."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved)
+            VALUES ('other-subs-google', 'other_subs@example.com', 'Other', TRUE)
+        """)
+    )
+    user_id = (
+        await db_session.execute(_text("SELECT id FROM users WHERE google_id = 'other-subs-google'"))
+    ).scalar_one()
+    row = await db_session.execute(
+        _text("""
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_label)
+            VALUES (:uid, 'https://other-user-endpoint', 'P', 'A', 'Other Device') RETURNING id
+        """),
+        {"uid": user_id},
+    )
+    await db_session.commit()
+    return _UserWithSubs(user_id=user_id, sub_ids=[row.scalar_one()])
+
+
 @pytest_asyncio.fixture()
 async def authenticated_client(test_engine, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient authenticated as a fresh test user (inserted after clean_listings)."""
