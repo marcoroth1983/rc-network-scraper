@@ -6,12 +6,16 @@ vi.mock('../../lib/pwa-detect', () => ({ isIos: vi.fn(() => false), isStandalone
 
 import { FirstStartPushPrompt } from '../FirstStartPushPrompt';
 import { useWebPushSubscription } from '../useWebPushSubscription';
+import * as pwaDetect from '../../lib/pwa-detect';
 
 const mockHook = useWebPushSubscription as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   localStorage.clear();
   mockHook.mockReset();
+  // Reset pwa-detect mocks to their defaults so tests don't bleed into each other.
+  (pwaDetect.isIos as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  (pwaDetect.isStandalone as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
 });
 
 describe('FirstStartPushPrompt', () => {
