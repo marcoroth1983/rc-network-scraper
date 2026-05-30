@@ -9,7 +9,6 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin import router as admin_router
-from app.api.telegram import router as telegram_api_router
 from app.api.deps import get_current_user
 from app.api.schemas import (
     ComparableListing, ComparablesResponse,
@@ -28,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 router.include_router(admin_router)
-router.include_router(telegram_api_router)
 
 
 async def _get_favorite_listing_ids(user_id: int, session: AsyncSession) -> set[int]:
