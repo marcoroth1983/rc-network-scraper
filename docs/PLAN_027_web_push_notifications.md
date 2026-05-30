@@ -2,151 +2,201 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use dglabs.executing-plans to implement this plan task-by-task.
 
-**Goal:** Add a `WebPushPlugin` to the existing `notification_registry` so per-user SavedSearch matches are delivered as native browser/PWA push notifications. Web Push becomes the default channel; Telegram code stays in place but is gated behind `NOTIFICATION_CHANNEL`. UI: a small soft-ask banner cloned from `InstallPrompt` and a `NotificationsPanel` on `/profile` for device management + opt-in.
+> **Update 2026-05-30:** Scope changed. Web Push is now the **only** notification channel — Telegram is **removed entirely** (no `NOTIFICATION_CHANNEL` switch). The favorites status sweep (sold/price/deleted) is migrated from Telegram to Web Push via a shared `send_web_push_to_user()` helper. All anchors re-verified against current code (the old plan missed that the Telegram API router is included in `routes.py`, not `main.py`, and that `/api/auth/me` returns telegram fields). Approvals reset to pending — re-review required.
+
+**Goal:** Add a `WebPushPlugin` to the existing `notification_registry` so per-user SavedSearch matches are delivered as native browser/PWA push notifications, migrate the favorites status sweep to Web Push, and **remove the Telegram subsystem completely**. UI: a soft-ask banner cloned from `InstallPrompt` and a `NotificationsPanel` on `/profile` (replacing `TelegramPanel`) for device management + opt-in.
 
 **Architecture:**
-- **Backend (FastAPI / SQLAlchemy async):** New `WebPushPlugin` (`app/notifications/web_push_plugin.py`) implementing the existing `NotificationPlugin` ABC. Two persistence concerns: a new `push_subscriptions` table (multi-device, N rows per user) and a new column `web_push_enabled` on the existing `user_notification_prefs` table. Channel routing happens at plugin-registration time in `main.py:lifespan()` based on `settings.NOTIFICATION_CHANNEL ∈ {webpush, telegram, both}`. The same channel switch also gates Telegram-only side effects (`fav_sweep` scheduler + `setWebhook` call), so `NOTIFICATION_CHANNEL=webpush` does not leave a half-running Telegram subsystem behind. New REST module `app/api/notifications.py` exposes subscription CRUD + the VAPID public key + the consolidated preferences endpoint. The legacy `GET/PUT /api/telegram/prefs` routes are **removed** (the same DB row is now served by `/api/notifications/preferences` as single source of truth).
-- **Frontend (React 19 / Vite 8 / Tailwind 3):** Adopt `vite-plugin-pwa` in `injectManifest` mode and ship a custom `src/sw.ts` (push + notificationclick handlers + manifest precache; filename matches the existing `nginx.conf:14` `/sw.js` no-cache rule). Existing legacy artifacts are **deleted** in the same plan (`frontend/public/sw.js`, `frontend/public/manifest.json`, the `<link rel="manifest">` in `index.html`, the manual `navigator.serviceWorker.register('/sw.js')` block in `main.tsx`) — all replaced by VitePWA's auto-injected registration and a `manifest:` config block that mirrors the existing `manifest.json` content (including the maskable icons that already live in `public/icons/`). New `src/notifications/` module with a 5-state `useWebPushSubscription` hook, a small subscriptions client (the prefs functions are extended in `api/client.ts`, not duplicated), a UA→device-label helper, and a `FirstStartPushPrompt` banner that mirrors the existing `InstallPrompt` glassmorphism shell. iOS gating reuses the extracted `isStandalone()` check: on iOS without standalone, the push prompt stays hidden until the PWA is installed. New `NotificationsPanel` slots into `ProfilePage` Column 2 above `TelegramPanel` and is split into two tasks (state-display vs. device-list + prefs).
-- **VAPID:** Single keypair, generated once via `npx web-push generate-vapid-keys` (URL-safe base64 output, exactly what the browser expects). Local: `docker-compose.yml` env vars. Prod: GitHub Actions repository secrets, passed to the frontend image at build time as `VITE_VAPID_PUBLIC_KEY` via `frontend/Dockerfile` build-arg (the canonical Dockerfile — there is no `Dockerfile.prod`).
+- **Backend (FastAPI / SQLAlchemy async):** New `WebPushPlugin` (`app/notifications/web_push_plugin.py`) implementing the existing `NotificationPlugin` ABC. A shared module-level helper `send_web_push_to_user(user_id, payload)` (same file) owns the per-subscription send loop, the 404/410 stale-subscription garbage collection, and the per-delivered `last_used_at` bump. Both the plugin (`send()`) and the migrated favorites sweep use this single helper (DRY). Two persistence concerns: a new `push_subscriptions` table (multi-device, N rows per user) and a new column `web_push_enabled` on the existing `user_notification_prefs` table.
+- **Notification prefs move out of `app/telegram`.** `NotificationPrefs` + `get_prefs`/`set_prefs` move to a new non-telegram module `app/notifications/prefs.py` (the only non-telegram code in the deleted `app/telegram/prefs.py`). All importers are retargeted.
+- **Favorites sweep migrates** from `app/telegram/fav_sweep.py` to `app/notifications/fav_sweep.py`: the SQL `WHERE u.telegram_chat_id IS NOT NULL` filter is replaced with "user has ≥1 push subscription", `bot.send_message` is replaced with `send_web_push_to_user`, the HTML digest becomes a `{title, body, url}` push payload, and the link-token cleanup tail is dropped (no more tokens). The scheduler job in `main.py` stays but is **ungated** (no `telegram_enabled`). Interval/cutoff settings renamed `TELEGRAM_FAV_SWEEP_INTERVAL_MIN → FAV_SWEEP_INTERVAL_MIN`, `TELEGRAM_FAV_DELETED_DAYS → FAV_DELETED_DAYS`.
+- **Telegram removed:** modules `app/telegram/{bot,link,plugin,webhook,fav_sweep}.py` deleted; `app/telegram/prefs.py` deleted (logic moved); the `app/telegram/` package removed. `app/api/telegram.py` deleted; its include removed from `routes.py`. `TelegramPlugin` registration, the `fav_sweep` gate, and the `setWebhook` block removed from `main.py`. All `TELEGRAM_*` settings + `telegram_enabled` removed from `config.py`. `/api/auth/me` stops returning telegram fields. DB: `telegram_link_tokens` table + `users.telegram_chat_id`/`telegram_linked_at` columns dropped (idempotent). Frontend `TelegramPanel.tsx` + tests deleted, telegram client functions/types removed, `AuthUser` telegram fields removed.
+- **New REST module** `app/api/notifications.py` exposes subscription CRUD, the VAPID public key, and the consolidated preferences endpoint (`GET/PUT /api/notifications/preferences`) — single source of truth for `user_notification_prefs`.
+- **Frontend (React 19 / Vite 8 / Tailwind 3):** Adopt `vite-plugin-pwa` in `injectManifest` mode with a custom `src/sw.ts` (push + notificationclick + manifest precache; built to `dist/sw.js` matching the existing `nginx.conf:14` `/sw.js` no-cache rule). Legacy artifacts (`public/sw.js`, `public/manifest.json`, the `index.html` manifest link, the manual SW registration in `main.tsx`) are deleted and replaced by VitePWA's auto-injected registration + migrated `manifest:` config. New `src/notifications/` module: a 5-state `useWebPushSubscription` hook, a subscriptions client, a UA→device-label helper, and a `FirstStartPushPrompt` banner mirroring `InstallPrompt`. iOS gating reuses the extracted `isStandalone()` check. New `NotificationsPanel` replaces `TelegramPanel` in `ProfilePage` Column 2, split into two tasks (state-display vs. device-list + prefs).
+- **VAPID:** Single keypair, generated once via `npx web-push generate-vapid-keys` (URL-safe base64). Local: `docker-compose.yml` env. Prod: GitHub repo variable + VPS `.env`, passed to the frontend image at build time as `VITE_VAPID_PUBLIC_KEY` via `frontend/Dockerfile` build-arg.
 
-**Tech Stack:** FastAPI, SQLAlchemy async, `pywebpush` (Python), `pydantic-settings`, React 19, `vite-plugin-pwa@^0.21`, Workbox 7, native `PushManager` / `ServiceWorkerRegistration` APIs, Tailwind 3, npm (the `pnpm-lock.yaml` currently sitting untracked in `frontend/` is removed in Task 10).
+**Tech Stack:** FastAPI, SQLAlchemy async, `pywebpush` (Python), `pydantic-settings`, React 19, `vite-plugin-pwa@^0.21`, Workbox 7, native `PushManager` / `ServiceWorkerRegistration` APIs, Tailwind 3, npm.
 
-**Breaking Changes:**
-- Default delivery channel flips from Telegram to Web Push. Telegram-only deployments must set `NOTIFICATION_CHANNEL=telegram` to preserve current behavior.
-- Backend routes `GET /api/telegram/prefs` and `PUT /api/telegram/prefs` are removed. Only two frontend call-sites exist (`client.ts:getNotificationPrefs` / `updateNotificationPrefs`); both are retargeted to `/api/notifications/preferences` in this plan, so no downstream code change is needed beyond what this plan ships.
-- New required env vars when `NOTIFICATION_CHANNEL` includes `webpush`: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The frontend reads the public key from the API at runtime (no build-arg required for dev/local; build-arg path documented for prod for marginal request-saving — see Task 20 + Notes).
+**Breaking Changes:** Yes.
+- **Telegram subsystem removed entirely.** No fallback channel. Any deployment relying on Telegram delivery loses it. Recovery: re-introduce from git history if ever needed (intentionally not preserved per project breaking-change policy).
+- Backend routes removed: `POST /api/telegram/link`, `POST /api/telegram/unlink`, `GET/PUT /api/telegram/prefs`, `POST /api/telegram/webhook`. Prefs data now served by `GET/PUT /api/notifications/preferences`.
+- `/api/auth/me` response loses `telegram_chat_id` and `telegram_linked_at` fields.
+- DB: table `telegram_link_tokens` dropped; columns `users.telegram_chat_id` + `users.telegram_linked_at` dropped (idempotent `DROP` — no data migration, per project policy).
+- Settings removed: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_LINK_TOKEN_TTL_MIN`, `TELEGRAM_DIGEST_TOP_N`. Renamed: `TELEGRAM_FAV_SWEEP_INTERVAL_MIN → FAV_SWEEP_INTERVAL_MIN`, `TELEGRAM_FAV_DELETED_DAYS → FAV_DELETED_DAYS`.
+- New required env vars for push delivery: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. If unset, `WebPushPlugin.is_configured()` returns False and no push is delivered (degrades gracefully, no crash).
 
 | Approval | Status | Date |
 |----------|--------|------|
-| Reviewer | approved | 2026-05-03 |
-| Human | pending | — |
+| Reviewer | approved | 2026-05-30 |
+| Human | approved | 2026-05-31 |
 
 ---
 
 ## Context
 
-### What exists today (verified by grep + read, 2026-05-03)
+### What exists today (verified by grep + read, 2026-05-30)
 
-- **Plugin registry** is the right reuse point. [`backend/app/notifications/registry.py:35`](backend/app/notifications/registry.py#L35) defines a module-level `notification_registry` with `register()` + `dispatch(MatchResult)`. Each plugin is checked via `is_configured()` before `send()`; failures are caught and logged. No changes to registry/base needed (one optional non-blocking improvement: add public `is_registered(cls)`; deferred to backlog).
-- **`MatchResult` payload** ([backend/app/notifications/base.py:7-16](backend/app/notifications/base.py#L7-L16)) carries `saved_search_id`, `search_name`, `user_id`, `new_listing_ids`, `new_listing_titles`, `total_new` — sufficient for push title/body without further refactoring.
-- **TelegramPlugin** ([backend/app/telegram/plugin.py](backend/app/telegram/plugin.py)) is the structural template. Its `is_configured()` returns `settings.telegram_enabled`; `send()` looks up `users.telegram_chat_id`, checks `user_notification_prefs.new_search_results`, formats an HTML digest, calls `bot.send_message`. The WebPushPlugin mirrors this shape but iterates over the user's `push_subscriptions` rows.
-- **Existing prefs table** `user_notification_prefs` ([backend/app/db.py:177-186](backend/app/db.py#L177-L186)) — columns: `user_id PK`, `new_search_results`, `fav_sold`, `fav_price`, `fav_deleted`, `updated_at`. Note: the legacy `fav_indicator` column was dropped at [backend/app/db.py:254](backend/app/db.py#L254) (PLAN-025). We **extend** this table with `web_push_enabled` rather than create a parallel one.
-- **Existing prefs API** at [backend/app/api/telegram.py:60-69](backend/app/api/telegram.py#L60-L69) (`GET/PUT /api/telegram/prefs`) — this plan **removes** these two routes and serves the same data via the new `/api/notifications/preferences`. The Telegram-specific routes `/api/telegram/link` + `/api/telegram/unlink` remain.
-- **Existing frontend type** [frontend/src/types/api.ts:224-229](frontend/src/types/api.ts#L224-L229) declares `NotificationPrefs { new_search_results, fav_sold, fav_price, fav_deleted }`. Plan **extends** this in place with `web_push_enabled` (not duplicated as a parallel `NotificationPreferencesDto`).
-- **Existing frontend client** [frontend/src/api/client.ts](frontend/src/api/client.ts): bare `fetch()` + private `handleResponse<T>(res: Response)` (lines 19-31), one exported function per endpoint. There is **no** generic `apiFetch`. The new subscriptions module follows the same pattern. The two prefs functions (`getNotificationPrefs`, `updateNotificationPrefs`, lines 177-189) are retargeted to the new path inside `client.ts` itself.
-- **TelegramPanel** ([frontend/src/components/TelegramPanel.tsx](frontend/src/components/TelegramPanel.tsx)) consumes only `getNotificationPrefs`/`updateNotificationPrefs` (lines 81-82, 180) — its UI iterates over the four telegram-relevant keys via the local `TOGGLE_ROWS` constant. After we extend `NotificationPrefs` with `web_push_enabled`, TelegramPanel keeps working unchanged: TypeScript reads the extra field and the UI ignores it because it's not in `TOGGLE_ROWS`.
-- **No Alembic.** Schema evolution is inline in `backend/app/db.py:init_db()` — idempotent `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, runs on every startup. Plan follows this convention.
-- **Test convention.** Tests in `backend/tests/test_<module>.py`. The existing fixture set in [backend/tests/conftest.py:301](backend/tests/conftest.py#L301) provides `authenticated_client` (a fresh user, dependency-overridden auth) and `authenticated_client_linked` (the same plus `telegram_chat_id=99999`). There is **no** `client`, `client_unauth`, `authed_user`, `other_user_with_sub` fixture today — Task 6 + Task 8 add the new fixtures explicitly. **Conftest also bootstraps the test DB schema** at lines 80-89 — when this plan adds `web_push_enabled` to `user_notification_prefs` and creates `push_subscriptions`, the conftest bootstrap must mirror those changes (Task 3 covers both).
-- **REST module pattern**: [backend/app/api/telegram.py:6](backend/app/api/telegram.py#L6) imports `from app.api.deps import get_current_user`. The dependency is named `get_current_user` (defined at [backend/app/api/deps.py:12](backend/app/api/deps.py#L12)). Mirror exactly.
-- **PWA infra is partially in place but legacy.** [frontend/public/sw.js](frontend/public/sw.js) exists (a static placeholder); [frontend/public/manifest.json](frontend/public/manifest.json) exists with `display:standalone` + 5 icon entries (4 PNG sizes including maskable variants + favicon SVG); icons live at `frontend/public/icons/{icon-192,icon-512,icon-maskable-192,icon-maskable-512,apple-touch-icon-180}.png`; [frontend/index.html:10](frontend/index.html#L10) has `<link rel="manifest" href="/manifest.json">` and apple-touch-icon meta; [frontend/src/main.tsx:27-31](frontend/src/main.tsx#L27-L31) registers `/sw.js` manually on window load. **All of this is replaced** in Task 11.5 — the manifest content is migrated into the VitePWA config, the static files are deleted, `index.html` link is removed, and `main.tsx` no longer registers anything (VitePWA's `injectRegister: 'auto'` does it).
-- **Prod build path.** Production frontend image is built by [.github/workflows/deploy.yml](.github/workflows/deploy.yml) using [frontend/Dockerfile](frontend/Dockerfile). There is no `Dockerfile.prod`. `docker-compose.prod.yml` pulls a prebuilt image from GHCR. Task 20 wires the `VITE_VAPID_PUBLIC_KEY` build-arg through both `Dockerfile` and `deploy.yml`.
-- **InstallPrompt** ([frontend/src/components/InstallPrompt.tsx](frontend/src/components/InstallPrompt.tsx)) provides the visual template: fixed `bottom-[72px]` (above mobile bottom nav), `sm:hidden`, `rgba(15,15,35,0.92)` glassmorphism, indigo accents, `localStorage` dismissal, local `isIos()` + `isStandalone()` helpers (extracted to `lib/pwa-detect.ts` in Task 11).
-- **Mount point.** [frontend/src/App.tsx:223](frontend/src/App.tsx#L223) renders `<InstallPrompt />` inside the auth-gated `<AuthenticatedAppInner>`. `<FirstStartPushPrompt />` mounts directly after.
-- **ProfilePage** ([frontend/src/pages/ProfilePage.tsx:236-240](frontend/src/pages/ProfilePage.tsx#L236-L240)) renders Column 2 as `<TelegramPanel /> {user.role === 'admin' && <LLMAdminPanel />}`. NotificationsPanel slots **above** TelegramPanel.
+- **Plugin registry** is the reuse point. [`backend/app/notifications/registry.py:35`](backend/app/notifications/registry.py#L35) defines a module-level `notification_registry` with `register()` + `dispatch(MatchResult)`. Each plugin is checked via `is_configured()` before `send()`; failures are caught and logged. No changes to registry/base needed.
+- **`MatchResult` payload** ([backend/app/notifications/base.py:7-16](backend/app/notifications/base.py#L7-L16)) carries `saved_search_id`, `search_name`, `user_id`, `new_listing_ids`, `new_listing_titles`, `total_new`. `NotificationPlugin` ABC ([base.py:19-30](backend/app/notifications/base.py#L19-L30)): `is_configured()` + `send(MatchResult) -> bool`.
+- **Dispatch trigger** — exactly one: [`backend/app/services/search_matcher.py:117-125`](backend/app/services/search_matcher.py#L117-L125) builds a `MatchResult` and calls `notification_registry.dispatch(match_result)`. Unchanged.
+- **TelegramPlugin** ([backend/app/telegram/plugin.py:39-95](backend/app/telegram/plugin.py)) is the structural template for `WebPushPlugin.send()`: fetch user, check `prefs.new_search_results`, format digest, deliver. **Deleted** in this plan; `WebPushPlugin` replaces it.
+- **Favorites sweep** ([backend/app/telegram/fav_sweep.py](backend/app/telegram/fav_sweep.py)) — `run_fav_status_sweep()` queries `user_favorites JOIN listings JOIN users WHERE u.telegram_chat_id IS NOT NULL`, diffs against `last_known_*` snapshots via `_detect_events()` (respecting `user_prefs.fav_sold/fav_price/fav_deleted`), sends HTML via `bot.send_message(chat_id, ...)`, always updates the snapshot, then prunes link tokens. Currently gated `if not settings.telegram_enabled: return 0` at the top ([fav_sweep.py:75](backend/app/telegram/fav_sweep.py#L75)) and scheduled in `main.py` ([main.py:101-109](backend/app/main.py#L101-L109)). Migrated to `app/notifications/fav_sweep.py` (Task 9).
+- **Prefs module** ([backend/app/telegram/prefs.py](backend/app/telegram/prefs.py)) — the only non-Telegram code under `app/telegram/`. Defines frozen dataclass `NotificationPrefs(user_id, new_search_results, fav_sold, fav_price, fav_deleted)` + async `get_prefs(user_id)` (upsert-then-SELECT, creates default row) + `set_prefs(user_id, **partial)` (whitelist of the four booleans). Imported by `plugin.py`, `fav_sweep.py`, `api/telegram.py`, and tests. **Moved** to `app/notifications/prefs.py` (Task 4).
+- **Importers of `app.telegram.prefs`** (verified by grep, 2026-05-30): `app/telegram/plugin.py:13`, `app/telegram/fav_sweep.py:18`, `app/api/telegram.py:9`, `backend/tests/test_telegram_plugin.py:55`, `backend/tests/test_telegram_prefs.py:4`, `backend/tests/test_telegram_fav_sweep.py:8`. All telegram modules/tests are deleted; remaining live importers after deletion = the new `web_push_plugin.py` + `fav_sweep.py` + `api/notifications.py` (all created against the new path).
+- **Existing prefs table** `user_notification_prefs` ([backend/app/db.py:176-186](backend/app/db.py#L176-L186)) — columns `user_id PK`, `new_search_results`, `fav_sold`, `fav_price`, `fav_deleted`, `fav_indicator`, `updated_at`. The `fav_indicator` column is dropped later in the same `init_db()` at [db.py:253-255](backend/app/db.py#L253-L255) (PLAN-025). We **extend** this table with `web_push_enabled` (Task 3).
+- **Telegram API router** is included in [`backend/app/api/routes.py:12,31`](backend/app/api/routes.py#L12) (`from app.api.telegram import router as telegram_api_router` / `router.include_router(telegram_api_router)`) — **NOT** in `main.py`. (`app/api/telegram.py` defines `/telegram/link`, `/unlink`, `/prefs` GET+PUT.) Removed in Task 7.5. The inbound webhook router `telegram_webhook_router` IS in `main.py` ([main.py:21,239](backend/app/main.py#L21)).
+- **`/api/auth/me`** ([backend/app/api/auth.py:133-157](backend/app/api/auth.py#L133-L157)) re-fetches `telegram_chat_id, telegram_linked_at` and returns them in the response dict ([auth.py:144-156](backend/app/api/auth.py#L144-L156)). The telegram fields are stripped in Task 7.6.
+- **No Alembic.** Schema evolution is inline in [`backend/app/db.py:init_db()`](backend/app/db.py#L18) — idempotent `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE … ADD/DROP COLUMN IF [NOT] EXISTS`, runs on every startup. Plan follows this convention.
+- **Test schema bootstrap** in [`backend/tests/conftest.py:48-89`](backend/tests/conftest.py#L48) drops `user_notification_prefs` + `telegram_link_tokens` (lines 49-50) before `Base.metadata.drop_all()`, then recreates telegram columns/tables (lines 61-78) + `user_notification_prefs` (lines 80-89). The autouse `patch_async_session_local` fixture redirects `AsyncSessionLocal` for a `_patch_targets` list ([conftest.py:132-138](backend/tests/conftest.py#L132)) that today lists five `app.telegram.*` modules. Telegram fixtures: `db_user_linked` ([conftest.py:259-275](backend/tests/conftest.py#L259)) and `authenticated_client_linked` ([conftest.py:346-388](backend/tests/conftest.py#L346)) seed `telegram_chat_id`. All updated in Task 3 + Task 6.
+- **REST module pattern**: [backend/app/api/telegram.py:6](backend/app/api/telegram.py#L6) imports `from app.api.deps import get_current_user` (defined at [deps.py:12](backend/app/api/deps.py#L12)). Mirror exactly.
+- **PWA infra is partially in place but legacy.** [frontend/public/sw.js](frontend/public/sw.js) (static placeholder) + [frontend/public/manifest.json](frontend/public/manifest.json) (display:standalone, 5 icon entries) exist; icons at `frontend/public/icons/{icon-192,icon-512,icon-maskable-192,icon-maskable-512,apple-touch-icon-180}.png`; [frontend/index.html:10](frontend/index.html#L10) has `<link rel="manifest" href="/manifest.json">`; [frontend/src/main.tsx:27-31](frontend/src/main.tsx#L27-L31) registers `/sw.js` manually. All replaced/removed in Tasks 11.5 + 12.
+- **Prod build path.** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds the frontend via [frontend/Dockerfile](frontend/Dockerfile) (no `.prod` variant). The nginx/frontend build step is at [deploy.yml:39-47](.github/workflows/deploy.yml#L39-L47). `docker-compose.prod.yml` pulls a prebuilt GHCR image. Task 20 wires `VITE_VAPID_PUBLIC_KEY`.
+- **InstallPrompt** ([frontend/src/components/InstallPrompt.tsx](frontend/src/components/InstallPrompt.tsx)): visual template — `fixed bottom-[72px]`, `sm:hidden`, `rgba(15,15,35,0.92)` glassmorphism, indigo accents, `localStorage` dismissal, local `isStandalone()` ([InstallPrompt.tsx:13-18](frontend/src/components/InstallPrompt.tsx#L13)) + `isIos()` ([InstallPrompt.tsx:20-22](frontend/src/components/InstallPrompt.tsx#L20)) — extracted to `lib/pwa-detect.ts` in Task 11.
+- **Mount point.** [frontend/src/App.tsx:223](frontend/src/App.tsx#L223) renders `<InstallPrompt />`. `<FirstStartPushPrompt />` mounts directly after (Task 19).
+- **ProfilePage** ([frontend/src/pages/ProfilePage.tsx:237-240](frontend/src/pages/ProfilePage.tsx#L237-L240)) renders Column 2 as `<TelegramPanel user={user} onUserReload={onUserReload} /> {user.role === 'admin' && <LLMAdminPanel />}`. `TelegramPanel` is **replaced** by `<NotificationsPanel />` (Task 19); the `onUserReload` prop becomes unused and the import is removed.
+- **TelegramPanel** ([frontend/src/components/TelegramPanel.tsx](frontend/src/components/TelegramPanel.tsx)) + its test ([frontend/src/components/__tests__/TelegramPanel.test.tsx](frontend/src/components/__tests__/TelegramPanel.test.tsx)) — **deleted** (Task 7.7). It owns the reusable `role="switch"` toggle markup ([TelegramPanel.tsx:306-338](frontend/src/components/TelegramPanel.tsx#L306)) and the optimistic-toggle-with-revert pattern ([TelegramPanel.tsx:171-188](frontend/src/components/TelegramPanel.tsx#L171)) — both **mirrored** into `NotificationsPanel` (Task 18b) before deletion. The toggle markup is copied verbatim there since the source file is removed.
+- **Frontend telegram surfaces** (verified by grep `[Tt]elegram` in `frontend/src`, 2026-05-30): `types/api.ts` (`NotificationPrefs` + `TelegramLinkResponse`), `api/client.ts` (`linkTelegram`, `unlinkTelegram`, `getNotificationPrefs`, `updateNotificationPrefs`, `TelegramLinkResponse` import), `pages/ProfilePage.tsx`, `components/TelegramPanel.tsx` + test, `__tests__/ModalRouting.test.tsx` (seeds `telegram_chat_id`/`telegram_linked_at` in the mocked user at lines 38, 204), `hooks/useAuth.ts` (`AuthUser.telegram_chat_id`/`telegram_linked_at`). `PlzBar.tsx` matched the grep only via the substring `gram` inside other words — **no actual telegram code** (verified: grep `telegram` → no matches). All real surfaces handled in Tasks 7.7, 14.
 
 ### Verified signatures (no false references)
 
 ```text
-backend/app/notifications/base.py:19    class NotificationPlugin(ABC)
-backend/app/notifications/base.py:23    async def is_configured(self) -> bool
-backend/app/notifications/base.py:27    async def send(self, match: MatchResult) -> bool
-backend/app/notifications/registry.py:35 notification_registry: NotificationRegistry  (singleton)
-backend/app/api/deps.py:12               async def get_current_user(...) -> User
-backend/app/api/telegram.py:6            from app.api.deps import get_current_user
-backend/app/api/telegram.py:60-69        @router.get/put("/prefs") — REMOVED in Task 7.5
-backend/app/db.py:11                     AsyncSessionLocal: async_sessionmaker
-backend/app/db.py:18                     async def init_db() -> None  (idempotent migrations)
-backend/app/db.py:177-186                CREATE TABLE user_notification_prefs (legacy 4 booleans + updated_at)
-backend/app/db.py:254                    DROP COLUMN fav_indicator (PLAN-025)
-backend/app/config.py:29                 class Settings(BaseSettings)
-backend/app/config.py:87                 settings.telegram_enabled  (property)
-backend/app/main.py:50-57                Plugin registration block in lifespan()
-backend/app/main.py:101-109              fav_sweep scheduler — gated on telegram_enabled
-backend/app/main.py:196-219              setWebhook block — gated on telegram_enabled
-backend/tests/conftest.py:80-89          test DB bootstrap of user_notification_prefs (4 cols)
-backend/tests/conftest.py:301-343        authenticated_client fixture (auth-overridden)
-backend/tests/conftest.py:347-388        authenticated_client_linked fixture
-frontend/src/api/client.ts:19            async function handleResponse<T>(res: Response)
-frontend/src/api/client.ts:177-189       getNotificationPrefs / updateNotificationPrefs (RETARGETED)
-frontend/src/types/api.ts:224-229        interface NotificationPrefs (EXTENDED with web_push_enabled)
-frontend/src/components/TelegramPanel.tsx     unchanged behavior post-migration
-frontend/src/components/InstallPrompt.tsx     visual template + helper source
-frontend/src/components/InstallPrompt.tsx:13  isStandalone() — extracted in Task 11
-frontend/src/components/InstallPrompt.tsx:20  isIos() — extracted in Task 11
-frontend/src/main.tsx:27-31              manual SW registration — DELETED in Task 11.5
-frontend/public/sw.js                    DELETED in Task 11.5
-frontend/public/manifest.json            DELETED, content migrated into VitePWA config
-frontend/public/icons/icon-{192,512}.png exists — referenced from VitePWA manifest + SW
-frontend/public/icons/icon-maskable-{192,512}.png exists — preserved as maskable
-frontend/public/icons/apple-touch-icon-180.png exists — kept (referenced from index.html)
-frontend/index.html:10                   <link rel="manifest"> — DELETED in Task 11.5
-frontend/Dockerfile                      single Dockerfile, no .prod variant
-.github/workflows/deploy.yml             builds + pushes the frontend image
-frontend/pnpm-lock.yaml                  untracked — DELETED in Task 10 (npm is canonical)
+backend/app/notifications/base.py:8       @dataclass MatchResult(saved_search_id, search_name, user_id, new_listing_ids, new_listing_titles, total_new)
+backend/app/notifications/base.py:19      class NotificationPlugin(ABC) — is_configured() + send(MatchResult)->bool
+backend/app/notifications/registry.py:35  notification_registry: NotificationRegistry (singleton)
+backend/app/services/search_matcher.py:125 await notification_registry.dispatch(match_result)
+backend/app/api/deps.py:12                async def get_current_user(...) -> User
+backend/app/telegram/prefs.py:12-18       @dataclass NotificationPrefs(user_id,new_search_results,fav_sold,fav_price,fav_deleted) — MOVED
+backend/app/telegram/prefs.py:21          async def get_prefs(user_id) -> NotificationPrefs — MOVED
+backend/app/telegram/prefs.py:40          async def set_prefs(user_id, **partial) -> NotificationPrefs — MOVED
+backend/app/telegram/fav_sweep.py:69      async def run_fav_status_sweep() -> int — MIGRATED to app/notifications/fav_sweep.py
+backend/app/telegram/fav_sweep.py:34      def _detect_events(row, deleted_cutoff, user_prefs) -> list[str] — MIGRATED
+backend/app/db.py:18                       async def init_db() — idempotent migrations
+backend/app/db.py:153-175                 PLAN-019 telegram DDL (chat_id col, unique idx, linked_at col, link_tokens table+idx) — DROPPED
+backend/app/db.py:176-186                 CREATE TABLE user_notification_prefs (incl. legacy fav_indicator)
+backend/app/db.py:253-255                 ALTER TABLE user_notification_prefs DROP COLUMN fav_indicator (PLAN-025)
+backend/app/config.py:77-92               TELEGRAM_* settings + telegram_enabled property — REMOVED/renamed
+backend/app/main.py:21                     from app.telegram.webhook import router as telegram_webhook_router — REMOVED
+backend/app/main.py:25                     from app.telegram.plugin import TelegramPlugin — REMOVED
+backend/app/main.py:49-57                 plugin registration block (LogPlugin + TelegramPlugin)
+backend/app/main.py:101-109               fav_sweep scheduler — gated on telegram_enabled (UNGATED + retargeted)
+backend/app/main.py:196-219               setWebhook block — REMOVED
+backend/app/main.py:239                    app.include_router(telegram_webhook_router) — REMOVED
+backend/app/api/routes.py:12,31           telegram_api_router import + include — REMOVED
+backend/app/api/auth.py:144-156           /auth/me returns telegram_chat_id + telegram_linked_at — STRIPPED
+backend/tests/conftest.py:49-50           DROP user_notification_prefs + telegram_link_tokens
+backend/tests/conftest.py:61-78           recreate telegram columns + telegram_link_tokens + idx — REMOVED
+backend/tests/conftest.py:80-89           CREATE user_notification_prefs (4 booleans + updated_at) — add web_push_enabled
+backend/tests/conftest.py:132-138         _patch_targets (5 app.telegram.* entries) — replaced
+backend/tests/conftest.py:259-275         db_user_linked fixture — REMOVED
+backend/tests/conftest.py:346-388         authenticated_client_linked fixture — REMOVED
+frontend/src/api/client.ts:19             async function handleResponse<T>(res: Response)
+frontend/src/api/client.ts:167-189        linkTelegram/unlinkTelegram/getNotificationPrefs/updateNotificationPrefs
+frontend/src/types/api.ts:224-229         interface NotificationPrefs — EXTENDED with web_push_enabled
+frontend/src/types/api.ts:231-234         interface TelegramLinkResponse — REMOVED
+frontend/src/hooks/useAuth.ts:3-10        AuthUser (incl. telegram_chat_id/telegram_linked_at) — fields REMOVED
+frontend/src/components/InstallPrompt.tsx:13 isStandalone() — extracted in Task 11
+frontend/src/components/InstallPrompt.tsx:20 isIos() — extracted in Task 11
+frontend/src/components/TelegramPanel.tsx:306-338 role="switch" toggle markup — mirrored then file DELETED
+frontend/src/pages/ProfilePage.tsx:237-240 Column 2 (TelegramPanel) — TelegramPanel replaced
+frontend/src/App.tsx:223                   <InstallPrompt /> — FirstStartPushPrompt mounts after
+frontend/src/main.tsx:27-31                manual SW registration — DELETED in Task 11.5
+frontend/__tests__/ModalRouting.test.tsx:38,204 mocked user has telegram fields — REMOVED in Task 14
+frontend/index.html:10                     <link rel="manifest"> — DELETED in Task 11.5
+frontend/nginx.conf:14                     location = /sw.js no-cache rule — sw output filename must stay sw.js
+frontend/vite.config.ts                    defineConfig from vitest/config; plugins:[react()]; test.globals:true
+frontend/package.json:8                    "build": "tsc -b && vite build"
+frontend/package.json:11                   "test": "vitest"
+frontend/Dockerfile                        single Dockerfile, no .prod variant
+.github/workflows/deploy.yml:39-47         nginx/frontend build step (no build-args today)
+docker-compose.yml:42-44                   TELEGRAM_* backend env — REMOVED, VAPID added
+docker-compose.prod.yml:25-34              prod backend env block (no telegram vars today) — VAPID added
+env.prod.example:18-24                     TELEGRAM_* block — REMOVED, VAPID added
 ```
 
-### Locked decisions (from discussion 2026-05-03)
+### Locked decisions
 
 | Topic | Decision |
 |---|---|
-| Scope | Single combined plan: backend plugin + REST + DB + frontend SW + UI + docs |
-| Trigger | Exactly one — `MatchResult` from `app/services/search_matcher.py` (existing dispatch) |
-| Routing | Push goes to all `push_subscriptions` rows belonging to `MatchResult.user_id` |
-| Channel switch | `NOTIFICATION_CHANNEL` env, values `webpush` (default) / `telegram` / `both`; gated at registration time in `main.py` AND on `fav_sweep` + `setWebhook` (so `webpush` deployments don't half-run Telegram) |
-| Telegram code | Plugin code untouched. `app/api/telegram.py` loses the `/prefs` GET+PUT routes (consolidation), `/link` + `/unlink` remain |
-| Multi-device | Yes — N `push_subscriptions` rows per user, each with `device_label`, `last_used_at`, individually deletable |
-| Prefs consolidation | Single source of truth at `/api/notifications/preferences`. Existing `NotificationPrefs` interface extended with `web_push_enabled`. `client.ts:getNotificationPrefs/updateNotificationPrefs` retargeted, function names preserved (no callsite churn). TelegramPanel unchanged |
-| Permission UX | First-app-start banner after login; gated by `localStorage["rcn_notif_asked"]`. Mirror InstallPrompt visual shell |
-| iOS | Web Push works only when PWA is installed (Safari 16.4+). Banner suppressed on iOS Safari without standalone; user sees InstallPrompt first. After install + relaunch, push prompt appears |
-| VAPID storage | Env vars; local in `docker-compose.yml`, prod in GHA repo secrets, passed to frontend build via `VITE_VAPID_PUBLIC_KEY` build-arg in `frontend/Dockerfile`. Public key is also returned from `/api/notifications/vapid-public-key` so dev/local works without a build-time arg |
-| Migrations | Inline in `backend/app/db.py:init_db()`. No Alembic. Test schema bootstrap mirrored in `conftest.py` |
-| Tests | Backend: `backend/tests/test_*.py`, fixtures `authenticated_client` + new `seeded_*` factories. Frontend: co-located `__tests__/*.test.tsx`. Vitest globals stay enabled (matches existing config); tests still import `describe, it, expect, vi` explicitly per CLAUDE.md to be forward-compatible if globals are disabled later |
-| Package manager | npm (canonical). `pnpm-lock.yaml` is removed; `package-lock.json` stays |
-| Cost | Zero. `pywebpush` MIT, VAPID keypair generated locally via `npx web-push generate-vapid-keys`. No paid API calls |
+| Channel | Web Push is the **only** channel. No `NOTIFICATION_CHANNEL` switch. |
+| Telegram | Removed entirely (code, routes, settings, DB columns/table, frontend, tests). |
+| Prefs location | `NotificationPrefs` + get/set moved to `app/notifications/prefs.py`. |
+| Trigger | One — `MatchResult` from `search_matcher.py` (unchanged dispatch). |
+| Fav sweep | Migrated to `app/notifications/fav_sweep.py`; selects users with ≥1 push subscription; delivers via shared `send_web_push_to_user`; ungated scheduler; renamed interval/cutoff settings. `fav_sold/fav_price/fav_deleted` opt-ins preserved. |
+| Send helper | `send_web_push_to_user(user_id, payload)` in `web_push_plugin.py` — owns send loop + 404/410 GC + per-delivered `last_used_at` bump. Used by plugin AND fav sweep (DRY). |
+| Multi-device | N `push_subscriptions` rows per user; each `device_label`, `last_used_at`, individually deletable. |
+| Prefs consolidation | Single source at `/api/notifications/preferences`. |
+| Permission UX | First-app-start banner after login; gated by `localStorage["rcn_notif_asked"]`; mirrors InstallPrompt shell. |
+| iOS | Push works only when PWA installed (Safari 16.4+). Banner suppressed on iOS Safari without standalone. |
+| VAPID storage | Env vars; local in `docker-compose.yml`, prod in GH repo var + VPS `.env`, frontend build via `VITE_VAPID_PUBLIC_KEY` build-arg. Public key also returned from `/api/notifications/vapid-public-key` so dev works without a build-time arg. |
+| Migrations | Inline in `init_db()`. No Alembic. Test schema mirrored in `conftest.py`. |
+| SW update reliability | Adopt the minimal half of Do-It's PLAN_037: SW `message` SKIP_WAITING handler + nginx no-cache for `index.html`. Skip the periodic-update React hook (YAGNI for single-user hobby). See Task 12.5. |
+| Package manager | npm (canonical). |
+| Cost | Zero. `pywebpush` MIT; VAPID generated locally. No paid API calls. |
 
-### Reuse Check (verified by grep, 2026-05-03)
+### Concept reference (Do-It / "Do It!", NestJS — NOT copied, different stack)
 
-- **NotificationPlugin ABC** — exists. Reused unchanged.
-- **`notification_registry`** — exists. Reused unchanged.
-- **`user_notification_prefs` table** — exists. Extended in place.
-- **`NotificationPrefs` TS interface** — exists at `types/api.ts:224-229`. Extended in place with `web_push_enabled: boolean`. **Reuse check:** Extends existing interface; not duplicated.
-- **`getNotificationPrefs` / `updateNotificationPrefs`** — exist at `client.ts:177-189`. Retargeted to new path; function names preserved.
-- **`InstallPrompt` shell + helpers** — `grep -rln "fixed bottom-" frontend/src` shows only `InstallPrompt.tsx`. **Extract** `isIos()` + `isStandalone()` + new `pushSupported()` into `frontend/src/lib/pwa-detect.ts` (consumed by InstallPrompt + FirstStartPushPrompt + the hook). **Reuse check:** Extracts shared helpers from pattern in `InstallPrompt.tsx`.
-- **ProfilePage `cardStyle`** — local `const cardStyle` at [ProfilePage.tsx:76-82](frontend/src/pages/ProfilePage.tsx#L76-L82). NotificationsPanel re-declares the same style locally (same two-caller pattern as `TelegramPanel`). **Reuse check:** Reuses inline `cardStyle` shape; no extraction (YAGNI for two callers).
-- **API client** — `frontend/src/api/client.ts` (bare `fetch` + `handleResponse`). **Reuse check:** New `notifications/api.ts` follows the same pattern (no `apiFetch` helper); prefs functions stay in `client.ts`.
-- **Toggle/switch component** — `grep -rln "role=\"switch\"" frontend/src` shows the inline pattern in `TelegramPanel.tsx` (lines 308-338). NotificationsPanel reuses this exact toggle markup for its single `web_push_enabled` switch (consistency).
-- **PWA manifest content** — already correct in `public/manifest.json`. **Reuse check:** Migrate verbatim into VitePWA `manifest:` config, including all five icon entries and the maskable purposes.
+Verified against `D:\DEVELOPMENT\_workplace_AI\ToDoList` on 2026-05-30. Stack differs (NestJS+Prisma+`web-push` npm vs. FastAPI+SQLAlchemy+`pywebpush`); concepts adopted, code not:
+- `apps/api/src/notifications/web-push-notification-provider.ts` — confirms the send pattern: load subs → `Promise.allSettled` send → collect `stale` (404/410) and `succeeded` ids → `deleteMany({where:{userId, id:{in:stale}}})` (scoped by userId, defense-in-depth) → bump `lastUsedAt` **only for succeeded** subs. **Two refinements folded into our helper vs. the old plan:** (a) GC delete is scoped by `user_id AND id IN (...)`, not `id IN (...)` alone; (b) `last_used_at` is bumped only for subscriptions that actually delivered, not blanket per-user.
+- `apps/web/src/service-worker.ts` — confirms push/notificationclick handlers, `assertSafeNotificationUrl` open-redirect guard (relative-`/`-only), exact-pathname client match (substring match would route `/lists/1` to `/lists/10`), and a `SKIP_WAITING` `message` handler. Our SW uses an in-app URL (`/?saved_search=…`), so we keep the safe-URL guard and pathname-exact match.
+- `apps/web/src/notifications/{useWebPushSubscription.ts,api.ts,FirstStartPushPrompt.tsx}`, `apps/web/src/features/profile/{ProfileNotifications.tsx,DeviceListSection.tsx}` — confirm the hook/state-machine, the subscriptions client, and the device-list UI shape.
+- `docs/archive/PLAN_037_pwa_update_reliability.md` (approved 2026-05-05, **after** this plan's original review) — root cause: with VitePWA `autoUpdate` + `injectManifest`, a new SW stays in `waiting` indefinitely without a `SKIP_WAITING` `message` handler, and browsers serve a stale `index.html` without an nginx no-cache rule. We adopt the SW handler + nginx rule (Task 12.5). We skip Do-It's `usePwaUpdate` resume/30-min polling hook (YAGNI here). Note: our `sw.ts` calls `self.skipWaiting()` in the `install` handler unconditionally, which is a simpler equivalent for a single-user app — the explicit message handler is added belt-and-suspenders so a future `registerType` change does not silently strand updates.
+
+### Reuse Check (verified by grep, 2026-05-30)
+
+- **NotificationPlugin ABC / `notification_registry`** — exist. Reused unchanged.
+- **`user_notification_prefs` table** — exists. Extended in place with `web_push_enabled BOOLEAN NOT NULL DEFAULT TRUE`.
+- **`NotificationPrefs` TS interface** — exists at `types/api.ts:224-229`. Extended in place with `web_push_enabled: boolean`. **Reuse check:** extends existing interface; not duplicated.
+- **InstallPrompt shell + helpers** — `grep -rln "fixed bottom-" frontend/src` shows only `InstallPrompt.tsx`. **Extract** `isIos()` + `isStandalone()` + new `pushSupported()` into `frontend/src/lib/pwa-detect.ts`. **Reuse check:** extracts shared helpers from `InstallPrompt.tsx`.
+- **ProfilePage `cardStyle`** — local `const cardStyle` at [ProfilePage.tsx:76-82](frontend/src/pages/ProfilePage.tsx#L76). NotificationsPanel re-declares the same style locally. **Reuse check:** reuses inline `cardStyle` shape; no extraction (YAGNI for two callers).
+- **API client** — `frontend/src/api/client.ts` (bare `fetch` + `handleResponse`). **Reuse check:** new `notifications/api.ts` follows the same pattern; the consolidated prefs functions stay in `client.ts` (retargeted, renamed-free).
+- **Toggle/switch component** — the `role="switch"` markup lives only in `TelegramPanel.tsx:306-338`, which is **deleted** in this plan. **Reuse check:** the markup is mirrored verbatim into `NotificationsPanel` (Task 18b) before TelegramPanel is removed; no shared component extraction (YAGNI — single remaining caller).
+- **Optimistic-toggle-with-revert** — pattern at `TelegramPanel.tsx:171-188`. **Reuse check:** mirrored into `NotificationsPanel.handleTogglePush` (Task 18b).
+- **PWA manifest content** — already correct in `public/manifest.json`. **Reuse check:** migrate verbatim into VitePWA `manifest:` config incl. all five icon entries + maskable purposes.
 
 ### Files structure (final)
 
 **Backend (new):**
 ```
+backend/app/notifications/prefs.py
+backend/app/notifications/fav_sweep.py
 backend/app/notifications/web_push_plugin.py
 backend/app/api/notifications.py
+backend/tests/test_notifications_prefs.py
 backend/tests/test_web_push_plugin.py
+backend/tests/test_notifications_fav_sweep.py
 backend/tests/test_notifications_api.py
 ```
 
 **Backend (modified):**
 - `backend/requirements.txt` — add `pywebpush>=2.0`
-- `backend/app/config.py` — add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `NOTIFICATION_CHANNEL` + `web_push_enabled` and `notification_channel_normalized` properties
+- `backend/app/config.py` — remove all `TELEGRAM_*` settings + `telegram_enabled`; rename two fav-sweep settings; add `VAPID_*` + `web_push_enabled` property
 - `backend/app/models.py` — add `PushSubscription` ORM model
-- `backend/app/db.py:init_db()` — append idempotent `CREATE TABLE IF NOT EXISTS push_subscriptions(...)` + `ALTER TABLE user_notification_prefs ADD COLUMN IF NOT EXISTS web_push_enabled BOOLEAN NOT NULL DEFAULT TRUE`
-- `backend/app/main.py` — gate plugin registration on `NOTIFICATION_CHANNEL`; gate `fav_sweep` scheduler on channel; gate `setWebhook` block on channel; register `WebPushPlugin`; mount `notifications` router; import `WebPushPlugin` + router
-- `backend/app/telegram/prefs.py` — extend `NotificationPrefs` dataclass + `get_prefs` SELECT to include `web_push_enabled`; extend `set_prefs` field whitelist
-- `backend/app/api/telegram.py` — **remove** `GET /telegram/prefs` and `PUT /telegram/prefs` routes (lines 60-69) + the now-unused `PrefsBody`, `PrefsResponse`, `_prefs_to_response` helpers (lines 20-40); imports unchanged otherwise
-- `backend/tests/conftest.py` — extend test schema bootstrap (Task 3 step) and add new fixtures `seeded_user_with_subs`, `other_user_with_sub` (Task 6 step)
-- `backend/tests/test_telegram_api.py` — **remove** test cases that target the removed `/telegram/prefs` routes (Task 7.5 step)
-- `docker-compose.yml` — add `VAPID_*`, `NOTIFICATION_CHANNEL` to backend service env (dev)
-- `docker-compose.prod.yml` — mirror the same vars on prod backend service env
-- `env.prod.example` — document new vars + the GitHub repo variable `VAPID_PUBLIC_KEY` for CI
+- `backend/app/db.py:init_db()` — append `CREATE TABLE push_subscriptions` + `ALTER … ADD web_push_enabled`; append idempotent `DROP TABLE telegram_link_tokens` + `ALTER … DROP telegram_chat_id/telegram_linked_at`
+- `backend/app/main.py` — remove telegram imports/registration/setWebhook/webhook-include; register `WebPushPlugin`; ungate + retarget fav_sweep scheduler; mount notifications router
+- `backend/app/api/routes.py` — remove telegram_api_router import + include
+- `backend/app/api/auth.py` — strip telegram fields from `/auth/me`
+- `backend/tests/conftest.py` — drop telegram schema/fixtures; add `web_push_enabled` + `push_subscriptions`; update `_patch_targets`; add new fixtures
+- `docker-compose.yml`, `docker-compose.prod.yml`, `env.prod.example` — remove `TELEGRAM_*`, add `VAPID_*` + renamed fav-sweep vars
+
+**Backend (deleted):**
+```
+backend/app/telegram/                       (entire package: __init__.py, bot.py, link.py, plugin.py, prefs.py, fav_sweep.py, webhook.py)
+backend/app/api/telegram.py
+backend/tests/test_telegram_api.py
+backend/tests/test_telegram_bot.py
+backend/tests/test_telegram_link.py
+backend/tests/test_telegram_plugin.py
+backend/tests/test_telegram_prefs.py
+backend/tests/test_telegram_webhook.py
+backend/tests/test_telegram_fav_sweep.py
+```
 
 **Frontend (new):**
 ```
-frontend/src/sw.ts                                       (filename matches existing nginx /sw.js no-cache rule)
+frontend/src/sw.ts
 frontend/src/lib/pwa-detect.ts
 frontend/src/lib/__tests__/pwa-detect.test.ts
-frontend/src/notifications/api.ts                        (subscriptions + vapid only — prefs stay in client.ts)
+frontend/src/notifications/api.ts
 frontend/src/notifications/device-label.ts
 frontend/src/notifications/useWebPushSubscription.ts
 frontend/src/notifications/FirstStartPushPrompt.tsx
@@ -159,43 +209,47 @@ frontend/src/components/__tests__/NotificationsPanel.test.tsx
 ```
 
 **Frontend (modified):**
-- `frontend/package.json` — add `vite-plugin-pwa@^0.21`, `workbox-window@^7`, `workbox-precaching@^7` (via `npm install`)
-- `frontend/package-lock.json` — regenerated by `npm install`
-- `frontend/vite.config.ts` — wire `VitePWA({ strategies: 'injectManifest', srcDir: 'src', filename: 'sw.ts', registerType: 'autoUpdate', injectRegister: 'auto', manifest: <migrated content> })`
-- `frontend/index.html` — remove `<link rel="manifest" href="/manifest.json">` (line 10); apple-touch-icon stays
-- `frontend/src/main.tsx` — remove the `if ('serviceWorker' in navigator) {...}` block (lines 27-31)
-- `frontend/src/components/InstallPrompt.tsx` — replace inline `isIos()` / `isStandalone()` with imports from `lib/pwa-detect.ts`
-- `frontend/src/types/api.ts` — extend `NotificationPrefs` with `web_push_enabled: boolean`; add `PushSubscriptionDto`, `CreatePushSubscriptionDto`, `VapidKeyDto`
-- `frontend/src/api/client.ts` — retarget `getNotificationPrefs` and `updateNotificationPrefs` from `/api/telegram/prefs` to `/api/notifications/preferences`
-- `frontend/src/App.tsx:223` — mount `<FirstStartPushPrompt />` directly after `<InstallPrompt />`
-- `frontend/src/pages/ProfilePage.tsx:238` — render `<NotificationsPanel />` above `<TelegramPanel />`
-- `frontend/Dockerfile` — accept `ARG VITE_VAPID_PUBLIC_KEY` + `ENV` before `npm run build`
-- `.github/workflows/deploy.yml` — pass `--build-arg VITE_VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}` (or `${{ vars.VAPID_PUBLIC_KEY }}` — public key is fine as a non-secret repo variable)
+- `frontend/package.json` / `package-lock.json` — add `vite-plugin-pwa@^0.21`, `workbox-window@^7`, `workbox-precaching@^7`
+- `frontend/vite.config.ts` — wire `VitePWA({ injectManifest, srcDir:'src', filename:'sw.ts', registerType:'autoUpdate', injectRegister:'auto', manifest:<migrated> })`
+- `frontend/index.html` — remove `<link rel="manifest">` (line 10)
+- `frontend/src/main.tsx` — remove manual SW registration (lines 27-31)
+- `frontend/nginx.conf` — add `location = /index.html` no-cache block (Task 12.5)
+- `frontend/src/components/InstallPrompt.tsx` — import `isIos`/`isStandalone` from `lib/pwa-detect`
+- `frontend/src/types/api.ts` — extend `NotificationPrefs`; remove `TelegramLinkResponse`; add `PushSubscriptionDto`, `CreatePushSubscriptionDto`, `VapidKeyDto`
+- `frontend/src/api/client.ts` — remove `linkTelegram`/`unlinkTelegram` + `TelegramLinkResponse` import; retarget `getNotificationPrefs`/`updateNotificationPrefs` to `/api/notifications/preferences`
+- `frontend/src/hooks/useAuth.ts` — remove `telegram_chat_id`/`telegram_linked_at` from `AuthUser`
+- `frontend/src/__tests__/ModalRouting.test.tsx` — remove telegram fields from mocked user (lines 38, 204)
+- `frontend/src/App.tsx` — mount `<FirstStartPushPrompt />` after `<InstallPrompt />`
+- `frontend/src/pages/ProfilePage.tsx` — replace `<TelegramPanel>` with `<NotificationsPanel>`; drop unused import/prop
+- `frontend/Dockerfile` — `ARG VITE_VAPID_PUBLIC_KEY` + `ENV` before build
+- `.github/workflows/deploy.yml` — pass `--build-arg VITE_VAPID_PUBLIC_KEY`
 
 **Frontend (deleted):**
-- `frontend/public/sw.js` (legacy static SW — replaced by VitePWA-generated worker)
-- `frontend/public/manifest.json` (content migrated into VitePWA config)
-- `frontend/pnpm-lock.yaml` (npm is canonical)
+- `frontend/src/components/TelegramPanel.tsx`
+- `frontend/src/components/__tests__/TelegramPanel.test.tsx`
+- `frontend/public/sw.js`
+- `frontend/public/manifest.json`
+- `frontend/pnpm-lock.yaml` (if present — npm is canonical)
 
 **Docs (modified):**
-- `docs/definition.md` §F5 — flip from "Future" to active feature
-- `docs/architektur.md` — add §"Notification Channels" section
-- `docs/limitations.md` — add entry "iOS Web Push requires PWA install"
+- `docs/definition.md` §F5 — flip to active; note Telegram removed
+- `docs/architektur.md` — add "Notification Channel (Web Push)" section; remove Telegram references
+- `docs/limitations.md` — add "iOS Web Push requires PWA install"
 
 ---
 
 ## Tasks
 
-> **Parallelism:** Tasks 1–9 (backend) parallel after Task 1. Tasks 10–22 (frontend) parallel after Task 10. Backend and frontend layers are fully independent — coder agents can run them simultaneously. Doc updates (Tasks 23–25) require backend + frontend done.
-> **No BREAKs.** All tasks are non-destructive on shared/prod state and the coder can self-recover from any single-task failure (per `dglabs.writing-plans` BREAK policy).
+> **Parallelism:** Backend Tasks 1–9 run after Task 1 (some depend on 3/4). Frontend Tasks 10–22 run after Task 10. Backend and frontend layers are otherwise independent, with **one exception: Task 7.7 (final Telegram deletion) is the cross-layer join point** — it depends on frontend Tasks 14 + 19 having retargeted all importers, so Task 7.7 must run last (after both layers complete). Its Step 1 verification grep enforces this. Doc Tasks 23–25 require implementation done.
+> **No BREAKs.** All tasks are non-destructive on shared/prod state; the coder can self-recover from any single-task failure (per `dglabs.writing-plans` BREAK policy). DB drops are idempotent and dev/test-only at execution time.
 
 ---
 
-### Task 1: Backend dependencies [ ]
+### Task 1: Backend dependency [ ]
 
 **Files:** Modify `backend/requirements.txt`
 
-**Step 1: Append `pywebpush`**
+**Step 1: Append**
 
 ```text
 pywebpush>=2.0
@@ -210,49 +264,47 @@ git commit -m "chore(backend): add pywebpush for PLAN-027"
 
 ---
 
-### Task 2: Backend config — VAPID + channel switch [ ]
+### Task 2: Backend config — VAPID, remove Telegram, rename fav-sweep settings [ ]
 
 **Depends on:** Task 1
 
 **Files:** Modify `backend/app/config.py`
 
-**Step 1: Add fields to `Settings`** (insert after the Telegram block, before `@property def telegram_enabled` at line 87):
+**Step 1: Remove the Telegram block** (`config.py:77-92`): delete `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_LINK_TOKEN_TTL_MIN`, `TELEGRAM_DIGEST_TOP_N`, and the `telegram_enabled` property.
+
+**Step 2: Add the replacement block** in the same place (after `ebay_client_secret`, before `openrouter_free_models_list`):
 
 ```python
-    # Web Push (VAPID) — required only when NOTIFICATION_CHANNEL includes "webpush"
+    # Favorites status sweep (was TELEGRAM_FAV_*)
+    FAV_SWEEP_INTERVAL_MIN: int = 60
+    FAV_DELETED_DAYS: int = 3
+
+    # Web Push (VAPID) — push disabled (no crash) when any field is empty
     VAPID_PUBLIC_KEY: str = ""
     VAPID_PRIVATE_KEY: str = ""
     VAPID_SUBJECT: str = "mailto:marco.roth1983@googlemail.com"
 
-    # Channel router: "webpush" (default) | "telegram" | "both"
-    NOTIFICATION_CHANNEL: str = "webpush"
-
     @property
     def web_push_enabled(self) -> bool:
         return bool(self.VAPID_PUBLIC_KEY and self.VAPID_PRIVATE_KEY and self.VAPID_SUBJECT)
-
-    @property
-    def notification_channel_normalized(self) -> str:
-        v = (self.NOTIFICATION_CHANNEL or "").strip().lower()
-        return v if v in {"webpush", "telegram", "both"} else "webpush"
 ```
 
-**Step 2: Commit**
+**Step 3: Commit**
 
 ```bash
 git add backend/app/config.py
-git commit -m "feat(config): add VAPID + NOTIFICATION_CHANNEL settings"
+git commit -m "feat(config): add VAPID, remove Telegram settings, rename fav-sweep knobs"
 ```
 
 ---
 
-### Task 3: Backend schema — push_subscriptions + prefs column + test bootstrap [ ]
+### Task 3: Backend schema — push_subscriptions, web_push_enabled, drop Telegram DDL, test bootstrap [ ]
 
 **Depends on:** Task 1
 
 **Files:** Modify `backend/app/db.py`, `backend/app/models.py`, `backend/tests/conftest.py`
 
-**Step 1: Append idempotent DDL** at the end of `init_db()` in `backend/app/db.py` (after the PLAN-025 block):
+**Step 1: Append idempotent DDL** at the end of `init_db()` in `backend/app/db.py` (after the PLAN-025 block at line 255):
 
 ```python
         # PLAN-027: Web Push subscriptions + per-user toggle
@@ -277,9 +329,43 @@ git commit -m "feat(config): add VAPID + NOTIFICATION_CHANNEL settings"
             "ALTER TABLE user_notification_prefs "
             "ADD COLUMN IF NOT EXISTS web_push_enabled BOOLEAN NOT NULL DEFAULT TRUE"
         ))
+        # PLAN-027: Telegram removed — drop its table + columns (idempotent, no migration)
+        await conn.execute(text("DROP TABLE IF EXISTS telegram_link_tokens CASCADE"))
+        await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_chat_id"))
+        await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_linked_at"))
 ```
 
-**Step 2: Add ORM model** in `backend/app/models.py` (after `UserFavorite`):
+**Step 1b: Delete the dead PLAN-019 Telegram DDL** in `backend/app/db.py` (lines **153-175**, verified 2026-05-30). These statements create the `telegram_chat_id` column, the `ux_users_telegram_chat_id` unique index, the `telegram_linked_at` column, the `telegram_link_tokens` table, and the `ix_telegram_link_tokens_user` index — all of which the Step 1 drops now immediately undo within the same `init_db()` run (a no-net-effect create-then-drop cycle). Delete this exact block:
+
+```python
+        # PLAN-019: Telegram notifications
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT"
+        ))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_users_telegram_chat_id
+            ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL
+        """))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+                token       TEXT PRIMARY KEY,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at  TIMESTAMPTZ NOT NULL,
+                used_at     TIMESTAMPTZ
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_telegram_link_tokens_user ON telegram_link_tokens (user_id)"
+        ))
+```
+
+The `user_notification_prefs` CREATE that immediately follows (currently `db.py:176-186`) stays — only the Telegram column/index/table statements above it are removed.
+
+**Step 2: Add ORM model** in `backend/app/models.py` (after `UserFavorite`, the last class):
 
 ```python
 class PushSubscription(Base):
@@ -302,38 +388,26 @@ class PushSubscription(Base):
     )
 ```
 
-**Step 3: Mirror schema changes in test bootstrap.** In `backend/tests/conftest.py`, three concrete edits:
+(`Integer`, `Text`, `ForeignKey`, `DateTime`, `func`, `Mapped`, `mapped_column` are all already imported in `models.py`.)
 
-1. **Manual-table drop list** (around lines 48-50). The existing block drops `user_notification_prefs` + `telegram_link_tokens` *before* `Base.metadata.drop_all()` because they are FK-referencing manual tables not in `Base.metadata`. `push_subscriptions` is also a manual table FK-referencing `users`, so it must join the drop list:
+**Step 3: Update test bootstrap** in `backend/tests/conftest.py`:
 
-   ```python
-   async with engine.begin() as conn:
-       await conn.execute(text("DROP TABLE IF EXISTS push_subscriptions CASCADE"))
-       await conn.execute(text("DROP TABLE IF EXISTS user_notification_prefs CASCADE"))
-       await conn.execute(text("DROP TABLE IF EXISTS telegram_link_tokens CASCADE"))
-       await conn.run_sync(Base.metadata.drop_all)
-       await conn.run_sync(Base.metadata.create_all)
-   ```
-
-2. **`user_notification_prefs` CREATE** (around lines 80-89): add `web_push_enabled BOOLEAN NOT NULL DEFAULT TRUE,` between `fav_deleted` and `updated_at`. Append the `push_subscriptions` CREATE + index that prod `init_db` uses (Step 1's snippet).
-
-3. **`_patch_targets` list** (around lines 132-138). The autouse `patch_async_session_local` fixture redirects `AsyncSessionLocal` to the test engine for every module that does `from app.db import AsyncSessionLocal`. Task 5's `web_push_plugin.py` imports `AsyncSessionLocal` at module scope, so it must be added:
-
-   ```python
-   _patch_targets = [
-       "app.telegram.bot",
-       "app.telegram.link",
-       "app.telegram.prefs",
-       "app.telegram.plugin",
-       "app.telegram.fav_sweep",
-       "app.notifications.web_push_plugin",  # PLAN-027
-   ]
-   ```
-
-The test schema section after edit 2 becomes:
+3a. **Drop list** (lines 49-50): replace the two telegram-aware drops with the push + prefs drops (telegram tables no longer exist in the new schema):
 
 ```python
-        # PLAN-019: user_notification_prefs table
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS push_subscriptions CASCADE"))
+        await conn.execute(text("DROP TABLE IF EXISTS user_notification_prefs CASCADE"))
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+```
+
+3b. **Remove the PLAN-019 telegram bootstrap** (lines 61-78): delete the `telegram_chat_id` column add, the `ux_users_telegram_chat_id` index, the `telegram_linked_at` column add, and the `telegram_link_tokens` table + index.
+
+3c. **`user_notification_prefs` CREATE** (lines 80-89): add `web_push_enabled` and append the `push_subscriptions` table + index. Final block:
+
+```python
+        # PLAN-019/027: user_notification_prefs table
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS user_notification_prefs (
                 user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -364,26 +438,45 @@ The test schema section after edit 2 becomes:
         ))
 ```
 
+3d. **`_patch_targets`** (lines 132-138): replace the five `app.telegram.*` entries with the new module paths (these `from app.db import AsyncSessionLocal` at module scope):
+
+```python
+    _patch_targets = [
+        "app.notifications.prefs",          # PLAN-027
+        "app.notifications.web_push_plugin", # PLAN-027
+        "app.notifications.fav_sweep",       # PLAN-027
+    ]
+```
+
 **Step 4: Commit**
 
 ```bash
 git add backend/app/db.py backend/app/models.py backend/tests/conftest.py
-git commit -m "feat(db): add push_subscriptions + web_push_enabled (prod + test schema)"
+git commit -m "feat(db): push_subscriptions + web_push_enabled; drop telegram schema (prod + test)"
 ```
 
 ---
 
-### Task 4: Extend prefs dataclass with web_push_enabled [ ]
+### Task 4: Move NotificationPrefs to app/notifications/prefs.py [ ]
 
 **Depends on:** Task 3
 
-**Files:** Modify `backend/app/telegram/prefs.py`
+**Files:** Create `backend/app/notifications/prefs.py`, create `backend/tests/test_notifications_prefs.py`
 
-**Step 1: Add field to dataclass + select + whitelist**
-
-Change `NotificationPrefs`:
+**Step 1: Create `backend/app/notifications/prefs.py`** — moved from `app/telegram/prefs.py`, with `web_push_enabled` added:
 
 ```python
+"""Per-user notification prefs — 5 booleans, defaults TRUE. (Moved from app.telegram.prefs in PLAN-027.)"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from sqlalchemy import text
+
+from app.db import AsyncSessionLocal
+
+
 @dataclass(frozen=True)
 class NotificationPrefs:
     user_id: int
@@ -392,11 +485,15 @@ class NotificationPrefs:
     fav_price: bool
     fav_deleted: bool
     web_push_enabled: bool
-```
 
-Update `get_prefs` SELECT:
 
-```python
+async def get_prefs(user_id: int) -> NotificationPrefs:
+    """Return prefs; creates default row if missing (upsert no-op then SELECT)."""
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO user_notification_prefs (user_id) VALUES (:uid) ON CONFLICT DO NOTHING"),
+            {"uid": user_id},
+        )
         result = await session.execute(
             text("""
                 SELECT new_search_results, fav_sold, fav_price, fav_deleted, web_push_enabled
@@ -407,33 +504,94 @@ Update `get_prefs` SELECT:
         r = result.one()
         await session.commit()
     return NotificationPrefs(user_id, r[0], r[1], r[2], r[3], r[4])
+
+
+async def set_prefs(user_id: int, **partial: bool | None) -> NotificationPrefs:
+    """Partial update: only fields passed as non-None are written."""
+    updates = []
+    params: dict = {"uid": user_id}
+    for field in ("new_search_results", "fav_sold", "fav_price", "fav_deleted", "web_push_enabled"):
+        val = partial.get(field)
+        if val is not None:
+            updates.append(f"{field} = :{field}")
+            params[field] = val
+    if not updates:
+        return await get_prefs(user_id)
+
+    set_clause = ", ".join(updates + ["updated_at = now()"])
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO user_notification_prefs (user_id) VALUES (:uid) ON CONFLICT DO NOTHING"),
+            {"uid": user_id},
+        )
+        await session.execute(
+            text(f"UPDATE user_notification_prefs SET {set_clause} WHERE user_id = :uid"),
+            params,
+        )
+        await session.commit()
+    return await get_prefs(user_id)
 ```
 
-Update `set_prefs` field tuple:
+**Step 2: Tests** — `backend/tests/test_notifications_prefs.py` (mirrors the old `test_telegram_prefs.py` against the new path + the new field):
 
 ```python
-    for field in ("new_search_results", "fav_sold", "fav_price", "fav_deleted", "web_push_enabled"):
+"""Tests for app.notifications.prefs — notification preference upsert."""
+
+import pytest
+
+from app.notifications import prefs
+
+
+@pytest.mark.asyncio
+async def test_get_prefs_creates_default_row(db_user):
+    p = await prefs.get_prefs(db_user.id)
+    assert p.new_search_results is True
+    assert p.fav_sold is True
+    assert p.fav_price is True
+    assert p.fav_deleted is True
+    assert p.web_push_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_set_prefs_partial_update(db_user):
+    await prefs.set_prefs(db_user.id, fav_sold=False)
+    p = await prefs.get_prefs(db_user.id)
+    assert p.fav_sold is False
+    assert p.fav_price is True  # untouched
+
+
+@pytest.mark.asyncio
+async def test_set_prefs_web_push_enabled_toggle(db_user):
+    await prefs.set_prefs(db_user.id, web_push_enabled=False)
+    p = await prefs.get_prefs(db_user.id)
+    assert p.web_push_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_set_prefs_no_fields_is_noop(db_user):
+    p = await prefs.set_prefs(db_user.id)  # nothing to write
+    assert p.new_search_results is True
 ```
 
-**Step 2: Commit**
+**Step 3: Commit**
 
 ```bash
-git add backend/app/telegram/prefs.py
-git commit -m "feat(prefs): add web_push_enabled toggle to NotificationPrefs"
+git add backend/app/notifications/prefs.py backend/tests/test_notifications_prefs.py
+git commit -m "feat(notifications): move NotificationPrefs out of telegram, add web_push_enabled"
 ```
 
 ---
 
-### Task 5: WebPushPlugin implementation [ ]
+### Task 5: WebPushPlugin + shared send helper [ ]
 
 **Depends on:** Tasks 2, 3, 4
 
 **Files:** Create `backend/app/notifications/web_push_plugin.py`
 
-**Step 1: Implement plugin**
+**Step 1: Implement** — note `send_web_push_to_user` is module-level and reused by the fav sweep (Task 9). GC delete is scoped by `user_id`; `last_used_at` is bumped only for delivered subs (Do-It refinement).
 
 ```python
-"""WebPushPlugin — delivers MatchResult digests as Web Push notifications."""
+"""WebPushPlugin + shared send helper — delivers payloads as Web Push notifications."""
 
 from __future__ import annotations
 
@@ -446,8 +604,8 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.db import AsyncSessionLocal
+from app.notifications import prefs as prefs_module
 from app.notifications.base import MatchResult, NotificationPlugin
-from app.telegram import prefs as prefs_module
 
 logger = logging.getLogger(__name__)
 
@@ -460,138 +618,127 @@ class _Subscription:
     auth: str
 
 
-def _build_payload(match: MatchResult) -> dict:
-    title = f"Neue Treffer: {match.search_name}"
+async def send_web_push_to_user(user_id: int, payload: dict) -> bool:
+    """Send `payload` (dict with title/body/url/tag) to every push_subscription of `user_id`.
+
+    Garbage-collects 404/410 (Gone/Not Found) subscriptions and bumps last_used_at
+    only for subscriptions that actually delivered. Returns True if at least one
+    delivery succeeded. VAPID config is the caller's responsibility (checked via
+    settings.web_push_enabled before calling).
+    """
+    async with AsyncSessionLocal() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, endpoint, p256dh, auth FROM push_subscriptions "
+                    "WHERE user_id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).all()
+    subs = [_Subscription(r[0], r[1], r[2], r[3]) for r in rows]
+    if not subs:
+        return False
+
+    data = json.dumps(payload)
+    succeeded_ids: list[int] = []
+    stale_ids: list[int] = []
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                },
+                data=data,
+                vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": settings.VAPID_SUBJECT},
+            )
+            succeeded_ids.append(sub.id)
+        except WebPushException as exc:
+            status = getattr(exc.response, "status_code", None) if exc.response else None
+            if status in (404, 410):
+                stale_ids.append(sub.id)
+                logger.info("web_push: stale subscription id=%d (status=%s) — removing", sub.id, status)
+            else:
+                logger.warning("web_push: send failed sub_id=%d status=%s err=%s", sub.id, status, exc)
+
+    if stale_ids:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("DELETE FROM push_subscriptions WHERE user_id = :uid AND id = ANY(:ids)"),
+                {"uid": user_id, "ids": stale_ids},
+            )
+            await session.commit()
+
+    if succeeded_ids:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("UPDATE push_subscriptions SET last_used_at = now() WHERE id = ANY(:ids)"),
+                {"ids": succeeded_ids},
+            )
+            await session.commit()
+
+    return bool(succeeded_ids)
+
+
+def _build_search_payload(match: MatchResult) -> dict:
     top = match.new_listing_titles[:3]
     body_lines = list(top)
     if match.total_new > len(top):
         body_lines.append(f"… und {match.total_new - len(top)} weitere")
     return {
-        "title": title,
+        "title": f"Neue Treffer: {match.search_name}",
         "body": "\n".join(body_lines),
-        "url": f"{settings.PUBLIC_BASE_URL}/?saved_search={match.saved_search_id}",
+        "url": f"/?saved_search={match.saved_search_id}",
         "tag": f"saved-search-{match.saved_search_id}",
     }
 
 
 class WebPushPlugin(NotificationPlugin):
-    """Sends a digest payload to every push_subscription belonging to the user."""
+    """Sends a SavedSearch digest to every push_subscription belonging to the user."""
 
     async def is_configured(self) -> bool:
-        # Channel gating happens at registration time in main.py.
-        # Here we only verify VAPID keys are loaded.
         return settings.web_push_enabled
 
     async def send(self, match: MatchResult) -> bool:
-        # 1. Per-user opt-in
         p = await prefs_module.get_prefs(match.user_id)
         if not p.web_push_enabled or not p.new_search_results:
             logger.info(
                 "web_push.plugin: search_id=%d user_id=%d skipped (pref off)",
-                match.saved_search_id,
-                match.user_id,
+                match.saved_search_id, match.user_id,
             )
             return False
-
-        # 2. Load subscriptions
-        async with AsyncSessionLocal() as session:
-            rows = (
-                await session.execute(
-                    text(
-                        "SELECT id, endpoint, p256dh, auth FROM push_subscriptions "
-                        "WHERE user_id = :uid"
-                    ),
-                    {"uid": match.user_id},
-                )
-            ).all()
-        subs = [_Subscription(r[0], r[1], r[2], r[3]) for r in rows]
-        if not subs:
+        ok = await send_web_push_to_user(match.user_id, _build_search_payload(match))
+        if not ok:
             logger.info(
-                "web_push.plugin: search_id=%d user_id=%d skipped (no subscriptions)",
-                match.saved_search_id,
-                match.user_id,
+                "web_push.plugin: search_id=%d user_id=%d no delivery (no subs or all failed)",
+                match.saved_search_id, match.user_id,
             )
-            return False
-
-        # 3. Send to each subscription
-        payload = json.dumps(_build_payload(match))
-        any_ok = False
-        stale_ids: list[int] = []
-        for sub in subs:
-            try:
-                webpush(
-                    subscription_info={
-                        "endpoint": sub.endpoint,
-                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
-                    },
-                    data=payload,
-                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": settings.VAPID_SUBJECT},
-                )
-                any_ok = True
-            except WebPushException as exc:
-                status = getattr(exc.response, "status_code", None) if exc.response else None
-                if status in (404, 410):
-                    stale_ids.append(sub.id)
-                    logger.info(
-                        "web_push.plugin: stale subscription id=%d (status=%s) — removing",
-                        sub.id,
-                        status,
-                    )
-                else:
-                    logger.warning(
-                        "web_push.plugin: send failed sub_id=%d status=%s err=%s",
-                        sub.id,
-                        status,
-                        exc,
-                    )
-
-        # 4. Garbage-collect stale subscriptions
-        if stale_ids:
-            async with AsyncSessionLocal() as session:
-                await session.execute(
-                    text("DELETE FROM push_subscriptions WHERE id = ANY(:ids)"),
-                    {"ids": stale_ids},
-                )
-                await session.commit()
-
-        # 5. Touch last_used_at on success
-        if any_ok:
-            async with AsyncSessionLocal() as session:
-                await session.execute(
-                    text(
-                        "UPDATE push_subscriptions SET last_used_at = now() "
-                        "WHERE user_id = :uid"
-                    ),
-                    {"uid": match.user_id},
-                )
-                await session.commit()
-
-        return any_ok
+        return ok
 ```
+
+> **URL note:** payload `url` is an in-app relative path (`/?saved_search=…`); the SW guards it with `assertSafeNotificationUrl` (Task 13). The old plan used `settings.PUBLIC_BASE_URL/...` absolute URLs — relative is preferred (origin-safe, matches Do-It).
 
 **Step 2: Commit**
 
 ```bash
 git add backend/app/notifications/web_push_plugin.py
-git commit -m "feat(notifications): add WebPushPlugin"
+git commit -m "feat(notifications): WebPushPlugin + shared send_web_push_to_user helper"
 ```
 
 ---
 
-### Task 6: WebPushPlugin tests + new fixtures [ ]
+### Task 6: WebPushPlugin + helper tests + new fixtures [ ]
 
 **Depends on:** Task 5
 
 **Files:** Create `backend/tests/test_web_push_plugin.py`, modify `backend/tests/conftest.py`
 
-**Step 1: New fixtures in `conftest.py`** (append after `db_listing` fixture):
+**Step 1: New fixtures in `conftest.py`** (append after `db_listing`; reuse the existing `dataclass` import at line 233):
 
 ```python
-from dataclasses import dataclass as _dc  # already imported above; ensure single import
-
-
-@_dc
+@dataclass
 class _UserWithSubs:
     user_id: int
     sub_ids: list[int]
@@ -599,14 +746,13 @@ class _UserWithSubs:
 
 @pytest_asyncio.fixture()
 async def seeded_user_with_subs(db_session: AsyncSession) -> _UserWithSubs:
-    """Insert a user (id captured) and two push_subscription rows."""
+    """Insert a user + two push_subscription rows."""
     from sqlalchemy import text as _text  # noqa: PLC0415
 
     await db_session.execute(
         _text("""
             INSERT INTO users (google_id, email, name, is_approved)
             VALUES ('seed-subs-google', 'seed_subs@example.com', 'Seed Subs', TRUE)
-            RETURNING id
         """)
     )
     user_id = (
@@ -617,8 +763,7 @@ async def seeded_user_with_subs(db_session: AsyncSession) -> _UserWithSubs:
         row = await db_session.execute(
             _text("""
                 INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_label)
-                VALUES (:uid, :ep, 'P', 'A', 'Test Device')
-                RETURNING id
+                VALUES (:uid, :ep, 'P', 'A', 'Test Device') RETURNING id
             """),
             {"uid": user_id, "ep": endpoint},
         )
@@ -629,7 +774,7 @@ async def seeded_user_with_subs(db_session: AsyncSession) -> _UserWithSubs:
 
 @pytest_asyncio.fixture()
 async def other_user_with_sub(db_session: AsyncSession) -> _UserWithSubs:
-    """Insert a *different* user + one subscription — used for ownership-isolation tests."""
+    """Insert a different user + one subscription — for ownership-isolation tests."""
     from sqlalchemy import text as _text  # noqa: PLC0415
 
     await db_session.execute(
@@ -644,20 +789,18 @@ async def other_user_with_sub(db_session: AsyncSession) -> _UserWithSubs:
     row = await db_session.execute(
         _text("""
             INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_label)
-            VALUES (:uid, 'https://other-user-endpoint', 'P', 'A', 'Other Device')
-            RETURNING id
+            VALUES (:uid, 'https://other-user-endpoint', 'P', 'A', 'Other Device') RETURNING id
         """),
         {"uid": user_id},
     )
-    sub_id = row.scalar_one()
     await db_session.commit()
-    return _UserWithSubs(user_id=user_id, sub_ids=[sub_id])
+    return _UserWithSubs(user_id=user_id, sub_ids=[row.scalar_one()])
 ```
 
-**Step 2: Plugin tests** — `backend/tests/test_web_push_plugin.py`:
+**Step 2: Plugin + helper tests** — `backend/tests/test_web_push_plugin.py`:
 
 ```python
-"""Tests for WebPushPlugin — mocks pywebpush, asserts behavior with real DB rows."""
+"""Tests for WebPushPlugin + send_web_push_to_user — mocks pywebpush, real DB rows."""
 
 from __future__ import annotations
 
@@ -668,17 +811,13 @@ from pywebpush import WebPushException
 from sqlalchemy import text
 
 from app.notifications.base import MatchResult
-from app.notifications.web_push_plugin import WebPushPlugin
+from app.notifications.web_push_plugin import WebPushPlugin, send_web_push_to_user
 
 
 def _match(user_id: int) -> MatchResult:
     return MatchResult(
-        saved_search_id=1,
-        search_name="Wing 2.5m",
-        user_id=user_id,
-        new_listing_ids=[10, 11, 12],
-        new_listing_titles=["A", "B", "C"],
-        total_new=3,
+        saved_search_id=1, search_name="Wing 2.5m", user_id=user_id,
+        new_listing_ids=[10, 11, 12], new_listing_titles=["A", "B", "C"], total_new=3,
     )
 
 
@@ -732,64 +871,68 @@ async def test_send_calls_webpush_for_each_subscription(monkeypatch, seeded_user
 
 
 @pytest.mark.asyncio
-async def test_send_deletes_subscription_on_410_gone(monkeypatch, seeded_user_with_subs, db_session):
+async def test_helper_deletes_subscription_on_410_gone(monkeypatch, seeded_user_with_subs, db_session):
     from app.notifications import web_push_plugin as mod
-    monkeypatch.setattr(
-        mod.prefs_module, "get_prefs",
-        AsyncMock(return_value=MagicMock(web_push_enabled=True, new_search_results=True)),
-    )
     response = MagicMock(status_code=410)
     def raise_gone(**_):
         raise WebPushException("gone", response=response)
     monkeypatch.setattr(mod, "webpush", raise_gone)
-    await WebPushPlugin().send(_match(seeded_user_with_subs.user_id))
-    rows = await db_session.execute(
+    await send_web_push_to_user(seeded_user_with_subs.user_id, {"title": "t", "body": "b"})
+    n = (await db_session.execute(
         text("SELECT count(*) FROM push_subscriptions WHERE user_id = :uid"),
         {"uid": seeded_user_with_subs.user_id},
-    )
-    assert rows.scalar_one() == 0
+    )).scalar_one()
+    assert n == 0
 
 
 @pytest.mark.asyncio
-async def test_send_deletes_subscription_on_404(monkeypatch, seeded_user_with_subs, db_session):
+async def test_helper_deletes_subscription_on_404(monkeypatch, seeded_user_with_subs, db_session):
     from app.notifications import web_push_plugin as mod
-    monkeypatch.setattr(
-        mod.prefs_module, "get_prefs",
-        AsyncMock(return_value=MagicMock(web_push_enabled=True, new_search_results=True)),
-    )
     response = MagicMock(status_code=404)
     def raise_404(**_):
         raise WebPushException("not found", response=response)
     monkeypatch.setattr(mod, "webpush", raise_404)
-    await WebPushPlugin().send(_match(seeded_user_with_subs.user_id))
-    rows = await db_session.execute(
+    await send_web_push_to_user(seeded_user_with_subs.user_id, {"title": "t", "body": "b"})
+    n = (await db_session.execute(
         text("SELECT count(*) FROM push_subscriptions WHERE user_id = :uid"),
         {"uid": seeded_user_with_subs.user_id},
-    )
-    assert rows.scalar_one() == 0
+    )).scalar_one()
+    assert n == 0
 
 
 @pytest.mark.asyncio
-async def test_send_returns_false_when_all_endpoints_fail_with_500(
-    monkeypatch, seeded_user_with_subs
+async def test_helper_does_not_delete_other_users_subscription_on_410(
+    monkeypatch, seeded_user_with_subs, other_user_with_sub, db_session
 ):
+    """GC must be scoped by user_id — a 410 for user A never removes user B's row."""
     from app.notifications import web_push_plugin as mod
-    monkeypatch.setattr(
-        mod.prefs_module, "get_prefs",
-        AsyncMock(return_value=MagicMock(web_push_enabled=True, new_search_results=True)),
-    )
+    response = MagicMock(status_code=410)
+    def raise_gone(**_):
+        raise WebPushException("gone", response=response)
+    monkeypatch.setattr(mod, "webpush", raise_gone)
+    await send_web_push_to_user(seeded_user_with_subs.user_id, {"title": "t", "body": "b"})
+    n = (await db_session.execute(
+        text("SELECT count(*) FROM push_subscriptions WHERE user_id = :uid"),
+        {"uid": other_user_with_sub.user_id},
+    )).scalar_one()
+    assert n == 1
+
+
+@pytest.mark.asyncio
+async def test_helper_returns_false_when_all_endpoints_fail_with_500(monkeypatch, seeded_user_with_subs):
+    from app.notifications import web_push_plugin as mod
     response = MagicMock(status_code=500)
     def raise_500(**_):
         raise WebPushException("oops", response=response)
     monkeypatch.setattr(mod, "webpush", raise_500)
-    assert await WebPushPlugin().send(_match(seeded_user_with_subs.user_id)) is False
+    assert await send_web_push_to_user(seeded_user_with_subs.user_id, {"title": "t", "body": "b"}) is False
 ```
 
 **Step 3: Commit**
 
 ```bash
 git add backend/tests/test_web_push_plugin.py backend/tests/conftest.py
-git commit -m "test(notifications): cover WebPushPlugin send paths + new fixtures"
+git commit -m "test(notifications): cover WebPushPlugin + send helper (incl. user-scoped GC)"
 ```
 
 ---
@@ -818,12 +961,10 @@ from app.api.deps import get_current_user
 from app.config import settings
 from app.db import get_session
 from app.models import User
-from app.telegram import prefs as prefs_module
+from app.notifications import prefs as prefs_module
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-
-# ---------- Models ----------
 
 class _Keys(BaseModel):
     p256dh: str
@@ -876,16 +1017,12 @@ def _to_prefs_dto(p: prefs_module.NotificationPrefs) -> PreferencesDto:
     )
 
 
-# ---------- VAPID ----------
-
 @router.get("/vapid-public-key", response_model=VapidKeyDto)
 async def get_vapid_public_key() -> VapidKeyDto:
     if not settings.web_push_enabled:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Web Push not configured")
     return VapidKeyDto(public_key=settings.VAPID_PUBLIC_KEY)
 
-
-# ---------- Subscriptions ----------
 
 @router.get("/subscriptions", response_model=list[PushSubscriptionDto])
 async def list_subscriptions(
@@ -916,10 +1053,8 @@ async def create_subscription(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> PushSubscriptionDto:
-    # ON CONFLICT (endpoint) — idempotent re-subscribe.
-    # Re-assigning user_id is intentional: a single browser endpoint moving between
-    # accounts on the same device is legitimate (single-user system, but the table
-    # is structured generically).
+    # ON CONFLICT (endpoint) — idempotent re-subscribe; re-assigning user_id is
+    # intentional (a browser endpoint may move between accounts on one device).
     await session.execute(
         text("""
             INSERT INTO push_subscriptions
@@ -970,8 +1105,6 @@ async def delete_subscription(
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
 
-# ---------- Preferences (consolidated) ----------
-
 @router.get("/preferences", response_model=PreferencesDto)
 async def get_preferences(user: User = Depends(get_current_user)) -> PreferencesDto:
     return _to_prefs_dto(await prefs_module.get_prefs(user.id))
@@ -995,34 +1128,85 @@ git commit -m "feat(api): notifications router — subscriptions + preferences +
 
 ---
 
-### Task 7.5: Remove legacy /api/telegram/prefs routes [ ]
+### Task 7.5: Remove Telegram API router from routes.py [ ]
 
 **Depends on:** Task 7
 
-**Files:** Modify `backend/app/api/telegram.py`, modify `backend/tests/test_telegram_api.py`
+**Files:** Modify `backend/app/api/routes.py`
 
-**Step 1: Strip prefs from `app/api/telegram.py`**
+**Step 1:** Delete the import at `routes.py:12` (`from app.api.telegram import router as telegram_api_router`) and the include at `routes.py:31` (`router.include_router(telegram_api_router)`).
 
-Delete:
-- `class PrefsBody(BaseModel): ...` (lines 20-24)
-- `class PrefsResponse(BaseModel): ...` (lines 27-31)
-- `def _prefs_to_response(...)` (lines 34-40)
-- `@router.get("/prefs", ...) async def get_prefs_endpoint(...)` (lines 60-62)
-- `@router.put("/prefs", ...) async def put_prefs(...)` (lines 65-69)
-
-Also remove the now-unused `from app.telegram import link, prefs` → keep only `link` (or remove `prefs` from the tuple).
-
-Final `app/api/telegram.py` keeps only: `LinkResponse`, `POST /link`, `POST /unlink`. The `from app.telegram import link, prefs` import becomes `from app.telegram import link`.
-
-**Step 2: Strip prefs tests from `test_telegram_api.py`**
-
-Open `backend/tests/test_telegram_api.py` and delete every test whose name contains `prefs` or whose body posts/gets `/api/telegram/prefs`. Equivalent coverage is added in Task 8 against `/api/notifications/preferences`.
-
-**Step 3: Commit**
+**Step 2: Commit**
 
 ```bash
-git add backend/app/api/telegram.py backend/tests/test_telegram_api.py
-git commit -m "refactor(api): drop /telegram/prefs (moved to /notifications/preferences)"
+git add backend/app/api/routes.py
+git commit -m "refactor(api): drop telegram router include"
+```
+
+---
+
+### Task 7.6: Strip telegram fields from /auth/me [ ]
+
+**Depends on:** Task 3
+
+**Files:** Modify `backend/app/api/auth.py`
+
+**Step 1:** In `auth_me` (`auth.py:133-157`) delete the re-fetch block (lines 144-149: the comment, the `SELECT telegram_chat_id, telegram_linked_at`, and `tg = row.one_or_none()`) and remove the two telegram keys from the returned dict. Final return:
+
+```python
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+    }
+```
+
+(The `last_seen_at` UPDATE above stays. If `text`/`session` become unused after the edit, leave them — `session` is still used for the UPDATE.)
+
+**Step 2: Commit**
+
+```bash
+git add backend/app/api/auth.py
+git commit -m "refactor(api): drop telegram fields from /auth/me"
+```
+
+---
+
+### Task 7.7: Delete Telegram backend + frontend modules and tests [ ]
+
+**Depends on:** Tasks 4, 7.5, 7.6, 9 (fav_sweep migrated), and frontend Tasks 14 + 19 (importers retargeted)
+
+> **Ordering:** this deletion task runs only after every importer of `app.telegram.*` and `TelegramPanel`/telegram client functions has been retargeted (Tasks 4, 9, 14, 19) and the includes removed (7.5/7.6). Verify with grep before deleting.
+
+**Step 1: Verify no live imports remain** (must return only deleted-file matches):
+
+```bash
+grep -rn "app\.telegram" backend/app backend/tests
+grep -rn "TelegramPanel\|linkTelegram\|unlinkTelegram\|TelegramLinkResponse\|telegram_chat_id\|telegram_linked_at" frontend/src
+```
+
+**Step 2: Delete backend Telegram package + API + tests:**
+
+```bash
+git rm -r backend/app/telegram
+git rm backend/app/api/telegram.py
+git rm backend/tests/test_telegram_api.py backend/tests/test_telegram_bot.py \
+       backend/tests/test_telegram_link.py backend/tests/test_telegram_plugin.py \
+       backend/tests/test_telegram_prefs.py backend/tests/test_telegram_webhook.py \
+       backend/tests/test_telegram_fav_sweep.py
+```
+
+**Step 3: Delete frontend TelegramPanel + test:**
+
+```bash
+git rm frontend/src/components/TelegramPanel.tsx frontend/src/components/__tests__/TelegramPanel.test.tsx
+```
+
+**Step 4: Commit**
+
+```bash
+git commit -m "chore: remove Telegram subsystem (PLAN-027)"
 ```
 
 ---
@@ -1033,7 +1217,7 @@ git commit -m "refactor(api): drop /telegram/prefs (moved to /notifications/pref
 
 **Files:** Create `backend/tests/test_notifications_api.py`
 
-**Step 1: Tests** — use the existing `authenticated_client` + new `other_user_with_sub` fixtures. `authenticated_client` impersonates the `auth_client@example.com` user via dependency-override; subscriptions created through its `POST` calls are owned by that user. `seeded_user_with_subs` and `other_user_with_sub` create *separate* users — `other_user_with_sub` is used here only for the ownership-isolation negative case (its sub_id should be invisible to the authenticated client and unauthorized to delete).
+**Step 1: Tests** — uses the existing `authenticated_client` fixture (impersonates `auth_client@example.com`) + `other_user_with_sub` (Task 6) for ownership isolation. `api_client` (unauthenticated for owned routes; VAPID is public).
 
 ```python
 """Tests for /api/notifications/* — uses authenticated_client fixture from conftest."""
@@ -1041,12 +1225,10 @@ git commit -m "refactor(api): drop /telegram/prefs (moved to /notifications/pref
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
 
 
 @pytest.mark.asyncio
 async def test_get_vapid_public_key_returns_key(api_client, monkeypatch):
-    """api_client is unauthenticated for the prefs/subs routes but the VAPID key is public."""
     from app.config import settings
     monkeypatch.setattr(settings, "VAPID_PUBLIC_KEY", "BPub")
     monkeypatch.setattr(settings, "VAPID_PRIVATE_KEY", "priv")
@@ -1084,8 +1266,7 @@ async def test_post_subscription_upserts_existing_endpoint(authenticated_client)
     body = {"endpoint": "https://fcm/abc", "keys": {"p256dh": "P", "auth": "A"}}
     a = await authenticated_client.post("/api/notifications/subscriptions", json=body)
     b = await authenticated_client.post(
-        "/api/notifications/subscriptions",
-        json={**body, "device_label": "renamed"},
+        "/api/notifications/subscriptions", json={**body, "device_label": "renamed"},
     )
     assert a.status_code == 201 and b.status_code == 201
     assert a.json()["id"] == b.json()["id"]
@@ -1093,10 +1274,7 @@ async def test_post_subscription_upserts_existing_endpoint(authenticated_client)
 
 
 @pytest.mark.asyncio
-async def test_get_subscriptions_returns_only_owned(
-    authenticated_client, other_user_with_sub
-):
-    # Create one subscription owned by the authenticated user
+async def test_get_subscriptions_returns_only_owned(authenticated_client, other_user_with_sub):
     await authenticated_client.post(
         "/api/notifications/subscriptions",
         json={"endpoint": "https://fcm/owned", "keys": {"p256dh": "P", "auth": "A"}},
@@ -1122,9 +1300,7 @@ async def test_delete_subscription_removes_row(authenticated_client):
 
 
 @pytest.mark.asyncio
-async def test_delete_subscription_404_when_not_owned(
-    authenticated_client, other_user_with_sub
-):
+async def test_delete_subscription_404_when_not_owned(authenticated_client, other_user_with_sub):
     r = await authenticated_client.delete(
         f"/api/notifications/subscriptions/{other_user_with_sub.sub_ids[0]}"
     )
@@ -1138,15 +1314,13 @@ async def test_get_preferences_creates_default(authenticated_client):
     body = r.json()
     assert body["web_push_enabled"] is True
     assert body["new_search_results"] is True
-    # Telegram-side prefs are still served from this endpoint:
     assert "fav_sold" in body and "fav_price" in body and "fav_deleted" in body
 
 
 @pytest.mark.asyncio
 async def test_put_preferences_updates_web_push_enabled(authenticated_client):
     r = await authenticated_client.put(
-        "/api/notifications/preferences",
-        json={"web_push_enabled": False},
+        "/api/notifications/preferences", json={"web_push_enabled": False},
     )
     assert r.status_code == 200
     assert r.json()["web_push_enabled"] is False
@@ -1154,31 +1328,12 @@ async def test_put_preferences_updates_web_push_enabled(authenticated_client):
 
 @pytest.mark.asyncio
 async def test_put_preferences_partial_does_not_clobber_other_fields(authenticated_client):
-    # First set fav_sold=False so we can detect any unintended overwrite
-    await authenticated_client.put(
-        "/api/notifications/preferences", json={"fav_sold": False},
-    )
-    # Now PUT only web_push_enabled
+    await authenticated_client.put("/api/notifications/preferences", json={"fav_sold": False})
     r = await authenticated_client.put(
         "/api/notifications/preferences", json={"web_push_enabled": False},
     )
     assert r.status_code == 200
     assert r.json()["fav_sold"] is False  # unchanged
-
-
-@pytest.mark.asyncio
-async def test_unauthenticated_subscriptions_returns_401(api_client):
-    """api_client has _fake_user override active — so this is actually authenticated.
-    Replicate an unauthenticated client by clearing the override before the request."""
-    from app.api.deps import get_current_user
-    from app.main import app
-    app.dependency_overrides.pop(get_current_user, None)
-    try:
-        r = await api_client.get("/api/notifications/subscriptions")
-        assert r.status_code == 401
-    finally:
-        # Re-install for any later tests that share this client
-        pass
 ```
 
 **Step 2: Commit**
@@ -1190,140 +1345,392 @@ git commit -m "test(api): cover /api/notifications/* endpoints"
 
 ---
 
-### Task 9: Wire plugin + router + channel gates into main.py + docker-compose [ ]
+### Task 9: Migrate favorites sweep to Web Push [ ]
 
-**Depends on:** Tasks 5, 7, 7.5
+**Depends on:** Tasks 4, 5
 
-**Files:** Modify `backend/app/main.py`, `docker-compose.yml`, `env.prod.example`
+**Files:** Create `backend/app/notifications/fav_sweep.py`, create `backend/tests/test_notifications_fav_sweep.py`
 
-**Step 1: Update main.py — imports + lifespan + channel gates**
+**Step 1: Create `backend/app/notifications/fav_sweep.py`** — migrated from `app/telegram/fav_sweep.py`. Changes vs. original: import `prefs`/`send_web_push_to_user` from `app.notifications`; query selects users with ≥1 push subscription instead of `telegram_chat_id`; `_detect_events` returns plain text lines (no HTML); delivery via `send_web_push_to_user`; gate is `settings.web_push_enabled` (not telegram); renamed settings; no link-token cleanup tail.
 
-Add near existing notification imports (around line 25):
+```python
+"""Favorites-status sweep: detect sold/price/deleted changes, deliver via Web Push.
+
+Runs every FAV_SWEEP_INTERVAL_MIN minutes via APScheduler (registered in main.py).
+Migrated from app.telegram.fav_sweep in PLAN-027.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from sqlalchemy import text
+
+from app.config import settings
+from app.db import AsyncSessionLocal
+from app.notifications import prefs as prefs_module
+from app.notifications.web_push_plugin import send_web_push_to_user
+
+logger = logging.getLogger(__name__)
+
+
+def _decimal_eq(a: object, b: object) -> bool:
+    if a is None or b is None:
+        return a is b
+    return Decimal(str(a)) == Decimal(str(b))
+
+
+def _detect_events(row: dict, deleted_cutoff: datetime, user_prefs: prefs_module.NotificationPrefs) -> list[str]:
+    """Return plain-text event lines based on diffs + per-user prefs."""
+    events: list[str] = []
+    lk_sold = row["last_known_is_sold"]
+    lk_price = row["last_known_price_numeric"]
+    lk_scr = row["last_known_scraped_at"]
+    title = row["title"]
+    is_sold = row["is_sold"]
+    price = row["price_numeric"]
+    scraped_at = row["scraped_at"]
+
+    if lk_sold is not None and lk_sold is False and is_sold is True and user_prefs.fav_sold:
+        events.append(f"Verkauft: {title}")
+
+    if (
+        lk_price is not None
+        and price is not None
+        and not _decimal_eq(lk_price, price)
+        and user_prefs.fav_price
+    ):
+        events.append(f"Preis geändert: {title} — {float(lk_price):.0f}€ → {float(price):.0f}€")
+
+    listing_gone = scraped_at is not None and scraped_at < deleted_cutoff
+    snapshot_alive = lk_scr is not None and lk_scr >= deleted_cutoff
+    if listing_gone and snapshot_alive and user_prefs.fav_deleted:
+        events.append(f"Gelöscht: {title}")
+
+    return events
+
+
+async def run_fav_status_sweep() -> int:
+    """Scan user_favorites, diff against snapshots, push per-favorite event digests.
+
+    Returns the number of users a push was delivered to.
+    Always updates snapshots (even when no push sent / pref disabled).
+    """
+    if not settings.web_push_enabled:
+        return 0
+
+    deleted_cutoff = datetime.now(timezone.utc) - timedelta(days=settings.FAV_DELETED_DAYS)
+    sent_count = 0
+
+    try:
+        async with AsyncSessionLocal() as session:
+            rows = await session.execute(
+                text("""
+                    SELECT uf.user_id, uf.listing_id,
+                           uf.last_known_is_sold, uf.last_known_price_numeric,
+                           uf.last_known_scraped_at,
+                           l.title, l.url,
+                           l.is_sold, l.price_numeric, l.scraped_at
+                    FROM user_favorites uf
+                    JOIN listings l ON l.id = uf.listing_id
+                    WHERE EXISTS (
+                        SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = uf.user_id
+                    )
+                """)
+            )
+            favorites = [row._asdict() for row in rows.all()]
+    except Exception:
+        logger.exception("notifications.sweep.fav: load FAILED — aborting sweep")
+        return 0
+
+    for fav in favorites:
+        user_id = fav["user_id"]
+        listing_id = fav["listing_id"]
+        try:
+            user_prefs = await prefs_module.get_prefs(user_id)
+            events = _detect_events(fav, deleted_cutoff, user_prefs)
+
+            if events and user_prefs.web_push_enabled:
+                payload = {
+                    "title": "Merkliste aktualisiert",
+                    "body": "\n".join(events),
+                    "url": f"/listings/{listing_id}",
+                    "tag": f"fav-{listing_id}",
+                }
+                if await send_web_push_to_user(user_id, payload):
+                    sent_count += 1
+                    logger.info(
+                        "notifications.sweep.fav: user_id=%d listing_id=%d triggers=%d pushed",
+                        user_id, listing_id, len(events),
+                    )
+
+            # Always update snapshot (even when no push sent / pref disabled)
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text("""
+                        UPDATE user_favorites
+                        SET last_known_is_sold = :sold,
+                            last_known_price_numeric = :price,
+                            last_known_scraped_at = :scr
+                        WHERE user_id = :u AND listing_id = :l
+                    """),
+                    {
+                        "sold": fav["is_sold"], "price": fav["price_numeric"],
+                        "scr": fav["scraped_at"], "u": user_id, "l": listing_id,
+                    },
+                )
+                await session.commit()
+        except Exception:
+            logger.exception(
+                "notifications.sweep.fav: user_id=%d listing_id=%d FAILED — skipping",
+                user_id, listing_id,
+            )
+            continue
+
+    return sent_count
+```
+
+**Step 2: Tests** — `backend/tests/test_notifications_fav_sweep.py` (mirrors the structure of the old `test_telegram_fav_sweep.py`, patching `send_web_push_to_user` instead of `bot.send_message`). One `it` per behavior:
+
+```python
+"""Tests for app.notifications.fav_sweep — favorites status-change sweep via Web Push."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from sqlalchemy import text
+
+from app.notifications import fav_sweep
+
+
+async def _seed_user_with_sub(db_session) -> int:
+    await db_session.execute(text("""
+        INSERT INTO users (google_id, email, name, is_approved)
+        VALUES ('fav-sweep-u', 'fav_sweep@example.com', 'Fav Sweep', TRUE)
+    """))
+    uid = (await db_session.execute(
+        text("SELECT id FROM users WHERE google_id = 'fav-sweep-u'")
+    )).scalar_one()
+    await db_session.execute(
+        text("""INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+                VALUES (:u, 'https://fcm/fav', 'P', 'A')"""),
+        {"u": uid},
+    )
+    await db_session.commit()
+    return uid
+
+
+async def _seed_favorite(db_session, uid: int, *, is_sold: bool, lk_sold: bool) -> int:
+    now = datetime.now(timezone.utc)
+    await db_session.execute(
+        text("""INSERT INTO listings (external_id, url, title, description, author, scraped_at, images, tags, is_sold)
+                VALUES ('fav-ext', 'http://x/1', 'My Fav', 'd', 'a', :now, '[]', '[]', :sold)"""),
+        {"now": now, "sold": is_sold},
+    )
+    lid = (await db_session.execute(
+        text("SELECT id FROM listings WHERE external_id = 'fav-ext'")
+    )).scalar_one()
+    await db_session.execute(
+        text("""INSERT INTO user_favorites (user_id, listing_id, last_known_is_sold, last_known_scraped_at)
+                VALUES (:u, :l, :lk, :now)"""),
+        {"u": uid, "l": lid, "lk": lk_sold, "now": now},
+    )
+    await db_session.commit()
+    return lid
+
+
+@pytest.mark.asyncio
+async def test_sweep_returns_zero_when_web_push_disabled(monkeypatch):
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PUBLIC_KEY", "")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PRIVATE_KEY", "")
+    assert await fav_sweep.run_fav_status_sweep() == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_pushes_on_sold_transition(monkeypatch, db_session):
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PUBLIC_KEY", "p")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PRIVATE_KEY", "k")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_SUBJECT", "mailto:x@y")
+    uid = await _seed_user_with_sub(db_session)
+    await _seed_favorite(db_session, uid, is_sold=True, lk_sold=False)
+    with patch.object(fav_sweep, "send_web_push_to_user", new=AsyncMock(return_value=True)) as m:
+        n = await fav_sweep.run_fav_status_sweep()
+    assert n == 1
+    assert m.await_count == 1
+    payload = m.await_args.args[1]
+    assert "Verkauft" in payload["body"]
+
+
+@pytest.mark.asyncio
+async def test_sweep_no_push_when_no_event(monkeypatch, db_session):
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PUBLIC_KEY", "p")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PRIVATE_KEY", "k")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_SUBJECT", "mailto:x@y")
+    uid = await _seed_user_with_sub(db_session)
+    await _seed_favorite(db_session, uid, is_sold=False, lk_sold=False)
+    with patch.object(fav_sweep, "send_web_push_to_user", new=AsyncMock(return_value=True)) as m:
+        n = await fav_sweep.run_fav_status_sweep()
+    assert n == 0
+    assert m.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_updates_snapshot_even_without_push(monkeypatch, db_session):
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PUBLIC_KEY", "p")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PRIVATE_KEY", "k")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_SUBJECT", "mailto:x@y")
+    uid = await _seed_user_with_sub(db_session)
+    lid = await _seed_favorite(db_session, uid, is_sold=True, lk_sold=False)
+    with patch.object(fav_sweep, "send_web_push_to_user", new=AsyncMock(return_value=True)):
+        await fav_sweep.run_fav_status_sweep()
+    snap = (await db_session.execute(
+        text("SELECT last_known_is_sold FROM user_favorites WHERE user_id=:u AND listing_id=:l"),
+        {"u": uid, "l": lid},
+    )).scalar_one()
+    assert snap is True
+
+
+@pytest.mark.asyncio
+async def test_sweep_skips_user_without_subscription(monkeypatch, db_session):
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PUBLIC_KEY", "p")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_PRIVATE_KEY", "k")
+    monkeypatch.setattr(fav_sweep.settings, "VAPID_SUBJECT", "mailto:x@y")
+    # user with a favorite but NO push subscription
+    await db_session.execute(text("""
+        INSERT INTO users (google_id, email, name, is_approved)
+        VALUES ('no-sub-u', 'nosub@example.com', 'No Sub', TRUE)
+    """))
+    uid = (await db_session.execute(
+        text("SELECT id FROM users WHERE google_id = 'no-sub-u'")
+    )).scalar_one()
+    await _seed_favorite(db_session, uid, is_sold=True, lk_sold=False)
+    with patch.object(fav_sweep, "send_web_push_to_user", new=AsyncMock(return_value=True)) as m:
+        n = await fav_sweep.run_fav_status_sweep()
+    assert n == 0
+    assert m.await_count == 0
+```
+
+**Step 3: Commit**
+
+```bash
+git add backend/app/notifications/fav_sweep.py backend/tests/test_notifications_fav_sweep.py
+git commit -m "feat(notifications): migrate favorites sweep to Web Push"
+```
+
+---
+
+### Task 9.5: Wire main.py + docker-compose + env example [ ]
+
+**Depends on:** Tasks 5, 7, 9
+
+**Files:** Modify `backend/app/main.py`, `docker-compose.yml`, `docker-compose.prod.yml`, `env.prod.example`
+
+**Step 1: main.py imports** — remove `from app.telegram.webhook import router as telegram_webhook_router` (line 21) and `from app.telegram.plugin import TelegramPlugin` (line 25). Add near the other notification imports (after line 24):
 
 ```python
 from app.api.notifications import router as notifications_router
 from app.notifications.web_push_plugin import WebPushPlugin
 ```
 
-Replace the existing plugin-registration block ([main.py:50-57](backend/app/main.py#L50-L57)):
+**Step 2: Plugin registration** — replace the block at `main.py:49-57`:
 
 ```python
-    # Register notification plugins — guard against hot-reload duplicates.
-    # Channel routing: NOTIFICATION_CHANNEL ∈ {webpush, telegram, both} decides which plugins run.
+    # Register notification plugins — guard against hot-reload duplicates
     if not notification_registry._plugins:
         notification_registry.register(LogPlugin())
 
-    channel = settings.notification_channel_normalized
-    telegram_active = channel in {"telegram", "both"} and settings.telegram_enabled
-    webpush_active = channel in {"webpush", "both"} and settings.web_push_enabled
-
-    if telegram_active and not any(
-        isinstance(p, TelegramPlugin) for p in notification_registry._plugins
-    ):
-        notification_registry.register(TelegramPlugin())
-        logger.info("telegram.plugin: registered (channel=%s)", channel)
-
-    if webpush_active and not any(
+    if settings.web_push_enabled and not any(
         isinstance(p, WebPushPlugin) for p in notification_registry._plugins
     ):
         notification_registry.register(WebPushPlugin())
-        logger.info("web_push.plugin: registered (channel=%s)", channel)
+        logger.info("web_push.plugin: registered")
 ```
 
-Replace the `fav_sweep` block ([main.py:101-109](backend/app/main.py#L101-L109)):
+**Step 3: Fav-sweep scheduler** — replace the gated block at `main.py:101-109` with an ungated, retargeted job:
 
 ```python
-    if telegram_active:
-        from app.telegram import fav_sweep  # local import — only when telegram is active
-        scheduler.add_job(
-            fav_sweep.run_fav_status_sweep,
-            trigger="interval",
-            minutes=settings.TELEGRAM_FAV_SWEEP_INTERVAL_MIN,
-            id="telegram_fav_status_sweep",
-            replace_existing=True,
-        )
+    from app.notifications import fav_sweep
+    scheduler.add_job(
+        fav_sweep.run_fav_status_sweep,
+        trigger="interval",
+        minutes=settings.FAV_SWEEP_INTERVAL_MIN,
+        id="fav_status_sweep",
+        replace_existing=True,
+    )
 ```
 
-Replace the `setWebhook` block ([main.py:196-219](backend/app/main.py#L196-L219)). Change the outer condition from `if settings.telegram_enabled:` to `if telegram_active:` (the rest of the body stays as written). The existing else-branch's log message stays informative for the `webpush`-only case.
+(`run_fav_status_sweep` self-guards on `settings.web_push_enabled`, so an unconfigured deployment runs the job as a cheap no-op.)
 
-Add the router include after the existing telegram webhook include (around line 239):
+**Step 4: Remove the setWebhook block** (`main.py:196-219`, the whole `if settings.telegram_enabled: ... else: ...`).
+
+**Step 5: Remove the webhook router include** at `main.py:239` (`app.include_router(telegram_webhook_router)`).
+
+**Step 6: Mount notifications router** — after the existing router includes (replace the removed line 239 area):
 
 ```python
 app.include_router(notifications_router, prefix="/api")
 ```
 
-**Step 2: docker-compose.yml (dev) — backend service env block**
-
-Add to the backend service `environment:`:
+**Step 7: docker-compose.yml** — in the backend `environment:` block, remove the three `TELEGRAM_*` lines (42-44) and add:
 
 ```yaml
+      FAV_SWEEP_INTERVAL_MIN: ${FAV_SWEEP_INTERVAL_MIN:-60}
+      FAV_DELETED_DAYS: ${FAV_DELETED_DAYS:-3}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:marco.roth1983@googlemail.com}
-      NOTIFICATION_CHANNEL: ${NOTIFICATION_CHANNEL:-webpush}
 ```
 
-**Step 2b: docker-compose.prod.yml — backend service env block**
-
-The prod compose file (lines 25-34) has its own `environment:` block (no inheritance from dev). Without this step, prod boots with empty VAPID, `WebPushPlugin.is_configured()` returns False, and push delivery silently fails on the VPS. Add the same four vars:
+**Step 8: docker-compose.prod.yml** — append to the backend `environment:` block (lines 25-34; no telegram vars exist there today):
 
 ```yaml
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/rcscout
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      JWT_SECRET: ${JWT_SECRET}
-      PUBLIC_BASE_URL: https://rcn-scout.d2x-labs.de
-      FRONTEND_URL: https://rcn-scout.d2x-labs.de
-      ALLOWED_ORIGINS: https://rcn-scout.d2x-labs.de
-      COOKIE_SECURE: "true"
-      SCRAPE_DELAY: "1.0"
       # PLAN-027: Web Push
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:marco.roth1983@googlemail.com}
-      NOTIFICATION_CHANNEL: ${NOTIFICATION_CHANNEL:-webpush}
 ```
 
-The values come from the VPS-side `.env` file (sourced by `docker compose -f docker-compose.prod.yml up`). Document this in `env.prod.example` (Step 3).
-
-The frontend image build-arg is wired in Task 20; local dev reads the public key from the API at runtime.
-
-**Step 3: env.prod.example — append**
+**Step 9: env.prod.example** — remove the Telegram block (lines 18-24) and append:
 
 ```bash
 # Web Push (PLAN-027)
+# Generate once: npx web-push generate-vapid-keys
+# Set VAPID_PUBLIC_KEY also as a GitHub repository VARIABLE (Settings → Secrets and
+# variables → Actions → Variables) so it is baked into the frontend image during CI.
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:marco.roth1983@googlemail.com
-NOTIFICATION_CHANNEL=webpush
 ```
 
-**Step 4: Commit**
+**Step 10: Commit**
 
 ```bash
 git add backend/app/main.py docker-compose.yml docker-compose.prod.yml env.prod.example
-git commit -m "feat(boot): register WebPushPlugin + gate telegram side-effects on channel"
+git commit -m "feat(boot): register WebPushPlugin, ungate fav-sweep, remove telegram wiring"
 ```
 
 ---
 
-### Task 10: Frontend dependencies + lockfile cleanup [ ]
+### Task 10: Frontend dependencies [ ]
 
-**Files:** Modify `frontend/package.json`, regenerate `frontend/package-lock.json`, delete `frontend/pnpm-lock.yaml`
+**Files:** Modify `frontend/package.json`, regenerate `frontend/package-lock.json`
 
-**Step 1: Install via npm**
+**Step 1: Install via npm** (run from `frontend/`):
 
 ```bash
-cd frontend
 npm install -D vite-plugin-pwa@^0.21
 npm install workbox-window@^7 workbox-precaching@^7
 ```
 
-**Step 2: Remove pnpm lockfile** (was untracked; npm is canonical for this repo):
+**Step 2: Remove pnpm lockfile if present** (npm is canonical):
 
 ```bash
-rm frontend/pnpm-lock.yaml
+rm -f frontend/pnpm-lock.yaml
 ```
 
 **Step 3: Commit**
@@ -1331,7 +1738,7 @@ rm frontend/pnpm-lock.yaml
 ```bash
 git add frontend/package.json frontend/package-lock.json
 git rm --ignore-unmatch frontend/pnpm-lock.yaml
-git commit -m "chore(frontend): add vite-plugin-pwa + workbox; pin to npm"
+git commit -m "chore(frontend): add vite-plugin-pwa + workbox"
 ```
 
 ---
@@ -1342,9 +1749,7 @@ git commit -m "chore(frontend): add vite-plugin-pwa + workbox; pin to npm"
 
 **Files:** Create `frontend/src/lib/pwa-detect.ts`, create `frontend/src/lib/__tests__/pwa-detect.test.ts`, modify `frontend/src/components/InstallPrompt.tsx`
 
-**Step 1: Extract helpers**
-
-`frontend/src/lib/pwa-detect.ts`:
+**Step 1:** `frontend/src/lib/pwa-detect.ts`:
 
 ```typescript
 export function isStandalone(): boolean {
@@ -1368,9 +1773,7 @@ export function pushSupported(): boolean {
 }
 ```
 
-**Step 2: Update InstallPrompt to import**
-
-In `frontend/src/components/InstallPrompt.tsx`, delete the local `isStandalone` and `isIos` helpers (lines 13-22) and add:
+**Step 2:** In `frontend/src/components/InstallPrompt.tsx`, delete the local `isStandalone` (lines 13-18) and `isIos` (lines 20-22) and add at the top:
 
 ```typescript
 import { isIos, isStandalone } from '../lib/pwa-detect';
@@ -1396,10 +1799,7 @@ describe('pwa-detect', () => {
   });
 
   it('isStandalone reads display-mode media query', () => {
-    vi.stubGlobal('window', {
-      ...window,
-      matchMedia: () => ({ matches: true } as MediaQueryList),
-    });
+    vi.stubGlobal('window', { ...window, matchMedia: () => ({ matches: true } as MediaQueryList) });
     vi.stubGlobal('navigator', {});
     expect(isStandalone()).toBe(true);
   });
@@ -1430,11 +1830,9 @@ git commit -m "refactor(frontend): extract PWA detection helpers"
 
 **Depends on:** Task 10
 
-**Files:** Modify `frontend/src/main.tsx`, modify `frontend/index.html`, delete `frontend/public/sw.js`, delete `frontend/public/manifest.json`
+**Files:** Modify `frontend/src/main.tsx`, `frontend/index.html`; delete `frontend/public/sw.js`, `frontend/public/manifest.json`
 
-**Step 1: Remove manual SW registration in `main.tsx`**
-
-Delete lines 27-31:
+**Step 1:** Delete the manual SW registration in `main.tsx` (lines 27-31):
 
 ```typescript
 if ('serviceWorker' in navigator) {
@@ -1444,29 +1842,19 @@ if ('serviceWorker' in navigator) {
 }
 ```
 
-**Step 2: Remove manifest link in `index.html`**
+**Step 2:** Remove `<link rel="manifest" href="/manifest.json">` at `index.html:10`. The apple-touch-icon + iOS PWA meta tags stay. VitePWA injects its own manifest link.
 
-In `frontend/index.html` line 10, delete:
-
-```html
-<link rel="manifest" href="/manifest.json">
-```
-
-The apple-touch-icon line and the iOS PWA meta tags (capable, status-bar-style, title) **stay** — they are read by Safari independently of the manifest. VitePWA injects its own `<link rel="manifest">` referencing the generated manifest at build time.
-
-**Step 3: Delete the static legacy files**
+**Step 3:** Delete static files:
 
 ```bash
-rm frontend/public/sw.js
-rm frontend/public/manifest.json
+git rm frontend/public/sw.js frontend/public/manifest.json
 ```
 
-The icons in `frontend/public/icons/` **stay** — they are referenced from the new VitePWA `manifest:` config in Task 12.
+The icons in `frontend/public/icons/` stay (referenced from the VitePWA manifest in Task 12).
 
 **Step 4: Commit**
 
 ```bash
-git rm frontend/public/sw.js frontend/public/manifest.json
 git add frontend/src/main.tsx frontend/index.html
 git commit -m "chore(pwa): remove legacy sw.js + manifest.json (replaced by vite-plugin-pwa)"
 ```
@@ -1492,9 +1880,8 @@ export default defineConfig({
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
-      // Output file: sw.js. Filename matches the existing nginx no-cache rule
-      // (frontend/nginx.conf:14 `location = /sw.js`) — do not rename without
-      // updating that rule, otherwise SW updates cache aggressively in prod.
+      // Output file: sw.js. Must match the nginx no-cache rule (frontend/nginx.conf:14
+      // `location = /sw.js`). Do not rename without updating that rule.
       filename: 'sw.ts',
       registerType: 'autoUpdate',
       injectRegister: 'auto',
@@ -1542,18 +1929,49 @@ export default defineConfig({
 
 ```bash
 git add frontend/vite.config.ts
-git commit -m "feat(frontend): wire vite-plugin-pwa with manifest migrated from public/"
+git commit -m "feat(frontend): wire vite-plugin-pwa with migrated manifest"
 ```
 
 ---
 
-### Task 13: Service worker (push + notificationclick) [ ]
+### Task 12.5: PWA update reliability — nginx + SW SKIP_WAITING [ ]
+
+**Depends on:** Task 12, Task 13
+
+**Files:** Modify `frontend/nginx.conf` (Task 13 adds the `message` handler in `sw.ts`)
+
+> Adopts the minimal half of Do-It's PLAN_037: never-cache `index.html` so a redeploy is discovered, and let the new SW take over without sitting in `waiting`. The `message` SKIP_WAITING handler is part of `sw.ts` (Task 13). YAGNI: no resume/30-min update-poll hook.
+
+**Step 1:** In `frontend/nginx.conf`, add a `location = /index.html` block directly before the `location /` SPA fallback (line 40). Mirror the header set from the existing `location = /sw.js` block (nginx `add_header` does not inherit once a `location` declares its own):
+
+```nginx
+    # index.html must never be cached — ensures the browser fetches the latest
+    # SW registration after a new deployment.
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+```
+
+**Step 2: Commit**
+
+```bash
+git add frontend/nginx.conf
+git commit -m "fix(pwa): never cache index.html so redeploys are discovered"
+```
+
+---
+
+### Task 13: Service worker (push + notificationclick + skip-waiting) [ ]
 
 **Depends on:** Task 10
 
-**Files:** Create `frontend/src/sw.ts` (path matches `vite-plugin-pwa` `filename: 'sw.ts'` in Task 12 → output `dist/sw.js`, which the existing nginx no-cache rule already targets)
+**Files:** Create `frontend/src/sw.ts`
 
-**Step 1: Implement service worker**
+**Step 1: Implement** — includes the `assertSafeNotificationUrl` open-redirect guard, exact-pathname client match, and the SKIP_WAITING message handler (mirrors Do-It's `service-worker.ts`):
 
 ```typescript
 /// <reference lib="webworker" />
@@ -1568,11 +1986,25 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Belt-and-suspenders: receive SKIP_WAITING from workbox-window if a future
+// registerType change ever leaves a new SW in "waiting".
+self.addEventListener('message', (event) => {
+  if ((event.data as { type?: string } | null)?.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+  }
+});
+
 interface PushPayload {
   title: string;
   body: string;
   url?: string;
   tag?: string;
+}
+
+/** Only allow in-app relative paths ("/..."). Blocks open-redirect via push URL. */
+function safeUrl(url: string | undefined): string {
+  if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) return url;
+  return '/';
 }
 
 self.addEventListener('push', (event) => {
@@ -1588,7 +2020,7 @@ self.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag,
-    data: { url: data.url ?? '/' },
+    data: { url: safeUrl(data.url) },
   };
 
   event.waitUntil(self.registration.showNotification(data.title, options));
@@ -1596,14 +2028,19 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  const target = safeUrl((event.notification.data as { url?: string } | undefined)?.url);
   event.waitUntil(
     (async () => {
       const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      for (const c of all) {
-        if (c.url.includes(url) && 'focus' in c) return c.focus();
-      }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
+      const existing = all.find((c) => {
+        try {
+          return new URL(c.url).pathname === new URL(target, self.location.origin).pathname;
+        } catch {
+          return false;
+        }
+      });
+      if (existing && 'focus' in existing) return existing.focus();
+      if (self.clients.openWindow) return self.clients.openWindow(target);
     })(),
   );
 });
@@ -1613,20 +2050,18 @@ self.addEventListener('notificationclick', (event) => {
 
 ```bash
 git add frontend/src/sw.ts
-git commit -m "feat(sw): push + notificationclick handlers"
+git commit -m "feat(sw): push + notificationclick + skip-waiting handlers"
 ```
 
 ---
 
-### Task 14: Notifications API client + types + retarget existing prefs functions [ ]
+### Task 14: Notifications client + types + remove telegram client surfaces [ ]
 
 **Depends on:** Task 10
 
-**Files:** Create `frontend/src/notifications/api.ts`, modify `frontend/src/types/api.ts`, modify `frontend/src/api/client.ts`
+**Files:** Create `frontend/src/notifications/api.ts`, modify `frontend/src/types/api.ts`, `frontend/src/api/client.ts`, `frontend/src/hooks/useAuth.ts`, `frontend/src/__tests__/ModalRouting.test.tsx`
 
-**Step 1: Extend `NotificationPrefs` + add new DTOs in `types/api.ts`**
-
-Find the existing `NotificationPrefs` interface (lines 224-229) and add `web_push_enabled`:
+**Step 1: `types/api.ts`** — extend `NotificationPrefs` (lines 224-229), delete `TelegramLinkResponse` (lines 231-234), append the new DTOs:
 
 ```typescript
 export interface NotificationPrefs {
@@ -1636,27 +2071,7 @@ export interface NotificationPrefs {
   fav_deleted: boolean;
   web_push_enabled: boolean;
 }
-```
 
-**Step 1b: Update existing test fixture literal**
-
-`frontend/src/components/__tests__/TelegramPanel.test.tsx:39-44` declares a typed `defaultPrefs: NotificationPrefs` literal that does NOT include `web_push_enabled`. After the interface change in Step 1, `tsc -b` (run as part of `npm run build` per `package.json:8`) will fail. Add the field:
-
-```typescript
-const defaultPrefs: NotificationPrefs = {
-  new_search_results: true,
-  fav_sold: true,
-  fav_price: false,
-  fav_deleted: false,
-  web_push_enabled: true,
-};
-```
-
-(No assertion changes needed — TelegramPanel.tsx iterates only over `TOGGLE_ROWS`, which doesn't include `web_push_enabled`, so the new field is simply present and unused by this test.)
-
-At the end of `types/api.ts`, append:
-
-```typescript
 export interface PushSubscriptionDto {
   id: number;
   endpoint: string;
@@ -1678,9 +2093,7 @@ export interface VapidKeyDto {
 }
 ```
 
-**Step 2: Retarget existing prefs functions in `client.ts`**
-
-Find `getNotificationPrefs` (line 177) and `updateNotificationPrefs` (line 182). Change the URL from `/api/telegram/prefs` to `/api/notifications/preferences`:
+**Step 2: `api/client.ts`** — remove `TelegramLinkResponse` from the type import (lines 1-16), delete `linkTelegram` (167-170) and `unlinkTelegram` (172-175), and retarget the prefs functions (177-189):
 
 ```typescript
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {
@@ -1698,7 +2111,11 @@ export async function updateNotificationPrefs(partial: Partial<NotificationPrefs
 }
 ```
 
-**Step 3: Subscriptions client** — `frontend/src/notifications/api.ts` (only subscriptions + vapid; prefs continue via `client.ts`):
+**Step 3: `hooks/useAuth.ts`** — remove `telegram_chat_id` and `telegram_linked_at` from the `AuthUser` type (lines 8-9).
+
+**Step 4: `__tests__/ModalRouting.test.tsx`** — remove `telegram_chat_id: null, telegram_linked_at: null` from the two mocked `user` objects (lines 38, 204).
+
+**Step 5: `notifications/api.ts`** — subscriptions + vapid client (prefs stay in `client.ts`):
 
 ```typescript
 import type {
@@ -1719,7 +2136,6 @@ async function handleResponse<T>(res: Response): Promise<T> {
     }
     throw new ApiError(res.status, detail);
   }
-  // 204 No Content
   if (res.status === 204) return undefined as unknown as T;
   return res.json() as Promise<T>;
 }
@@ -1748,7 +2164,7 @@ export const notificationsApi = {
 };
 ```
 
-**Step 4: Tests** — `frontend/src/notifications/__tests__/api.test.ts`. Use `vi.stubGlobal('fetch', ...)` to intercept:
+**Step 6: Tests** — `frontend/src/notifications/__tests__/api.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -1762,11 +2178,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const ok = (json: unknown, status = 200) => ({
-  ok: status < 400,
-  status,
-  json: () => Promise.resolve(json),
-});
+const ok = (json: unknown, status = 200) => ({ ok: status < 400, status, json: () => Promise.resolve(json) });
 
 describe('notificationsApi', () => {
   it('getVapidPublicKey GETs /api/notifications/vapid-public-key', async () => {
@@ -1777,10 +2189,7 @@ describe('notificationsApi', () => {
 
   it('createSubscription POSTs JSON body', async () => {
     fetchMock.mockResolvedValue(ok({ id: 1, endpoint: 'x' }, 201));
-    await notificationsApi.createSubscription({
-      endpoint: 'x',
-      keys: { p256dh: 'p', auth: 'a' },
-    });
+    await notificationsApi.createSubscription({ endpoint: 'x', keys: { p256dh: 'p', auth: 'a' } });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/notifications/subscriptions',
       expect.objectContaining({ method: 'POST' }),
@@ -1797,23 +2206,19 @@ describe('notificationsApi', () => {
   });
 
   it('throws ApiError on 4xx', async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 404,
-      json: () => Promise.resolve({ detail: 'gone' }),
-    });
+    fetchMock.mockResolvedValue({ ok: false, status: 404, json: () => Promise.resolve({ detail: 'gone' }) });
     await expect(notificationsApi.deleteSubscription(99)).rejects.toMatchObject({ status: 404 });
   });
 });
 ```
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 ```bash
 git add frontend/src/notifications/api.ts frontend/src/notifications/__tests__/api.test.ts \
-        frontend/src/types/api.ts frontend/src/api/client.ts \
-        frontend/src/components/__tests__/TelegramPanel.test.tsx
-git commit -m "feat(notifications): subscriptions client + DTOs; retarget prefs to /notifications/preferences"
+        frontend/src/types/api.ts frontend/src/api/client.ts frontend/src/hooks/useAuth.ts \
+        frontend/src/__tests__/ModalRouting.test.tsx
+git commit -m "feat(notifications): subscriptions client + DTOs; remove telegram client surfaces"
 ```
 
 ---
@@ -1822,7 +2227,7 @@ git commit -m "feat(notifications): subscriptions client + DTOs; retarget prefs 
 
 **Files:** Create `frontend/src/notifications/device-label.ts` + co-located test
 
-**Step 1: Implement**
+**Step 1:** `frontend/src/notifications/device-label.ts`:
 
 ```typescript
 /** Best-effort UA → human label. Never throws — falls back to "Unbekanntes Gerät". */
@@ -1886,7 +2291,7 @@ git commit -m "feat(notifications): device-label helper"
 
 **Files:** Create `frontend/src/notifications/useWebPushSubscription.ts` + test
 
-**Step 1: Implement**
+**Step 1:** `frontend/src/notifications/useWebPushSubscription.ts`:
 
 ```typescript
 import { useCallback, useEffect, useState } from 'react';
@@ -1963,44 +2368,168 @@ export function useWebPushSubscription() {
 }
 ```
 
-**Step 2: Tests** — `frontend/src/notifications/__tests__/useWebPushSubscription.test.tsx`. Stub `navigator.serviceWorker`, `Notification`, `window.PushManager`. One `it` per state transition + subscribe path:
+**Step 2: Tests** — `frontend/src/notifications/__tests__/useWebPushSubscription.test.tsx`. All 7 `it` blocks are fully implemented (no stubs). Mock setup mirrors Do-It's `apps/web/src/notifications/useWebPushSubscription.test.tsx` (the `stubPushEnvironment` helper that installs fake `navigator.serviceWorker`/`window.Notification`/`window.PushManager` via `Object.defineProperty`, and the `delete window.X` trick for the unsupported case — setting a global to `undefined` does NOT make `'X' in window` false). **Deviations from the Do-It reference** (rcn hook differs):
+> - rcn reads the VAPID key at `subscribe()` time via `notificationsApi.getVapidPublicKey()` returning `{ public_key }` — NOT from `import.meta.env`. So mock `notificationsApi.getVapidPublicKey`, do NOT use `vi.stubEnv`.
+> - rcn `createSubscription` payload is snake_case `{ endpoint, keys, user_agent, device_label }` (Do-It uses camelCase `userAgent`/`deviceLabel`).
+> - rcn `getDeviceLabel()` is synchronous (returns a string), so its mock returns a plain string (not a resolved promise).
+> - rcn `pushSupported()` checks `'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window`. The unsupported test must make at least one of those `in`-checks false.
+> - rcn has no on-mount label re-POST effect, so there is no "re-POSTs on mount" test.
 
 ```typescript
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
-afterEach(() => vi.unstubAllGlobals());
+// Hoisted mocks — must precede any import that touches these modules.
+vi.mock('../api', () => ({
+  notificationsApi: {
+    getVapidPublicKey: vi.fn().mockResolvedValue({ public_key: 'dGVzdA' }), // URL-safe b64 "test"
+    createSubscription: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+vi.mock('../device-label', () => ({
+  getDeviceLabel: vi.fn().mockReturnValue('Chrome auf Windows'),
+}));
+
+import { useWebPushSubscription } from '../useWebPushSubscription';
+import { notificationsApi } from '../api';
+
+type Permission = 'default' | 'denied' | 'granted';
+
+interface StubHandles {
+  mockSub: {
+    endpoint: string;
+    unsubscribe: ReturnType<typeof vi.fn>;
+    toJSON: ReturnType<typeof vi.fn>;
+  };
+  mockPushManager: {
+    getSubscription: ReturnType<typeof vi.fn>;
+    subscribe: ReturnType<typeof vi.fn>;
+  };
+}
+
+// Installs fake push APIs on window/navigator. pushSupported() is evaluated at
+// render time, so stubs must be in place before renderHook() is called.
+function stubPushEnvironment(permission: Permission, hasSub: boolean): StubHandles {
+  const mockSub = {
+    endpoint: 'https://push.example.com/stub-endpoint',
+    unsubscribe: vi.fn().mockResolvedValue(true),
+    toJSON: vi.fn().mockReturnValue({
+      endpoint: 'https://push.example.com/stub-endpoint',
+      keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+    }),
+  };
+  const mockPushManager = {
+    getSubscription: vi.fn().mockResolvedValue(hasSub ? mockSub : null),
+    subscribe: vi.fn().mockResolvedValue(mockSub),
+  };
+  const mockRegistration = { pushManager: mockPushManager };
+
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: { ready: Promise.resolve(mockRegistration) },
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(window, 'Notification', {
+    value: { permission, requestPermission: vi.fn().mockResolvedValue(permission) },
+    writable: true,
+    configurable: true,
+  });
+  // jsdom lacks PushManager — add a sentinel so the `'PushManager' in window` check passes.
+  Object.defineProperty(window, 'PushManager', {
+    value: class {},
+    writable: true,
+    configurable: true,
+  });
+  return { mockSub, mockPushManager };
+}
+
+beforeEach(() => {
+  vi.mocked(notificationsApi.getVapidPublicKey).mockResolvedValue({ public_key: 'dGVzdA' });
+  vi.mocked(notificationsApi.createSubscription).mockResolvedValue(undefined as never);
+});
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('useWebPushSubscription', () => {
-  it('unsupported when serviceWorker missing', async () => {
-    vi.stubGlobal('navigator', { userAgent: 'x' });
-    const { useWebPushSubscription } = await import('../useWebPushSubscription');
+  it('unsupported when push APIs are missing', async () => {
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    // Setting to undefined is not enough — `'X' in window` stays true. Delete them.
+    delete (window as unknown as Record<string, unknown>)['Notification'];
+    delete (window as unknown as Record<string, unknown>)['PushManager'];
+
     const { result } = renderHook(() => useWebPushSubscription());
     await waitFor(() => expect(result.current.state.status).toBe('unsupported'));
+    expect(result.current.supported).toBe(false);
   });
 
   it('default when permission is default', async () => {
-    /* stub navigator.serviceWorker, window.PushManager, Notification.permission='default' */
+    stubPushEnvironment('default', false);
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('default'));
   });
 
   it('denied when permission is denied', async () => {
-    /* … */
+    stubPushEnvironment('denied', false);
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('denied'));
   });
 
-  it('granted-no-subscription when permission granted but pushManager.getSubscription() → null', async () => {
-    /* … */
+  it('granted-no-subscription when granted but getSubscription() → null', async () => {
+    stubPushEnvironment('granted', false);
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('granted-no-subscription'));
   });
 
-  it('granted-subscribed when pushManager.getSubscription() → { endpoint }', async () => {
-    /* … */
+  it('granted-subscribed when getSubscription() → { endpoint }', async () => {
+    const { mockSub } = stubPushEnvironment('granted', true);
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('granted-subscribed'));
+    expect((result.current.state as { status: string; endpoint: string }).endpoint)
+      .toBe(mockSub.endpoint);
   });
 
-  it('subscribe requests permission, calls pushManager.subscribe, posts to API', async () => {
-    /* mock notificationsApi.getVapidPublicKey, notificationsApi.createSubscription */
+  it('subscribe requests permission, calls pushManager.subscribe, posts snake_case payload to API', async () => {
+    const { mockPushManager } = stubPushEnvironment('default', false);
+    vi.mocked(window.Notification.requestPermission).mockResolvedValue('granted');
+
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('default'));
+
+    await act(async () => {
+      await result.current.subscribe();
+    });
+
+    expect(window.Notification.requestPermission).toHaveBeenCalledOnce();
+    expect(mockPushManager.subscribe).toHaveBeenCalledWith({
+      userVisibleOnly: true,
+      applicationServerKey: expect.anything(),
+    });
+    expect(notificationsApi.createSubscription).toHaveBeenCalledWith({
+      endpoint: 'https://push.example.com/stub-endpoint',
+      keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+      user_agent: navigator.userAgent,
+      device_label: 'Chrome auf Windows',
+    });
   });
 
   it('subscribe throws when public_key is empty', async () => {
-    /* mock getVapidPublicKey → { public_key: '' } */
+    stubPushEnvironment('default', false);
+    vi.mocked(notificationsApi.getVapidPublicKey).mockResolvedValue({ public_key: '' });
+
+    const { result } = renderHook(() => useWebPushSubscription());
+    await waitFor(() => expect(result.current.state.status).toBe('default'));
+
+    await expect(
+      act(async () => {
+        await result.current.subscribe();
+      }),
+    ).rejects.toThrow(/VAPID-Schlüssel nicht verfügbar/);
+    expect(notificationsApi.createSubscription).not.toHaveBeenCalled();
   });
 });
 ```
@@ -2020,7 +2549,7 @@ git commit -m "feat(notifications): useWebPushSubscription hook"
 
 **Files:** Create `frontend/src/notifications/FirstStartPushPrompt.tsx` + test
 
-**Reuse check:** Reuses visual shell from `frontend/src/components/InstallPrompt.tsx`. Helpers `isIos`, `isStandalone` from `lib/pwa-detect`.
+**Reuse check:** Reuses visual shell from `InstallPrompt.tsx` (glassmorphism). Helpers `isIos`, `isStandalone` from `lib/pwa-detect`.
 
 **Step 1: Component**
 
@@ -2037,7 +2566,6 @@ export function FirstStartPushPrompt() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // iOS Safari: hide until PWA is installed (Apple API limitation).
   const blockedByIos = isIos() && !isStandalone();
   const visible = !dismissed && !blockedByIos && state.status === 'default';
 
@@ -2059,9 +2587,7 @@ export function FirstStartPushPrompt() {
     setBusy(true);
     void subscribe()
       .then(() => dismiss())
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Aktivierung fehlgeschlagen'),
-      )
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Aktivierung fehlgeschlagen'))
       .finally(() => setBusy(false));
   };
 
@@ -2083,8 +2609,7 @@ export function FirstStartPushPrompt() {
         <div
           className="flex-shrink-0 flex items-center justify-center rounded-lg"
           style={{
-            width: 36,
-            height: 36,
+            width: 36, height: 36,
             background: 'linear-gradient(135deg, rgba(99,102,241,0.3), rgba(147,51,234,0.3))',
             border: '1px solid rgba(255,255,255,0.1)',
           }}
@@ -2109,26 +2634,18 @@ export function FirstStartPushPrompt() {
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-3">
-        <button
-          type="button"
-          onClick={dismiss}
-          disabled={busy}
+        <button type="button" onClick={dismiss} disabled={busy}
           className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
-          style={{ color: 'rgba(248, 250, 252, 0.55)' }}
-        >
+          style={{ color: 'rgba(248, 250, 252, 0.55)' }}>
           Später
         </button>
-        <button
-          type="button"
-          onClick={enable}
-          disabled={busy}
+        <button type="button" onClick={enable} disabled={busy}
           className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
           style={{
             background: 'rgba(99, 102, 241, 0.2)',
             border: '1px solid rgba(99, 102, 241, 0.4)',
             color: '#A78BFA',
-          }}
-        >
+          }}>
           {busy ? 'Wird aktiviert …' : 'Aktivieren'}
         </button>
       </div>
@@ -2137,17 +2654,14 @@ export function FirstStartPushPrompt() {
 }
 ```
 
-**Step 2: Tests** — `frontend/src/notifications/__tests__/FirstStartPushPrompt.test.tsx`. Mock `useWebPushSubscription` and `pwa-detect` helpers:
+**Step 2: Tests** — `frontend/src/notifications/__tests__/FirstStartPushPrompt.test.tsx`. Mock `useWebPushSubscription` and `pwa-detect`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('../useWebPushSubscription', () => ({ useWebPushSubscription: vi.fn() }));
-vi.mock('../../lib/pwa-detect', () => ({
-  isIos: vi.fn(() => false),
-  isStandalone: vi.fn(() => true),
-}));
+vi.mock('../../lib/pwa-detect', () => ({ isIos: vi.fn(() => false), isStandalone: vi.fn(() => true) }));
 
 import { FirstStartPushPrompt } from '../FirstStartPushPrompt';
 import { useWebPushSubscription } from '../useWebPushSubscription';
@@ -2228,11 +2742,11 @@ git commit -m "feat(notifications): FirstStartPushPrompt banner"
 
 **Depends on:** Tasks 11, 16
 
-**Files:** Create `frontend/src/components/NotificationsPanel.tsx` (initial scaffold)
+**Files:** Create `frontend/src/components/NotificationsPanel.tsx`
 
-**Reuse check:** Reuses inline `cardStyle` shape from `ProfilePage.tsx` (locally re-declared — same two-caller pattern as `TelegramPanel`). Reuses `useWebPushSubscription` hook.
+**Reuse check:** Reuses inline `cardStyle` shape from `ProfilePage.tsx` (locally re-declared). Reuses `useWebPushSubscription`.
 
-**Step 1: Component scaffold — supported/default/denied/granted-no-subscription branches only**
+**Step 1: Component scaffold — supported/default/denied/granted-no-subscription/granted-subscribed branches**
 
 ```typescript
 import { useState } from 'react';
@@ -2276,17 +2790,9 @@ export function NotificationsPanel() {
           <p className="text-sm" style={{ color: 'rgba(248, 250, 252, 0.65)' }}>
             Push ist auf diesem Gerät noch nicht aktiviert.
           </p>
-          <button
-            type="button"
-            onClick={handleSubscribe}
-            disabled={busy}
+          <button type="button" onClick={handleSubscribe} disabled={busy}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
-            style={{
-              background: 'rgba(99, 102, 241, 0.2)',
-              border: '1px solid rgba(99, 102, 241, 0.4)',
-              color: '#A78BFA',
-            }}
-          >
+            style={{ background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#A78BFA' }}>
             {busy ? 'Wird aktiviert …' : 'Aktivieren'}
           </button>
         </div>
@@ -2300,17 +2806,9 @@ export function NotificationsPanel() {
       )}
 
       {supported && state.status === 'granted-no-subscription' && (
-        <button
-          type="button"
-          onClick={handleSubscribe}
-          disabled={busy}
+        <button type="button" onClick={handleSubscribe} disabled={busy}
           className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
-          style={{
-            background: 'rgba(99, 102, 241, 0.2)',
-            border: '1px solid rgba(99, 102, 241, 0.4)',
-            color: '#A78BFA',
-          }}
-        >
+          style={{ background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#A78BFA' }}>
           {busy ? 'Wird aktiviert …' : 'Auf diesem Gerät aktivieren'}
         </button>
       )}
@@ -2331,15 +2829,58 @@ export function NotificationsPanel() {
 }
 ```
 
-**Step 2: Tests** — `frontend/src/components/__tests__/NotificationsPanel.test.tsx` for the four state branches above:
+**Step 2: Tests** — `frontend/src/components/__tests__/NotificationsPanel.test.tsx`. Mock `useWebPushSubscription`. One `it` per branch:
 
 ```typescript
-// it('renders unsupported message when supported=false')
-// it('renders default state with Aktivieren button')
-// it('renders denied state with browser hint')
-// it('renders granted-no-subscription with on-device button')
-// it('renders granted-subscribed confirmation')
-// it('renders error when subscribe rejects')
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+
+vi.mock('../../notifications/useWebPushSubscription', () => ({ useWebPushSubscription: vi.fn() }));
+import { NotificationsPanel } from '../NotificationsPanel';
+import { useWebPushSubscription } from '../../notifications/useWebPushSubscription';
+
+const mockHook = useWebPushSubscription as unknown as ReturnType<typeof vi.fn>;
+beforeEach(() => mockHook.mockReset());
+
+describe('NotificationsPanel — state display', () => {
+  it('renders unsupported message when supported=false', () => {
+    mockHook.mockReturnValue({ state: { status: 'unsupported' }, supported: false, subscribe: vi.fn() });
+    render(<NotificationsPanel />);
+    expect(screen.getByText(/unterstützt keine Web-Push/)).toBeInTheDocument();
+  });
+
+  it('renders default state with Aktivieren button', () => {
+    mockHook.mockReturnValue({ state: { status: 'default' }, supported: true, subscribe: vi.fn() });
+    render(<NotificationsPanel />);
+    expect(screen.getByText('Aktivieren')).toBeInTheDocument();
+  });
+
+  it('renders denied state with browser hint', () => {
+    mockHook.mockReturnValue({ state: { status: 'denied' }, supported: true, subscribe: vi.fn() });
+    render(<NotificationsPanel />);
+    expect(screen.getByText(/im Browser blockiert/)).toBeInTheDocument();
+  });
+
+  it('renders granted-no-subscription with on-device button', () => {
+    mockHook.mockReturnValue({ state: { status: 'granted-no-subscription' }, supported: true, subscribe: vi.fn() });
+    render(<NotificationsPanel />);
+    expect(screen.getByText('Auf diesem Gerät aktivieren')).toBeInTheDocument();
+  });
+
+  it('renders granted-subscribed confirmation', () => {
+    mockHook.mockReturnValue({ state: { status: 'granted-subscribed', endpoint: 'x' }, supported: true, subscribe: vi.fn() });
+    render(<NotificationsPanel />);
+    expect(screen.getByText(/aktiv/)).toBeInTheDocument();
+  });
+
+  it('renders error when subscribe rejects', async () => {
+    const subscribe = vi.fn().mockRejectedValue(new Error('boom'));
+    mockHook.mockReturnValue({ state: { status: 'default' }, supported: true, subscribe });
+    render(<NotificationsPanel />);
+    fireEvent.click(screen.getByText('Aktivieren'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/boom/));
+  });
+});
 ```
 
 **Step 3: Commit**
@@ -2355,39 +2896,36 @@ git commit -m "feat(profile): NotificationsPanel — state display"
 
 **Depends on:** Task 18a, Task 14
 
-**Files:** Modify `frontend/src/components/NotificationsPanel.tsx`, extend the test file
+**Files:** Modify `frontend/src/components/NotificationsPanel.tsx`, extend its test
 
-**Step 1: Add device list + prefs toggle to the existing component**
+**Reuse check:** Mirrors the optimistic-toggle-with-revert pattern from the (deleted) `TelegramPanel.tsx:171-188` and copies the `role="switch"` toggle markup from `TelegramPanel.tsx:306-338` (source file removed in Task 7.7 — markup written in full here).
 
-Add imports at the top:
+**Step 1: Imports** — Task 18a created the file with `import { useState } from 'react';` as the first line. **Replace that existing react import line** with the merged version below (do NOT add a second `from 'react'` line — a duplicate import is a TypeScript compile error), then add the three new module imports after it:
 
+Replace:
 ```typescript
-import { useCallback, useEffect } from 'react';
+import { useState } from 'react';
+```
+With:
+```typescript
+import { useState, useCallback, useEffect } from 'react';
 import { notificationsApi } from '../notifications/api';
 import { getNotificationPrefs, updateNotificationPrefs } from '../api/client';
 import type { NotificationPrefs, PushSubscriptionDto } from '../types/api';
 ```
 
-Inside the component, add state + load effects:
+**Step 2: State + load + handlers** inside the component:
 
 ```typescript
   const [subs, setSubs] = useState<PushSubscriptionDto[]>([]);
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
 
   const reloadSubs = useCallback(async () => {
-    try {
-      setSubs(await notificationsApi.listSubscriptions());
-    } catch {
-      /* non-fatal */
-    }
+    try { setSubs(await notificationsApi.listSubscriptions()); } catch { /* non-fatal */ }
   }, []);
 
   const reloadPrefs = useCallback(async () => {
-    try {
-      setPrefs(await getNotificationPrefs());
-    } catch {
-      /* non-fatal */
-    }
+    try { setPrefs(await getNotificationPrefs()); } catch { /* non-fatal */ }
   }, []);
 
   useEffect(() => {
@@ -2402,20 +2940,17 @@ Inside the component, add state + load effects:
   };
 
   const handleTogglePush = (value: boolean) => {
-    // Optimistic update with revert-on-error — mirrors TelegramPanel.handleToggle.
     const previous = prefs?.web_push_enabled;
     setPrefs((p) => (p ? { ...p, web_push_enabled: value } : p));
     void updateNotificationPrefs({ web_push_enabled: value })
       .then(setPrefs)
       .catch(() => {
-        if (previous !== undefined) {
-          setPrefs((p) => (p ? { ...p, web_push_enabled: previous } : p));
-        }
+        if (previous !== undefined) setPrefs((p) => (p ? { ...p, web_push_enabled: previous } : p));
       });
   };
 ```
 
-Append two blocks before `</section>`:
+**Step 3: Markup** — append before `</section>`:
 
 ```tsx
       {(state.status === 'granted-subscribed' || state.status === 'granted-no-subscription') && subs.length > 0 && (
@@ -2430,13 +2965,9 @@ Append two blocks before `</section>`:
                 <span style={{ color: 'rgba(248, 250, 252, 0.8)' }}>
                   {s.device_label ?? 'Unbekanntes Gerät'}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(s.id)}
+                <button type="button" onClick={() => handleDelete(s.id)}
                   aria-label={`Gerät ${s.device_label ?? s.id} entfernen`}
-                  className="text-xs"
-                  style={{ color: 'rgba(248, 250, 252, 0.45)' }}
-                >
+                  className="text-xs" style={{ color: 'rgba(248, 250, 252, 0.45)' }}>
                   Entfernen
                 </button>
               </li>
@@ -2450,11 +2981,7 @@ Append two blocks before `</section>`:
           <span className="text-sm" style={{ color: 'rgba(248,250,252,0.75)' }}>
             Push-Benachrichtigungen empfangen
           </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={prefs.web_push_enabled}
-            aria-label="Push aktiv"
+          <button type="button" role="switch" aria-checked={prefs.web_push_enabled} aria-label="Push aktiv"
             onClick={() => handleTogglePush(!prefs.web_push_enabled)}
             className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200"
             style={{
@@ -2464,31 +2991,108 @@ Append two blocks before `</section>`:
               border: prefs.web_push_enabled
                 ? '1px solid rgba(139,92,246,0.5)'
                 : '1px solid rgba(255,255,255,0.15)',
-            }}
-          >
-            <span
-              className="inline-block h-3.5 w-3.5 rounded-full transition-transform duration-200"
+            }}>
+            <span className="inline-block h-3.5 w-3.5 rounded-full transition-transform duration-200"
               style={{
                 background: '#fff',
                 transform: prefs.web_push_enabled ? 'translateX(18px)' : 'translateX(2px)',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
               }}
-              aria-hidden="true"
-            />
+              aria-hidden="true" />
           </button>
         </div>
       )}
 ```
 
-**Step 2: Append tests** to the existing `NotificationsPanel.test.tsx`:
+**Step 4: Append tests** — at the **top of the file** (with the other module-level `vi.mock` calls from Task 18a, before any `import` of code under test) add mocks for the two new modules, then append the `describe` block below to the end of the file. Same mock pattern as Task 18a (and consistent with Task 16): explicit Vitest globals, `vi.fn()`-backed module mocks, `waitFor` for the async `useEffect` loads.
+
+Add these two `vi.mock` calls next to the existing `vi.mock('../../notifications/useWebPushSubscription', …)` from Task 18a:
 
 ```typescript
-// it('shows device list when granted-subscribed and listSubscriptions returned rows')
-// it('clicking Entfernen calls deleteSubscription and reloads')
-// it('toggling pref calls updateNotificationPrefs with web_push_enabled')
+vi.mock('../../notifications/api', () => ({
+  notificationsApi: { listSubscriptions: vi.fn(), deleteSubscription: vi.fn() },
+}));
+vi.mock('../../api/client', () => ({
+  getNotificationPrefs: vi.fn(),
+  updateNotificationPrefs: vi.fn(),
+}));
 ```
 
-**Step 3: Commit**
+And import the mocked members alongside the Task 18a imports:
+
+```typescript
+import { notificationsApi } from '../../notifications/api';
+import { getNotificationPrefs, updateNotificationPrefs } from '../../api/client';
+```
+
+Append the following `describe` block to the end of the file:
+
+```typescript
+describe('NotificationsPanel — device list + prefs toggle', () => {
+  const mockList = notificationsApi.listSubscriptions as unknown as ReturnType<typeof vi.fn>;
+  const mockDelete = notificationsApi.deleteSubscription as unknown as ReturnType<typeof vi.fn>;
+  const mockGetPrefs = getNotificationPrefs as unknown as ReturnType<typeof vi.fn>;
+  const mockUpdatePrefs = updateNotificationPrefs as unknown as ReturnType<typeof vi.fn>;
+
+  const prefs = (web_push_enabled: boolean): NotificationPrefs => ({
+    new_search_results: true,
+    fav_sold: true,
+    fav_price: true,
+    fav_deleted: true,
+    web_push_enabled,
+  });
+
+  beforeEach(() => {
+    mockHook.mockReset();
+    mockList.mockReset();
+    mockDelete.mockReset();
+    mockGetPrefs.mockReset();
+    mockUpdatePrefs.mockReset();
+    mockHook.mockReturnValue({ state: { status: 'granted-subscribed', endpoint: 'x' }, supported: true, subscribe: vi.fn() });
+    mockGetPrefs.mockResolvedValue(prefs(true));
+  });
+
+  it('shows device list when granted-subscribed and listSubscriptions returned rows', async () => {
+    mockList.mockResolvedValue([
+      { id: 1, endpoint: 'e1', device_label: 'Chrome auf Windows', user_agent: null, last_used_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z' },
+      { id: 2, endpoint: 'e2', device_label: null, user_agent: null, last_used_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z' },
+    ]);
+    render(<NotificationsPanel />);
+    await waitFor(() => expect(screen.getByText('Chrome auf Windows')).toBeInTheDocument());
+    expect(screen.getByText('Unbekanntes Gerät')).toBeInTheDocument();
+  });
+
+  it('clicking Entfernen calls deleteSubscription and reloads', async () => {
+    mockList
+      .mockResolvedValueOnce([
+        { id: 7, endpoint: 'e7', device_label: 'iPhone', user_agent: null, last_used_at: '2026-01-01T00:00:00Z', created_at: '2026-01-01T00:00:00Z' },
+      ])
+      .mockResolvedValueOnce([]);
+    mockDelete.mockResolvedValue(undefined);
+    render(<NotificationsPanel />);
+
+    const removeBtn = await screen.findByRole('button', { name: /Gerät iPhone entfernen/ });
+    fireEvent.click(removeBtn);
+
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+  });
+
+  it('toggling pref calls updateNotificationPrefs with web_push_enabled', async () => {
+    mockList.mockResolvedValue([]);
+    mockUpdatePrefs.mockResolvedValue(prefs(false));
+    render(<NotificationsPanel />);
+
+    const toggle = await screen.findByRole('switch', { name: 'Push aktiv' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mockUpdatePrefs).toHaveBeenCalledWith({ web_push_enabled: false }));
+  });
+});
+```
+
+**Step 5: Commit**
 
 ```bash
 git add frontend/src/components/NotificationsPanel.tsx frontend/src/components/__tests__/NotificationsPanel.test.tsx
@@ -2497,56 +3101,45 @@ git commit -m "feat(profile): NotificationsPanel — devices + prefs toggle"
 
 ---
 
-### Task 19: Mount FirstStartPushPrompt + NotificationsPanel [ ]
+### Task 19: Mount FirstStartPushPrompt + replace TelegramPanel [ ]
 
 **Depends on:** Tasks 17, 18b
 
-**Files:** Modify `frontend/src/App.tsx`, modify `frontend/src/pages/ProfilePage.tsx`
+**Files:** Modify `frontend/src/App.tsx`, `frontend/src/pages/ProfilePage.tsx`
 
-**Step 1: App.tsx**
-
-At line 223 change:
+**Step 1: App.tsx** — after `<InstallPrompt />` (line 223) add `<FirstStartPushPrompt />`; add the import near the top:
 
 ```tsx
-      <InstallPrompt />
+import { FirstStartPushPrompt } from './notifications/FirstStartPushPrompt';
 ```
-
-to:
 
 ```tsx
       <InstallPrompt />
       <FirstStartPushPrompt />
 ```
 
-Add the import near the top:
-
-```tsx
-import { FirstStartPushPrompt } from './notifications/FirstStartPushPrompt';
-```
-
-**Step 2: ProfilePage.tsx**
-
-Change Column 2 ([ProfilePage.tsx:236-240](frontend/src/pages/ProfilePage.tsx#L236-L240)):
-
-```tsx
-        <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
-          <NotificationsPanel />
-          <TelegramPanel user={user} onUserReload={onUserReload} />
-          {user.role === 'admin' && <LLMAdminPanel />}
-        </div>
-```
-
-Add the import:
+**Step 2: ProfilePage.tsx** — replace the `TelegramPanel` import (line 7) with:
 
 ```tsx
 import { NotificationsPanel } from '../components/NotificationsPanel';
 ```
 
+Replace Column 2 (lines 237-240):
+
+```tsx
+        <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
+          <NotificationsPanel />
+          {user.role === 'admin' && <LLMAdminPanel />}
+        </div>
+```
+
+`NotificationsPanel` takes no props. The `onUserReload` prop on `ProfilePage` becomes unused — leave the `Props` interface as-is (it is still passed by the parent route); just stop forwarding it. (Verify no other use of `onUserReload` inside ProfilePage after this edit — there is none today.)
+
 **Step 3: Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/pages/ProfilePage.tsx
-git commit -m "feat(ui): mount FirstStartPushPrompt + NotificationsPanel"
+git commit -m "feat(ui): mount FirstStartPushPrompt; replace TelegramPanel with NotificationsPanel"
 ```
 
 ---
@@ -2555,20 +3148,16 @@ git commit -m "feat(ui): mount FirstStartPushPrompt + NotificationsPanel"
 
 **Depends on:** Task 12
 
-**Files:** Modify `frontend/Dockerfile`, modify `.github/workflows/deploy.yml`
+**Files:** Modify `frontend/Dockerfile`, `.github/workflows/deploy.yml`
 
-**Step 1: Add build-arg to `frontend/Dockerfile`**
-
-Insert before `RUN npm run build`:
+**Step 1: `frontend/Dockerfile`** — insert before `RUN npm run build`:
 
 ```dockerfile
 ARG VITE_VAPID_PUBLIC_KEY=""
 ENV VITE_VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY
 ```
 
-**Step 2: Pass build-arg in GHA**
-
-Replace the existing `Build & push nginx/frontend image` step ([deploy.yml:39-47](.github/workflows/deploy.yml#L39-L47)) with:
+**Step 2: `.github/workflows/deploy.yml`** — add `build-args` to the nginx/frontend build step (lines 39-47):
 
 ```yaml
       - name: Build & push nginx/frontend image
@@ -2584,21 +3173,12 @@ Replace the existing `Build & push nginx/frontend image` step ([deploy.yml:39-47
             ghcr.io/marcoroth1983/rc-network-scraper/nginx:${{ steps.tag.outputs.sha }}
 ```
 
-(The VAPID public key is exposed to every browser anyway, so `vars.VAPID_PUBLIC_KEY` — a non-secret repository variable — is correct. Use `secrets.VAPID_PUBLIC_KEY` only if the project standardizes on Secrets for everything.)
+(VAPID public key is public → `vars.VAPID_PUBLIC_KEY` repo variable is correct.)
 
-**Step 3: Document the GitHub repo variable**
-
-In `env.prod.example`, add a comment near the VAPID block:
+**Step 3: Commit**
 
 ```bash
-# Set VAPID_PUBLIC_KEY as a GitHub repository variable (Settings → Secrets and variables → Actions → Variables)
-# so it gets baked into the frontend image during CI build.
-```
-
-**Step 4: Commit**
-
-```bash
-git add frontend/Dockerfile .github/workflows/deploy.yml env.prod.example
+git add frontend/Dockerfile .github/workflows/deploy.yml
 git commit -m "chore(ci): wire VITE_VAPID_PUBLIC_KEY into frontend build"
 ```
 
@@ -2612,32 +3192,31 @@ git commit -m "chore(ci): wire VITE_VAPID_PUBLIC_KEY into frontend build"
 npx web-push generate-vapid-keys
 ```
 
-Output is two URL-safe base64 strings — exactly the format the frontend hook (`urlBase64ToUint8Array`) and `pywebpush` (`vapid_private_key=...`) expect. No conversion required.
+Output: two URL-safe base64 strings — the exact format the frontend hook (`urlBase64ToUint8Array`) and `pywebpush` (`vapid_private_key=…`) expect.
 
 **Step 2: Populate `.env`** (NOT committed):
 
 ```bash
-VAPID_PUBLIC_KEY=<the public key from step 1>
-VAPID_PRIVATE_KEY=<the private key from step 1>
+VAPID_PUBLIC_KEY=<public key>
+VAPID_PRIVATE_KEY=<private key>
 VAPID_SUBJECT=mailto:marco.roth1983@googlemail.com
-NOTIFICATION_CHANNEL=webpush
 ```
 
-**Step 3: Populate the GitHub repository variable** `VAPID_PUBLIC_KEY` (public key only). The private key goes onto the VPS in its `.env` file directly — never into CI/CD.
+**Step 3:** Set the GitHub repository **variable** `VAPID_PUBLIC_KEY` (public key only). The private key goes onto the VPS `.env` directly — never into CI.
 
-**No commit** — this task produces secrets only.
+**No commit** — secrets only.
 
 ---
 
-### Task 22: Verification gate (no commit, see § Verification) [ ]
+### Task 22: Verification gate (no commit) [ ]
 
-This is a placeholder for the end-of-plan verification — actual commands are in the `## Verification` section below.
+Placeholder — see `## Verification`.
 
 ---
 
 ### Task 23: Update definition.md [ ]
 
-**Depends on:** All implementation tasks (1–22)
+**Depends on:** All implementation tasks
 
 **Files:** Modify `docs/definition.md`
 
@@ -2648,16 +3227,15 @@ Replace §F5 with:
 
 - Per-user opt-in via `/profile` notifications panel.
 - Trigger: new listing matches for any **active** SavedSearch (existing pipeline via `notification_registry.dispatch(MatchResult)`).
-- Multi-device: each browser install registers its own subscription; users can remove devices individually.
-- Delivery channel selectable via `NOTIFICATION_CHANNEL` env: `webpush` (default), `telegram`, or `both`.
+- Also delivers favorites status changes (sold / price / deleted) via the favorites sweep.
+- Multi-device: each browser install registers its own subscription; devices removable individually.
+- Sole notification channel — Telegram was removed in PLAN-027.
 - iOS: requires PWA install (Add to Home Screen) — see `limitations.md`.
 ```
 
-**Commit:**
-
 ```bash
 git add docs/definition.md
-git commit -m "docs(definition): activate F5 Web Push"
+git commit -m "docs(definition): activate F5 Web Push, note Telegram removal"
 ```
 
 ---
@@ -2668,27 +3246,21 @@ git commit -m "docs(definition): activate F5 Web Push"
 
 **Files:** Modify `docs/architektur.md`
 
-Append at end:
+Remove any Telegram-subsystem references; append:
 
 ```markdown
-## Notification Channels
+## Notification Channel (Web Push)
 
-`app/notifications/registry.py` holds a singleton `notification_registry`. Plugins implement `NotificationPlugin` (`is_configured()` + `send(MatchResult)`). Channel routing happens **at registration time** in `app/main.py:lifespan()` based on `settings.NOTIFICATION_CHANNEL`. The same channel switch also gates Telegram-only side effects (`fav_sweep` scheduler + `setWebhook` registration).
+`app/notifications/registry.py` holds a singleton `notification_registry`. Plugins implement `NotificationPlugin` (`is_configured()` + `send(MatchResult)`). `WebPushPlugin` is the sole delivery plugin (plus `LogPlugin`); it is registered in `app/main.py:lifespan()` when VAPID is configured. A shared helper `send_web_push_to_user(user_id, payload)` (in `web_push_plugin.py`) owns the per-subscription send loop, 404/410 stale-subscription garbage collection (scoped by `user_id`), and the per-delivered `last_used_at` bump. Both the plugin and the favorites status sweep (`app/notifications/fav_sweep.py`, scheduled every `FAV_SWEEP_INTERVAL_MIN` minutes) use this helper.
 
-| Value | Plugins registered | Telegram side-effects |
-|-------|-------------------|----------------------|
-| `webpush` (default) | `LogPlugin` + `WebPushPlugin` (when VAPID set) | OFF |
-| `telegram`          | `LogPlugin` + `TelegramPlugin` (when bot token set) | ON |
-| `both`              | `LogPlugin` + `WebPushPlugin` + `TelegramPlugin` | ON |
+Subscriptions live in `push_subscriptions` (multi-device, `ON DELETE CASCADE` on the user). Per-user opt-in is `user_notification_prefs.web_push_enabled`, served via `GET/PUT /api/notifications/preferences` (the single source of truth). The frontend uses `vite-plugin-pwa` in `injectManifest` mode with a custom `src/sw.ts` (built to `dist/sw.js`, served `Cache-Control: no-cache` by `nginx.conf`) handling `push` + `notificationclick` (with an open-redirect-safe URL guard) and a `SKIP_WAITING` message. `index.html` is also served no-cache so redeploys are discovered.
 
-WebPush stores subscriptions in `push_subscriptions` (multi-device). Per-user opt-in lives on `user_notification_prefs.web_push_enabled` and is served via `GET/PUT /api/notifications/preferences` — the consolidated single source of truth (the legacy `/api/telegram/prefs` routes were removed in PLAN-027). The frontend uses `vite-plugin-pwa` in `injectManifest` mode with a custom `src/sw.ts` (built to `dist/sw.js`, served with `Cache-Control: no-cache` by `nginx.conf`) that handles `push` and `notificationclick` events.
+Telegram was fully removed in PLAN-027 (modules, routes, settings, the `telegram_link_tokens` table, and the `users.telegram_chat_id`/`telegram_linked_at` columns).
 ```
-
-**Commit:**
 
 ```bash
 git add docs/architektur.md
-git commit -m "docs(arch): document notification channels + WebPushPlugin"
+git commit -m "docs(arch): document Web Push channel; remove Telegram references"
 ```
 
 ---
@@ -2704,14 +3276,12 @@ Append:
 
 ## iOS Web Push requires PWA install
 
-**What:** On iOS Safari, Web Push only works after the user adds the site to their Home Screen ("Add to Home Screen") so it runs as a standalone PWA. In a regular Safari tab, `Notification.requestPermission()` is unavailable.
+**What:** On iOS Safari, Web Push only works after the user adds the site to their Home Screen so it runs as a standalone PWA. In a regular Safari tab, `Notification.requestPermission()` is unavailable.
 
-**Why:** Apple's policy since iOS 16.4 (March 2023). Cannot be worked around — no Apple Developer account or APNs token would change this.
+**Why:** Apple's policy since iOS 16.4 (March 2023). Cannot be worked around.
 
 **Mitigation:** The frontend detects iOS-without-standalone and suppresses the push prompt. The InstallPrompt banner is shown first; once the user installs the PWA and reopens it, the push prompt becomes available.
 ```
-
-**Commit:**
 
 ```bash
 git add docs/limitations.md
@@ -2731,7 +3301,7 @@ docker compose up -d db
 docker compose run --rm backend pytest tests/ -v
 ```
 
-Expected: existing suite passes; new `test_web_push_plugin.py` (7 tests) and `test_notifications_api.py` (10 tests) pass; the removed `test_telegram_api.py::*prefs*` tests do not appear; nothing else regresses.
+Expected: existing suite passes; new `test_notifications_prefs.py`, `test_web_push_plugin.py`, `test_notifications_fav_sweep.py`, `test_notifications_api.py` pass; no `test_telegram_*.py` files remain; `grep -rn "app\.telegram" backend` returns nothing; nothing else regresses.
 
 **Step 2: Frontend tests**
 
@@ -2740,7 +3310,7 @@ cd frontend
 npm run test -- --run
 ```
 
-Expected: existing suite passes; new tests for `pwa-detect`, `device-label`, `useWebPushSubscription`, `FirstStartPushPrompt`, `NotificationsPanel`, and `notifications/api` pass.
+Expected: existing suite passes; new tests for `pwa-detect`, `device-label`, `useWebPushSubscription`, `FirstStartPushPrompt`, `NotificationsPanel`, `notifications/api` pass; no `TelegramPanel.test.tsx`; `grep -rn "TelegramPanel\|linkTelegram\|telegram_chat_id" frontend/src` returns nothing.
 
 **Step 3: Frontend build**
 
@@ -2749,7 +3319,7 @@ cd frontend
 VITE_VAPID_PUBLIC_KEY=BDevPub npm run build
 ```
 
-Expected: `dist/sw.js` and a generated manifest are produced. Build does not error.
+Expected: `tsc -b` passes (no telegram type leftovers), `dist/sw.js` + generated manifest produced, no error.
 
 **Step 4: Backend startup smoke**
 
@@ -2758,54 +3328,39 @@ docker compose up --build -d
 docker compose logs backend --tail=80
 ```
 
-With `NOTIFICATION_CHANNEL=webpush` and VAPID populated:
-- `Database initialised`
-- `web_push.plugin: registered (channel=webpush)`
-- No `telegram.plugin: registered` line
-- No `telegram_fav_status_sweep` scheduler line
-- No `setWebhook` traffic
-- No tracebacks
-
-With `NOTIFICATION_CHANNEL=telegram`:
-- `telegram.plugin: registered (channel=telegram)`
-- No `web_push.plugin: registered` line
-- `fav_sweep` scheduler runs
+With VAPID populated: `Database initialised`, `web_push.plugin: registered`, the `fav_status_sweep` job scheduled, no `telegram.*` lines, no setWebhook traffic, no tracebacks. With VAPID empty: no `web_push.plugin: registered`, the sweep job still scheduled (no-op), no crash.
 
 **Step 5: API smoke**
 
 ```bash
-# Auth cookie required for /subscriptions; /vapid-public-key is public
 curl -s http://localhost:8002/api/notifications/vapid-public-key
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8002/api/telegram/prefs   # expect 404 (route gone)
 ```
 
-Expected: `{"public_key": "..."}` (200) when VAPID set, `{"detail": "Web Push not configured"}` (503) when unset.
+Expected: `{"public_key": "..."}` (200) when VAPID set / `503` when unset; the telegram route returns 404.
 
 **Step 6: Browser smoke (manual)**
 
-1. `npm run dev` (frontend, with VAPID populated in backend `.env`).
-2. Login.
-3. Mobile viewport: see FirstStartPushPrompt banner.
-4. Click Aktivieren → browser permission prompt → accept.
-5. `/profile` shows the device under "Registrierte Geräte" + the Web-Push toggle in the on state.
-6. Trigger a SavedSearch match (insert a listing matching an active search, or invoke the existing match dispatch path manually) → push notification appears.
-7. Toggle off → next match produces no notification.
-8. Click "Entfernen" → next match produces no notification on that device.
-9. iPhone Safari (without Add-to-Home-Screen): banner is hidden. After install + relaunch from Home Screen: banner appears. Note: HTTPS or `localhost` is required (browsers refuse Push on plain HTTP for non-localhost origins).
+1. `npm run dev` with VAPID populated in backend `.env`.
+2. Login → mobile viewport → see FirstStartPushPrompt banner.
+3. Click Aktivieren → browser permission prompt → accept.
+4. `/profile` shows the device under "Registrierte Geräte" + Web-Push toggle on.
+5. Trigger a SavedSearch match → push notification appears; clicking it opens `/?saved_search=…`.
+6. Add a favorite, simulate a sold/price change, wait for / trigger the sweep → favorites push appears.
+7. Toggle Web-Push off → next match/sweep produces no notification.
+8. Click "Entfernen" → that device stops receiving.
+9. iPhone Safari without Add-to-Home-Screen: banner hidden; after install + relaunch: banner appears. (HTTPS or `localhost` required.)
 
 ---
+
+_Plan review closed 2026-05-30 (cycle 3): 4 blocking addressed across cycles, 5 non-blocking → backlog/dismissed._
 
 ## Notes for the Coder
 
 - **DO NOT** introduce Alembic. Schema changes go into `app/db.py:init_db()` AND `tests/conftest.py` (Task 3).
 - **DO NOT** modify `app/notifications/base.py` or `app/notifications/registry.py`. Add only.
-- **DO NOT** modify `app/telegram/plugin.py`. Channel gating happens in `main.py`.
-- **DO NOT** rename `getNotificationPrefs`/`updateNotificationPrefs`. Only the URL changes; callers (`TelegramPanel`, `NotificationsPanel`) stay unchanged.
-- **Vitest globals**: Plan keeps `globals: true` in `vite.config.ts` to match existing tests; new tests still import `describe, it, expect, vi` explicitly per CLAUDE.md so the file is forward-compatible if globals are disabled later.
-- **Frontend build args**: `VITE_VAPID_PUBLIC_KEY` is optional in dev/local — the hook fetches the key at runtime via `/api/notifications/vapid-public-key`. The build-arg path exists only to spare prod a request on first cold load.
-- **Frequent commits** between sub-steps if work pauses. Each commit message uses the project's existing prefix style (`feat(...)`, `fix(...)`, `chore(...)`, `test(...)`, `docs(...)`, `refactor(...)`).
-
----
-
-## Plan Review
-
-_Plan review closed 2026-05-03: 26 findings addressed across 3 cycles._
+- **`send_web_push_to_user` is the single delivery primitive** — the plugin and the fav sweep both call it. Do not duplicate the send/GC loop.
+- **Telegram is gone** — no compatibility shims, no re-export of the old `app.telegram.prefs` path. Update importers, do not alias.
+- **Vitest globals**: `vite.config.ts` keeps `globals: true`; new tests still import `describe, it, expect, vi` explicitly per CLAUDE.md.
+- **Frontend build args**: `VITE_VAPID_PUBLIC_KEY` is optional in dev — the hook fetches the key at runtime via `/api/notifications/vapid-public-key`. The build-arg only spares prod a request on cold load.
+- **Frequent commits** between sub-steps. Commit message prefixes: `feat(...)`, `fix(...)`, `chore(...)`, `test(...)`, `docs(...)`, `refactor(...)`.
