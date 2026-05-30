@@ -5,8 +5,6 @@ export type AuthUser = {
   email: string;
   name: string | null;
   role: 'member' | 'admin';
-  telegram_chat_id: number | null;
-  telegram_linked_at: string | null;
 }
 
 export function useAuth() {

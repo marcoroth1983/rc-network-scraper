@@ -12,7 +12,6 @@ import type {
   SearchCriteria,
   ScrapeLogEntry,
   ScrapeStatus,
-  TelegramLinkResponse,
 } from '../types/api';
 import { ApiError } from '../types/api';
 
@@ -164,23 +163,13 @@ export async function getComparables(id: number): Promise<ComparablesResponse> {
   return handleResponse<ComparablesResponse>(res);
 }
 
-export async function linkTelegram(): Promise<TelegramLinkResponse> {
-  const res = await fetch('/api/telegram/link', { method: 'POST' });
-  return handleResponse<TelegramLinkResponse>(res);
-}
-
-export async function unlinkTelegram(): Promise<{ ok: true }> {
-  const res = await fetch('/api/telegram/unlink', { method: 'POST' });
-  return handleResponse<{ ok: true }>(res);
-}
-
 export async function getNotificationPrefs(): Promise<NotificationPrefs> {
-  const res = await fetch('/api/telegram/prefs');
+  const res = await fetch('/api/notifications/preferences');
   return handleResponse<NotificationPrefs>(res);
 }
 
 export async function updateNotificationPrefs(partial: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
-  const res = await fetch('/api/telegram/prefs', {
+  const res = await fetch('/api/notifications/preferences', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(partial),

@@ -226,9 +226,25 @@ export interface NotificationPrefs {
   fav_sold: boolean;
   fav_price: boolean;
   fav_deleted: boolean;
+  web_push_enabled: boolean;
 }
 
-export interface TelegramLinkResponse {
-  deeplink: string;
-  expires_at: string;  // ISO 8601
+export interface PushSubscriptionDto {
+  id: number;
+  endpoint: string;
+  device_label: string | null;
+  user_agent: string | null;
+  last_used_at: string;
+  created_at: string;
+}
+
+export interface CreatePushSubscriptionDto {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  user_agent?: string;
+  device_label?: string;
+}
+
+export interface VapidKeyDto {
+  public_key: string;
 }
