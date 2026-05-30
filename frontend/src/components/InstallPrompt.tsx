@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isIos, isStandalone } from '../lib/pwa-detect';
 
 const DISMISSED_KEY = 'rcn_install_dismissed';
 
@@ -8,17 +9,6 @@ const SNOOZE_DAYS = 7;
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
-function isStandalone(): boolean {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as unknown as { standalone?: boolean }).standalone === true
-  );
-}
-
-function isIos(): boolean {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
 function isDismissed(): boolean {
