@@ -3290,6 +3290,9 @@ git commit -m "docs(limitations): document iOS Web Push PWA requirement"
 
 ---
 
+_Code review closed 2026-05-31 (python, cycle 1): 1 critical + 2 high + 1 medium + low fixed; 2 high/medium → backlog (PUSH-03/04), PUSH-01 resolved._
+_Code review closed 2026-05-31 (frontend, cycle 1): 1 high + 4 medium + 2 low fixed; 1 medium (vite globals) → backlog._
+
 ## Verification
 
 > Run after **all** tasks above are `[DONE]`.
