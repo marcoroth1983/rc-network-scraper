@@ -150,29 +150,6 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE llm_models ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
         ))
-        # PLAN-019: Telegram notifications
-        await conn.execute(text(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT"
-        ))
-        await conn.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_users_telegram_chat_id
-            ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL
-        """))
-        await conn.execute(text(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMPTZ"
-        ))
-        await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS telegram_link_tokens (
-                token       TEXT PRIMARY KEY,
-                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-                expires_at  TIMESTAMPTZ NOT NULL,
-                used_at     TIMESTAMPTZ
-            )
-        """))
-        await conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS ix_telegram_link_tokens_user ON telegram_link_tokens (user_id)"
-        ))
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS user_notification_prefs (
                 user_id            INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -253,6 +230,32 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE user_notification_prefs DROP COLUMN IF EXISTS fav_indicator"
         ))
+        # PLAN-027: Web Push subscriptions + per-user toggle
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id           SERIAL PRIMARY KEY,
+                user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                endpoint     TEXT NOT NULL UNIQUE,
+                p256dh       TEXT NOT NULL,
+                auth         TEXT NOT NULL,
+                user_agent   TEXT,
+                device_label TEXT,
+                last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user "
+            "ON push_subscriptions (user_id)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE user_notification_prefs "
+            "ADD COLUMN IF NOT EXISTS web_push_enabled BOOLEAN NOT NULL DEFAULT TRUE"
+        ))
+        # PLAN-027: Telegram removed — drop its table + columns (idempotent, no migration)
+        await conn.execute(text("DROP TABLE IF EXISTS telegram_link_tokens CASCADE"))
+        await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_chat_id"))
+        await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_linked_at"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
