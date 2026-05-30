@@ -4,8 +4,6 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-import httpx
-
 # Ensure app-level loggers emit INFO and above.
 # basicConfig adds a StreamHandler to the root logger (no-op if already configured).
 # The app logger level must also be set — uvicorn only configures its own loggers.
@@ -18,11 +16,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.routes import router
-from app.telegram.webhook import router as telegram_webhook_router
+from app.api.notifications import router as notifications_router
 from app.config import settings
 from app.notifications.log_plugin import LogPlugin
 from app.notifications.registry import notification_registry
-from app.telegram.plugin import TelegramPlugin
+from app.notifications.web_push_plugin import WebPushPlugin
 from app.analysis.job import run_analysis_job
 from app.analysis import model_cascade
 from app.db import AsyncSessionLocal
@@ -50,11 +48,11 @@ async def lifespan(app: FastAPI):
     if not notification_registry._plugins:
         notification_registry.register(LogPlugin())
 
-    if settings.telegram_enabled and not any(
-        isinstance(p, TelegramPlugin) for p in notification_registry._plugins
+    if settings.web_push_enabled and not any(
+        isinstance(p, WebPushPlugin) for p in notification_registry._plugins
     ):
-        notification_registry.register(TelegramPlugin())
-        logger.info("telegram.plugin: registered in notification_registry")
+        notification_registry.register(WebPushPlugin())
+        logger.info("web_push.plugin: registered")
 
     # Create a fresh scheduler per lifespan cycle — avoids stale state on hot-reload.
     # update job: crawl overview pages every 30 minutes (Phase 1 only).
@@ -98,15 +96,14 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),  # run once on boot with live data
         replace_existing=True,
     )
-    if settings.telegram_enabled:
-        from app.telegram import fav_sweep  # local import — only when telegram is active
-        scheduler.add_job(
-            fav_sweep.run_fav_status_sweep,
-            trigger="interval",
-            minutes=settings.TELEGRAM_FAV_SWEEP_INTERVAL_MIN,
-            id="telegram_fav_status_sweep",
-            replace_existing=True,
-        )
+    from app.notifications import fav_sweep
+    scheduler.add_job(
+        fav_sweep.run_fav_status_sweep,
+        trigger="interval",
+        minutes=settings.FAV_SWEEP_INTERVAL_MIN,
+        id="fav_status_sweep",
+        replace_existing=True,
+    )
 
     # PLAN-021 one-shot — remove in next release
     # asyncpg requires one statement per execute() call — no multi-statement strings.
@@ -193,31 +190,6 @@ async def lifespan(app: FastAPI):
         settings.LLM_CASCADE_REFRESH_HOURS,
     )
 
-    if settings.telegram_enabled:
-        webhook_url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/api/telegram/webhook"
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.post(
-                    f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/setWebhook",
-                    json={
-                        "url": webhook_url,
-                        "secret_token": settings.TELEGRAM_WEBHOOK_SECRET,
-                        "allowed_updates": ["message"],
-                    },
-                )
-            if r.status_code == 200 and r.json().get("ok"):
-                logger.info("telegram: bot configured, webhook registered at %s", webhook_url)
-            else:
-                logger.warning(
-                    "telegram: setWebhook returned %d %s", r.status_code, r.text[:200]
-                )
-        except httpx.HTTPError as exc:
-            logger.warning("telegram: setWebhook failed: %s", exc)
-    else:
-        logger.info(
-            "telegram: disabled (missing TELEGRAM_BOT_TOKEN or username or webhook_secret)"
-        )
-
     yield
 
     scheduler.shutdown(wait=False)
@@ -236,7 +208,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(router)  # existing business router — unchanged
-app.include_router(telegram_webhook_router)  # absolute prefix /api/telegram
+app.include_router(notifications_router, prefix="/api")
 
 
 @app.get("/health")

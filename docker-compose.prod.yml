@@ -32,6 +32,10 @@ services:
       ALLOWED_ORIGINS: https://rcn-scout.d2x-labs.de
       COOKIE_SECURE: "true"
       SCRAPE_DELAY: "1.0"
+      # PLAN-027: Web Push
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:marco.roth1983@googlemail.com}
     networks:
       - default
 
