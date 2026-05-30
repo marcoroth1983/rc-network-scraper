@@ -39,26 +39,45 @@ async def get_prefs(user_id: int) -> NotificationPrefs:
 
 
 async def set_prefs(user_id: int, **partial: bool | None) -> NotificationPrefs:
-    """Partial update: only fields passed as non-None are written."""
-    updates = []
-    params: dict = {"uid": user_id}
-    for field in ("new_search_results", "fav_sold", "fav_price", "fav_deleted", "web_push_enabled"):
-        val = partial.get(field)
-        if val is not None:
-            updates.append(f"{field} = :{field}")
-            params[field] = val
-    if not updates:
+    """Partial update: only fields passed as non-None are written.
+
+    Uses a fixed parameterized statement with COALESCE so no field name is
+    ever interpolated into the SQL string. None means "leave unchanged".
+    """
+    # Fast-path: nothing to write
+    has_update = any(
+        partial.get(f) is not None
+        for f in ("new_search_results", "fav_sold", "fav_price", "fav_deleted", "web_push_enabled")
+    )
+    if not has_update:
         return await get_prefs(user_id)
 
-    set_clause = ", ".join(updates + ["updated_at = now()"])
+    # COALESCE(:field, field) keeps existing value when :field is NULL (i.e. not passed).
+    # All five field names are fixed literals — no dynamic SQL construction.
     async with AsyncSessionLocal() as session:
         await session.execute(
             text("INSERT INTO user_notification_prefs (user_id) VALUES (:uid) ON CONFLICT DO NOTHING"),
             {"uid": user_id},
         )
         await session.execute(
-            text(f"UPDATE user_notification_prefs SET {set_clause} WHERE user_id = :uid"),
-            params,
+            text("""
+                UPDATE user_notification_prefs SET
+                    new_search_results = COALESCE(:new_search_results, new_search_results),
+                    fav_sold           = COALESCE(:fav_sold,           fav_sold),
+                    fav_price          = COALESCE(:fav_price,          fav_price),
+                    fav_deleted        = COALESCE(:fav_deleted,        fav_deleted),
+                    web_push_enabled   = COALESCE(:web_push_enabled,   web_push_enabled),
+                    updated_at         = now()
+                WHERE user_id = :uid
+            """),
+            {
+                "uid": user_id,
+                "new_search_results": partial.get("new_search_results"),
+                "fav_sold": partial.get("fav_sold"),
+                "fav_price": partial.get("fav_price"),
+                "fav_deleted": partial.get("fav_deleted"),
+                "web_push_enabled": partial.get("web_push_enabled"),
+            },
         )
         await session.commit()
     return await get_prefs(user_id)
