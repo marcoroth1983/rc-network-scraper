@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -52,7 +53,8 @@ async def send_web_push_to_user(user_id: int, payload: dict) -> bool:
     stale_ids: list[int] = []
     for sub in subs:
         try:
-            webpush(
+            await asyncio.to_thread(
+                webpush,
                 subscription_info={
                     "endpoint": sub.endpoint,
                     "keys": {"p256dh": sub.p256dh, "auth": sub.auth},

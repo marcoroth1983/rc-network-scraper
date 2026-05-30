@@ -2,7 +2,13 @@
 
 ## Open
 
-- **PUSH-01: `send_web_push_to_user` blocks the event loop** — `pywebpush.webpush()` is a synchronous, blocking HTTP call invoked inside the async `send_web_push_to_user()` helper. For each subscription it stalls the FastAPI event loop for the round-trip to the push service. Acceptable at single-user scale (≤ a few devices), but if fav-sweep latency or concurrent request throughput ever matters, wrap each call in `asyncio.to_thread(webpush, ...)` (or batch via `asyncio.gather`). Out of scope for PLAN-027 (no behavior change, pure perf). _Aus PLAN_027 Review 2026-05-30._
+- **PLAN027-M1: `vite.config.ts` vitest `globals:true` widerspricht CLAUDE.md-Konvention** — CLAUDE.md schreibt explizite Vitest-Imports vor (`import { describe, it, expect, vi } from 'vitest'`), aber `vite.config.ts` setzt `globals: true`. Pre-existing deviation — nicht in PLAN-027 eingeführt. Klären: entweder `globals: false` setzen und alle Testdateien auf explizite Imports umstellen, oder CLAUDE.md-Konvention anpassen. Nicht in PLAN-027 angefasst, da Änderung bestehende Tests brechen könnte. _Aus PLAN_027 Review Cycle 1, 2026-05-31._
+
+- ~~**PUSH-01: `send_web_push_to_user` blocks the event loop**~~ — **Fixed in PLAN-027 Review Cycle 1 (2026-05-31)**. `webpush()` now wrapped in `asyncio.to_thread(webpush, ...)` in `web_push_plugin.py`.
+
+- **PUSH-03: N+1 sessions in fav_sweep.py** — `run_fav_status_sweep` opens one DB session per favorite row for the snapshot UPDATE (N+1 pattern). Acceptable at single-user scale; could be batched if sweep latency ever becomes a problem. _PLAN_027 Review Cycle 1, zurückgestellt: YAGNI single-user._
+
+- **PUSH-04: 3 sessions in send_web_push_to_user helper** — `send_web_push_to_user` opens up to 3 separate DB sessions (load subs, GC stale, bump last_used_at). Could be merged into one session. Negligible overhead at single-user scale. _PLAN_027 Review Cycle 1, zurückgestellt: YAGNI single-user._
 
 - **PUSH-02: Stacked push/install banner overlap on very short screens** — `FirstStartPushPrompt` is positioned at `bottom-[140px]` to stack above `InstallPrompt` (`bottom-[72px]`). On very short mobile viewports the two glassmorphism banners can overlap. Cosmetic only; both are `sm:hidden` and dismissable. Revisit if it becomes annoying in practice (e.g. suppress the push banner while the install banner is visible). _Aus PLAN_027 Review 2026-05-30._
 
