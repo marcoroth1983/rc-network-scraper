@@ -54,6 +54,9 @@ export function NotificationsPanel() {
     setError(null);
     setBusy(true);
     void subscribe()
+      // Explicitly reload the device list so newly registered subscriptions appear
+      // without relying on the state-change effect (which may lag by a render cycle).
+      .then(() => reloadSubs())
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Fehler'))
       .finally(() => setBusy(false));
   };
