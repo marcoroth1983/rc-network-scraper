@@ -1716,7 +1716,7 @@ git commit -m "feat(boot): register WebPushPlugin, ungate fav-sweep, remove tele
 
 ---
 
-### Task 10: Frontend dependencies [ ]
+### Task 10: Frontend dependencies [IMPLEMENTED]
 
 **Files:** Modify `frontend/package.json`, regenerate `frontend/package-lock.json`
 
@@ -1743,7 +1743,7 @@ git commit -m "chore(frontend): add vite-plugin-pwa + workbox"
 
 ---
 
-### Task 11: PWA detection helpers [ ]
+### Task 11: PWA detection helpers [IMPLEMENTED]
 
 **Depends on:** Task 10
 
@@ -1826,7 +1826,7 @@ git commit -m "refactor(frontend): extract PWA detection helpers"
 
 ---
 
-### Task 11.5: Remove legacy PWA artifacts [ ]
+### Task 11.5: Remove legacy PWA artifacts [IMPLEMENTED]
 
 **Depends on:** Task 10
 
@@ -1861,7 +1861,7 @@ git commit -m "chore(pwa): remove legacy sw.js + manifest.json (replaced by vite
 
 ---
 
-### Task 12: Vite PWA config [ ]
+### Task 12: Vite PWA config [IMPLEMENTED]
 
 **Depends on:** Tasks 10, 11.5
 
@@ -1934,7 +1934,7 @@ git commit -m "feat(frontend): wire vite-plugin-pwa with migrated manifest"
 
 ---
 
-### Task 12.5: PWA update reliability — nginx + SW SKIP_WAITING [ ]
+### Task 12.5: PWA update reliability — nginx + SW SKIP_WAITING [IMPLEMENTED]
 
 **Depends on:** Task 12, Task 13
 
@@ -1965,7 +1965,7 @@ git commit -m "fix(pwa): never cache index.html so redeploys are discovered"
 
 ---
 
-### Task 13: Service worker (push + notificationclick + skip-waiting) [ ]
+### Task 13: Service worker (push + notificationclick + skip-waiting) [IMPLEMENTED]
 
 **Depends on:** Task 10
 
@@ -2055,7 +2055,7 @@ git commit -m "feat(sw): push + notificationclick + skip-waiting handlers"
 
 ---
 
-### Task 14: Notifications client + types + remove telegram client surfaces [ ]
+### Task 14: Notifications client + types + remove telegram client surfaces [IMPLEMENTED]
 
 **Depends on:** Task 10
 
@@ -2223,7 +2223,7 @@ git commit -m "feat(notifications): subscriptions client + DTOs; remove telegram
 
 ---
 
-### Task 15: Device-label helper [ ]
+### Task 15: Device-label helper [IMPLEMENTED]
 
 **Files:** Create `frontend/src/notifications/device-label.ts` + co-located test
 
@@ -2285,7 +2285,7 @@ git commit -m "feat(notifications): device-label helper"
 
 ---
 
-### Task 16: useWebPushSubscription hook [ ]
+### Task 16: useWebPushSubscription hook [IMPLEMENTED]
 
 **Depends on:** Tasks 11, 14, 15
 
@@ -2543,7 +2543,7 @@ git commit -m "feat(notifications): useWebPushSubscription hook"
 
 ---
 
-### Task 17: FirstStartPushPrompt banner [ ]
+### Task 17: FirstStartPushPrompt banner [IMPLEMENTED]
 
 **Depends on:** Tasks 11, 16
 
@@ -2738,7 +2738,7 @@ git commit -m "feat(notifications): FirstStartPushPrompt banner"
 
 ---
 
-### Task 18a: NotificationsPanel — state display [ ]
+### Task 18a: NotificationsPanel — state display [IMPLEMENTED]
 
 **Depends on:** Tasks 11, 16
 
@@ -2892,7 +2892,7 @@ git commit -m "feat(profile): NotificationsPanel — state display"
 
 ---
 
-### Task 18b: NotificationsPanel — device list + prefs toggle [ ]
+### Task 18b: NotificationsPanel — device list + prefs toggle [IMPLEMENTED]
 
 **Depends on:** Task 18a, Task 14
 
@@ -3101,7 +3101,7 @@ git commit -m "feat(profile): NotificationsPanel — devices + prefs toggle"
 
 ---
 
-### Task 19: Mount FirstStartPushPrompt + replace TelegramPanel [ ]
+### Task 19: Mount FirstStartPushPrompt + replace TelegramPanel [IMPLEMENTED]
 
 **Depends on:** Tasks 17, 18b
 
@@ -3144,7 +3144,7 @@ git commit -m "feat(ui): mount FirstStartPushPrompt; replace TelegramPanel with 
 
 ---
 
-### Task 20: Production build path — Dockerfile + GHA [ ]
+### Task 20: Production build path — Dockerfile + GHA [IMPLEMENTED]
 
 **Depends on:** Task 12
 
