@@ -48,6 +48,8 @@ async def test_engine(test_db_url: str):
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE IF EXISTS push_subscriptions CASCADE"))
         await conn.execute(text("DROP TABLE IF EXISTS user_notification_prefs CASCADE"))
+        # PLAN-027: telegram_link_tokens may still exist in DBs created before this plan
+        await conn.execute(text("DROP TABLE IF EXISTS telegram_link_tokens CASCADE"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         # Apply incremental migrations that are not in ORM models (mirror init_db pattern)
