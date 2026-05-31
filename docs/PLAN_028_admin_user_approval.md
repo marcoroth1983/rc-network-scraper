@@ -963,6 +963,9 @@ git commit -m "feat(admin): pull-to-refresh for user-approval list (mobile)"
 
 ---
 
+_Code review closed 2026-05-31 (python, cycle 1): MINOR — 2 medium + docstring fixed (404-before-commit, PATCH-403 test); 1 low pre-existing left._
+_Code review closed 2026-05-31 (frontend, cycle 1): MINOR — 2 medium + 1 low + 2 suggestions fixed (useCallback, touchcancel, type=button, test hygiene); cosmetics left._
+
 ## Verification
 
 Run after all tasks are `[IMPLEMENTED]` (commands verified against `frontend/package.json` and project `CLAUDE.md`):
