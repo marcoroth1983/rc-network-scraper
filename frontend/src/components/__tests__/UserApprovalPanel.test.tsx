@@ -78,4 +78,18 @@ describe('UserApprovalPanel', () => {
     await act(async () => { await capturedOnRefresh?.(); });
     expect(getUsers).toHaveBeenCalledTimes(2);
   });
+
+  it('shows "–" for last-seen when last_seen_at is null', async () => {
+    getUsers.mockResolvedValue([baseRow]);
+    render(<UserApprovalPanel currentUserId={1} />);
+    await screen.findByText('pending@example.com');
+    expect(screen.getByText(/Zuletzt gesehen:\s*–/)).toBeInTheDocument();
+  });
+
+  it('shows a formatted date for last-seen when present', async () => {
+    getUsers.mockResolvedValue([{ ...baseRow, last_seen_at: '2026-05-20T08:00:00Z' }]);
+    render(<UserApprovalPanel currentUserId={1} />);
+    await screen.findByText('pending@example.com');
+    expect(screen.getByText(/Zuletzt gesehen:\s*20\.05\.2026/)).toBeInTheDocument();
+  });
 });
