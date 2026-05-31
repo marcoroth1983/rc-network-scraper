@@ -80,3 +80,10 @@ async def test_non_admin_forbidden(authenticated_client):
     # authenticated_client authenticates as a member (role defaults to 'member')
     resp = await authenticated_client.get("/api/admin/users")
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_non_admin_forbidden_patch(authenticated_client):
+    # member must not be able to approve users via PATCH
+    resp = await authenticated_client.patch("/api/admin/users/1/approval", json={"is_approved": True})
+    assert resp.status_code == 403
