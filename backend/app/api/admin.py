@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.analysis import model_cascade
@@ -12,6 +12,20 @@ from app.models import User
 from sqlalchemy import text
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class UserRow(BaseModel):
+    id: int
+    email: str
+    name: str | None
+    is_approved: bool
+    role: str
+    created_at: datetime
+    last_seen_at: datetime | None
+
+
+class ApprovalUpdate(BaseModel):
+    is_approved: bool
 
 
 class LLMModelRow(BaseModel):
@@ -80,3 +94,66 @@ async def refresh_llm_models(_: User = Depends(require_admin)) -> list[LLMModelR
     """Trigger an immediate cascade refresh from OpenRouter, return updated rows."""
     await model_cascade.refresh_from_openrouter()
     return await _fetch_all_rows()
+
+
+@router.get("/users", response_model=list[UserRow])
+async def list_users(_: User = Depends(require_admin)) -> list[UserRow]:
+    """Return all users, not-yet-approved first, then newest-registered first."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text("""
+            SELECT id, email, name, is_approved, role, created_at, last_seen_at
+            FROM users
+            ORDER BY is_approved ASC, created_at DESC
+        """))
+        rows = result.all()
+    return [
+        UserRow(
+            id=row.id,
+            email=row.email,
+            name=row.name,
+            is_approved=row.is_approved,
+            role=row.role,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+        )
+        for row in rows
+    ]
+
+
+@router.patch("/users/{user_id}/approval", response_model=UserRow)
+async def set_user_approval(
+    user_id: int,
+    body: ApprovalUpdate,
+    current_admin: User = Depends(require_admin),
+) -> UserRow:
+    """Set a user's is_approved flag. Returns the updated row.
+
+    Refuses to revoke the calling admin's own approval (self-lockout guard).
+    """
+    if user_id == current_admin.id and not body.is_approved:
+        raise HTTPException(status_code=400, detail="Cannot revoke your own approval")
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("""
+                UPDATE users SET is_approved = :is_approved
+                WHERE id = :user_id
+                RETURNING id, email, name, is_approved, role, created_at, last_seen_at
+            """),
+            {"is_approved": body.is_approved, "user_id": user_id},
+        )
+        row = result.fetchone()
+        await session.commit()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserRow(
+        id=row.id,
+        email=row.email,
+        name=row.name,
+        is_approved=row.is_approved,
+        role=row.role,
+        created_at=row.created_at,
+        last_seen_at=row.last_seen_at,
+    )
