@@ -98,7 +98,7 @@ async def refresh_llm_models(_: User = Depends(require_admin)) -> list[LLMModelR
 
 @router.get("/users", response_model=list[UserRow])
 async def list_users(_: User = Depends(require_admin)) -> list[UserRow]:
-    """Return all users, not-yet-approved first, then newest-registered first."""
+    """Return all users: not-yet-approved first; within each group: newest-registered first."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(text("""
             SELECT id, email, name, is_approved, role, created_at, last_seen_at
@@ -143,10 +143,11 @@ async def set_user_approval(
             {"is_approved": body.is_approved, "user_id": user_id},
         )
         row = result.fetchone()
-        await session.commit()
 
-    if row is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        if row is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        await session.commit()
 
     return UserRow(
         id=row.id,
