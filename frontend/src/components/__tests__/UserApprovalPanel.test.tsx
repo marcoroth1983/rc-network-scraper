@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { UserApprovalPanel } from '../UserApprovalPanel';
 
 const getUsers = vi.fn();
@@ -13,6 +13,14 @@ vi.mock('../../api/client', () => ({
 vi.mock('../ConfirmDialog', () => ({
   useConfirm: () => confirmMock,
   ConfirmProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+let capturedOnRefresh: (() => Promise<void>) | null = null;
+vi.mock('../../hooks/usePullToRefresh', () => ({
+  usePullToRefresh: (onRefresh: () => Promise<void>) => {
+    capturedOnRefresh = onRefresh;
+    return { containerRef: { current: null }, pullDistance: 0, refreshing: false };
+  },
 }));
 
 const baseRow = {
@@ -59,5 +67,14 @@ describe('UserApprovalPanel', () => {
     render(<UserApprovalPanel currentUserId={1} />);
     const toggle = await screen.findByRole('switch', { name: /me@example.com/ });
     expect(toggle).toBeDisabled();
+  });
+
+  it('refetches the user list when pull-to-refresh fires', async () => {
+    getUsers.mockResolvedValue([baseRow]);
+    render(<UserApprovalPanel currentUserId={1} />);
+    await screen.findByText('pending@example.com');
+    expect(getUsers).toHaveBeenCalledTimes(1);
+    await act(async () => { await capturedOnRefresh?.(); });
+    expect(getUsers).toHaveBeenCalledTimes(2);
   });
 });
