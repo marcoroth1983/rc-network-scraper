@@ -5,6 +5,7 @@ import { resolvePlz } from '../api/client';
 import { ApiError } from '../types/api';
 import { LLMAdminPanel } from '../components/LLMAdminPanel';
 import { NotificationsPanel } from '../components/NotificationsPanel';
+import { UserApprovalPanel } from '../components/UserApprovalPanel';
 
 const PLZ_STORAGE_KEY = 'rcn_ref_plz';
 const PLZ_CITY_STORAGE_KEY = 'rcn_ref_plz_city';
@@ -237,6 +238,7 @@ export function ProfilePage({ user, onLogout }: Props) {
         <div className="flex flex-col gap-4 sm:gap-6 min-w-0">
           <NotificationsPanel />
           {user.role === 'admin' && <LLMAdminPanel />}
+          {user.role === 'admin' && <UserApprovalPanel currentUserId={user.id} />}
         </div>
       </div>
     </div>
