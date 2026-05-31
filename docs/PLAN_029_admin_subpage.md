@@ -52,7 +52,7 @@ Per the writing-plans trigger table: pure frontend, no backend, no migration, â‰
 
 ---
 
-### Task 1: AdminPage + `/admin` route with admin guard [ ]
+### Task 1: AdminPage + `/admin` route with admin guard [IMPLEMENTED]
 
 **Files:**
 - Create: `frontend/src/pages/AdminPage.tsx`
@@ -122,7 +122,7 @@ git commit -m "feat: add admin-only /admin page hosting admin panels"
 
 ---
 
-### Task 2: Relocate panels out of ProfilePage + add admin link [ ]
+### Task 2: Relocate panels out of ProfilePage + add admin link [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -202,7 +202,7 @@ git commit -m "refactor: move admin panels to /admin, add admin link in profile"
 
 ---
 
-### Task 3: Show "last seen" in UserApprovalPanel [ ]
+### Task 3: Show "last seen" in UserApprovalPanel [IMPLEMENTED]
 
 **Depends on:** Task 1 (relocation does not block this, but keeps commits ordered)
 
@@ -238,7 +238,7 @@ git commit -m "feat: show last-seen date in user approval list"
 
 ---
 
-### Task 4: Tests [ ]
+### Task 4: Tests [IMPLEMENTED]
 
 **Depends on:** Task 1, Task 2, Task 3
 
