@@ -209,7 +209,7 @@ git commit -m "feat(admin): add user list + approval endpoints"
 
 ---
 
-## Task 2: Frontend types + API client [ ]
+## Task 2: Frontend types + API client [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -262,7 +262,7 @@ git commit -m "feat(admin): add UserRow type + user-approval API client"
 
 ---
 
-## Task 3: UserApprovalPanel component + ProfilePage wiring [ ]
+## Task 3: UserApprovalPanel component + ProfilePage wiring [IMPLEMENTED]
 
 **Depends on:** Task 2
 
@@ -453,7 +453,7 @@ git commit -m "feat(admin): add UserApprovalPanel to profile"
 
 ---
 
-## Task 4: Tests (backend admin endpoints + frontend panel) [IMPLEMENTED backend]
+## Task 4: Tests (backend admin endpoints + frontend panel) [IMPLEMENTED backend+frontend]
 
 **Depends on:** Task 3
 
@@ -678,7 +678,7 @@ git commit -m "test(admin): cover user-approval endpoints + panel"
 
 ---
 
-## Task 5: Pull-to-refresh for the user list (mobile) [ ]
+## Task 5: Pull-to-refresh for the user list (mobile) [IMPLEMENTED]
 
 **Depends on:** Task 4 (sequential, not parallel — Task 5 extends `UserApprovalPanel.test.tsx` which Task 4 creates, and re-wires `UserApprovalPanel.tsx` whose loading/error/list JSX must already be in place). Logically it builds on Task 3's `loadUsers` callback.
 
