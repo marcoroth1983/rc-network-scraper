@@ -376,6 +376,8 @@ git commit -m "test: cover admin page guard, profile relocation, last-seen displ
 
 ---
 
+_Code review closed 2026-05-31 (frontend, cycle 1): CLEAN — 0 blocking; 1 low (pre-existing dead `onUserReload` prop) → backlog._
+
 ## Verification
 
 Automated checks only (thin plan; no manual E2E — change is intra-frontend, no cross-state flow).

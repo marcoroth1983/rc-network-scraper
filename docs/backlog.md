@@ -2,6 +2,8 @@
 
 ## Open
 
+- **FE-CLEANUP-01: `ProfilePage` `onUserReload` prop is dead plumbing** — `App.tsx` passes `reloadUser` → `ProfilePage` `onUserReload`, but the component never destructures/uses it (leftover after TelegramPanel removal in PLAN-027). Flagged in PLAN-027 and PLAN-029 reviews. Either wire it up for a future in-profile reload action, or drop the prop + the `reloadUser` chain through `App.tsx`. Cosmetic, no breakage. _Aus PLAN_029 Review, 2026-05-31._
+
 - **PLAN027-M1: `vite.config.ts` vitest `globals:true` widerspricht CLAUDE.md-Konvention** — CLAUDE.md schreibt explizite Vitest-Imports vor (`import { describe, it, expect, vi } from 'vitest'`), aber `vite.config.ts` setzt `globals: true`. Pre-existing deviation — nicht in PLAN-027 eingeführt. Klären: entweder `globals: false` setzen und alle Testdateien auf explizite Imports umstellen, oder CLAUDE.md-Konvention anpassen. Nicht in PLAN-027 angefasst, da Änderung bestehende Tests brechen könnte. _Aus PLAN_027 Review Cycle 1, 2026-05-31._
 
 - ~~**PUSH-01: `send_web_push_to_user` blocks the event loop**~~ — **Fixed in PLAN-027 Review Cycle 1 (2026-05-31)**. `webpush()` now wrapped in `asyncio.to_thread(webpush, ...)` in `web_push_plugin.py`.
