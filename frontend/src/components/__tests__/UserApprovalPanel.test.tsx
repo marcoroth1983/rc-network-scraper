@@ -34,6 +34,7 @@ describe('UserApprovalPanel', () => {
     getUsers.mockReset();
     setUserApproval.mockReset();
     confirmMock.mockReset();
+    capturedOnRefresh = null;
   });
 
   it('renders the fetched user list', async () => {

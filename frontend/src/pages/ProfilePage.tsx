@@ -206,6 +206,7 @@ export function ProfilePage({ user, onLogout }: Props) {
 
             {/* Logout */}
             <button
+              type="button"
               onClick={onLogout}
               className="w-full rounded-xl py-2.5 text-sm font-medium transition-all duration-150"
               style={{

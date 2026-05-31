@@ -20,6 +20,8 @@ export interface UsePullToRefreshResult {
  * engages ONLY when the container is scrolled to the very top at touchstart, so
  * it never steals a normal upward scroll. On release past THRESHOLD it awaits
  * onRefresh() and shows a refreshing state until the promise settles.
+ *
+ * @param onRefresh Must be referentially stable (wrap with useCallback). Unstable references cause listener churn.
  */
 export function usePullToRefresh(onRefresh: () => Promise<void>): UsePullToRefreshResult {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -92,14 +94,20 @@ export function usePullToRefresh(onRefresh: () => Promise<void>): UsePullToRefre
       }
     };
 
+    // touchcancel fires when iOS interrupts the gesture (incoming call, notification, etc.).
+    // Without it, startYRef / pullRef stay dirty and the next pull behaves incorrectly.
+    const onTouchCancel = () => { reset(); };
+
     // touchmove must be non-passive so preventDefault() can tame native pull-to-refresh.
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchCancel);
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchCancel);
     };
     // `refreshing` deliberately omitted — read via refreshingRef inside the
     // handlers so the listeners are bound once and never churn.

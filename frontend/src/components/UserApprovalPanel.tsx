@@ -45,7 +45,7 @@ export function UserApprovalPanel({ currentUserId }: Props) {
 
   const { containerRef, pullDistance, refreshing } = usePullToRefresh(loadUsers);
 
-  async function handleToggle(u: UserRow) {
+  const handleToggle = useCallback(async (u: UserRow) => {
     const next = !u.is_approved;
     if (!next) {
       const ok = await confirm({
@@ -65,7 +65,7 @@ export function UserApprovalPanel({ currentUserId }: Props) {
       setRows((rs) => rs?.map((r) => (r.id === u.id ? { ...r, is_approved: u.is_approved } : r)) ?? rs);
       setError(err instanceof Error ? err.message : 'Aktualisierung fehlgeschlagen');
     }
-  }
+  }, [confirm]);
 
   return (
     <section className="w-full rounded-2xl p-4 sm:p-6" style={cardStyle}>
