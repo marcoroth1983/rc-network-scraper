@@ -328,6 +328,50 @@ async def other_user_with_sub(db_session: AsyncSession) -> _UserWithSubs:
 
 
 @pytest_asyncio.fixture()
+async def admin_client(test_engine, db_session: AsyncSession) -> AsyncGenerator[tuple[AsyncClient, int], None]:
+    """AsyncClient authenticated as an admin user (role='admin'). Yields (client, admin_id)."""
+    from sqlalchemy import text as _text  # noqa: PLC0415
+    from app.api.deps import get_current_user  # noqa: PLC0415
+    from app.db import get_session  # noqa: PLC0415
+    from app.main import app  # noqa: PLC0415
+    from app.models import User  # noqa: PLC0415
+
+    await db_session.execute(
+        _text("""
+            INSERT INTO users (google_id, email, name, is_approved, role)
+            VALUES ('admin-client-google', 'admin_client@example.com', 'Admin Client', TRUE, 'admin')
+            ON CONFLICT (google_id) DO NOTHING
+        """)
+    )
+    await db_session.commit()
+    admin_id = (
+        await db_session.execute(_text("SELECT id FROM users WHERE google_id = 'admin-client-google'"))
+    ).scalar_one()
+
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override_get_session() -> AsyncGenerator[AsyncSession, None]:
+        async with factory() as session:
+            yield session
+
+    async def _fake_user() -> User:
+        async with factory() as session:
+            r = await session.execute(
+                _text("SELECT id, google_id, email, name, is_approved, role FROM users WHERE id = :uid"),
+                {"uid": admin_id},
+            )
+            row = r.one()
+            return User(id=row[0], google_id=row[1], email=row[2], name=row[3], is_approved=row[4], role=row[5])
+
+    app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_current_user] = _fake_user
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, admin_id
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture()
 async def authenticated_client(test_engine, db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient authenticated as a fresh test user (inserted after clean_listings)."""
     from sqlalchemy import text as _text  # noqa: PLC0415
