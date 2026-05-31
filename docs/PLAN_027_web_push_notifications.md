@@ -13,7 +13,7 @@
 - **Telegram removed:** modules `app/telegram/{bot,link,plugin,webhook,fav_sweep}.py` deleted; `app/telegram/prefs.py` deleted (logic moved); the `app/telegram/` package removed. `app/api/telegram.py` deleted; its include removed from `routes.py`. `TelegramPlugin` registration, the `fav_sweep` gate, and the `setWebhook` block removed from `main.py`. All `TELEGRAM_*` settings + `telegram_enabled` removed from `config.py`. `/api/auth/me` stops returning telegram fields. DB: `telegram_link_tokens` table + `users.telegram_chat_id`/`telegram_linked_at` columns dropped (idempotent). Frontend `TelegramPanel.tsx` + tests deleted, telegram client functions/types removed, `AuthUser` telegram fields removed.
 - **New REST module** `app/api/notifications.py` exposes subscription CRUD, the VAPID public key, and the consolidated preferences endpoint (`GET/PUT /api/notifications/preferences`) — single source of truth for `user_notification_prefs`.
 - **Frontend (React 19 / Vite 8 / Tailwind 3):** Adopt `vite-plugin-pwa` in `injectManifest` mode with a custom `src/sw.ts` (push + notificationclick + manifest precache; built to `dist/sw.js` matching the existing `nginx.conf:14` `/sw.js` no-cache rule). Legacy artifacts (`public/sw.js`, `public/manifest.json`, the `index.html` manifest link, the manual SW registration in `main.tsx`) are deleted and replaced by VitePWA's auto-injected registration + migrated `manifest:` config. New `src/notifications/` module: a 5-state `useWebPushSubscription` hook, a subscriptions client, a UA→device-label helper, and a `FirstStartPushPrompt` banner mirroring `InstallPrompt`. iOS gating reuses the extracted `isStandalone()` check. New `NotificationsPanel` replaces `TelegramPanel` in `ProfilePage` Column 2, split into two tasks (state-display vs. device-list + prefs).
-- **VAPID:** Single keypair, generated once via `npx web-push generate-vapid-keys` (URL-safe base64). Local: `docker-compose.yml` env. Prod: GitHub repo variable + VPS `.env`, passed to the frontend image at build time as `VITE_VAPID_PUBLIC_KEY` via `frontend/Dockerfile` build-arg.
+- **VAPID:** Single keypair, generated once via `npx web-push generate-vapid-keys` (URL-safe base64). Backend env only (local `docker-compose.yml`, prod VPS `.env`). The frontend fetches the public key at runtime from `/api/notifications/vapid-public-key` — no build-arg, no GitHub variable.
 
 **Tech Stack:** FastAPI, SQLAlchemy async, `pywebpush` (Python), `pydantic-settings`, React 19, `vite-plugin-pwa@^0.21`, Workbox 7, native `PushManager` / `ServiceWorkerRegistration` APIs, Tailwind 3, npm.
 
@@ -50,7 +50,7 @@
 - **Test schema bootstrap** in [`backend/tests/conftest.py:48-89`](backend/tests/conftest.py#L48) drops `user_notification_prefs` + `telegram_link_tokens` (lines 49-50) before `Base.metadata.drop_all()`, then recreates telegram columns/tables (lines 61-78) + `user_notification_prefs` (lines 80-89). The autouse `patch_async_session_local` fixture redirects `AsyncSessionLocal` for a `_patch_targets` list ([conftest.py:132-138](backend/tests/conftest.py#L132)) that today lists five `app.telegram.*` modules. Telegram fixtures: `db_user_linked` ([conftest.py:259-275](backend/tests/conftest.py#L259)) and `authenticated_client_linked` ([conftest.py:346-388](backend/tests/conftest.py#L346)) seed `telegram_chat_id`. All updated in Task 3 + Task 6.
 - **REST module pattern**: [backend/app/api/telegram.py:6](backend/app/api/telegram.py#L6) imports `from app.api.deps import get_current_user` (defined at [deps.py:12](backend/app/api/deps.py#L12)). Mirror exactly.
 - **PWA infra is partially in place but legacy.** [frontend/public/sw.js](frontend/public/sw.js) (static placeholder) + [frontend/public/manifest.json](frontend/public/manifest.json) (display:standalone, 5 icon entries) exist; icons at `frontend/public/icons/{icon-192,icon-512,icon-maskable-192,icon-maskable-512,apple-touch-icon-180}.png`; [frontend/index.html:10](frontend/index.html#L10) has `<link rel="manifest" href="/manifest.json">`; [frontend/src/main.tsx:27-31](frontend/src/main.tsx#L27-L31) registers `/sw.js` manually. All replaced/removed in Tasks 11.5 + 12.
-- **Prod build path.** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds the frontend via [frontend/Dockerfile](frontend/Dockerfile) (no `.prod` variant). The nginx/frontend build step is at [deploy.yml:39-47](.github/workflows/deploy.yml#L39-L47). `docker-compose.prod.yml` pulls a prebuilt GHCR image. Task 20 wires `VITE_VAPID_PUBLIC_KEY`.
+- **Prod build path.** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds the frontend via [frontend/Dockerfile](frontend/Dockerfile) (no `.prod` variant). The nginx/frontend build step is at [deploy.yml:39-47](.github/workflows/deploy.yml#L39-L47). `docker-compose.prod.yml` pulls a prebuilt GHCR image. The frontend needs no VAPID build-arg (the key is fetched at runtime — see Task 20).
 - **InstallPrompt** ([frontend/src/components/InstallPrompt.tsx](frontend/src/components/InstallPrompt.tsx)): visual template — `fixed bottom-[72px]`, `sm:hidden`, `rgba(15,15,35,0.92)` glassmorphism, indigo accents, `localStorage` dismissal, local `isStandalone()` ([InstallPrompt.tsx:13-18](frontend/src/components/InstallPrompt.tsx#L13)) + `isIos()` ([InstallPrompt.tsx:20-22](frontend/src/components/InstallPrompt.tsx#L20)) — extracted to `lib/pwa-detect.ts` in Task 11.
 - **Mount point.** [frontend/src/App.tsx:223](frontend/src/App.tsx#L223) renders `<InstallPrompt />`. `<FirstStartPushPrompt />` mounts directly after (Task 19).
 - **ProfilePage** ([frontend/src/pages/ProfilePage.tsx:237-240](frontend/src/pages/ProfilePage.tsx#L237-L240)) renders Column 2 as `<TelegramPanel user={user} onUserReload={onUserReload} /> {user.role === 'admin' && <LLMAdminPanel />}`. `TelegramPanel` is **replaced** by `<NotificationsPanel />` (Task 19); the `onUserReload` prop becomes unused and the import is removed.
@@ -127,7 +127,7 @@ env.prod.example:18-24                     TELEGRAM_* block — REMOVED, VAPID a
 | Prefs consolidation | Single source at `/api/notifications/preferences`. |
 | Permission UX | First-app-start banner after login; gated by `localStorage["rcn_notif_asked"]`; mirrors InstallPrompt shell. |
 | iOS | Push works only when PWA installed (Safari 16.4+). Banner suppressed on iOS Safari without standalone. |
-| VAPID storage | Env vars; local in `docker-compose.yml`, prod in GH repo var + VPS `.env`, frontend build via `VITE_VAPID_PUBLIC_KEY` build-arg. Public key also returned from `/api/notifications/vapid-public-key` so dev works without a build-time arg. |
+| VAPID storage | Backend env vars only; local in `docker-compose.yml`, prod in VPS `.env`. Frontend fetches the public key at runtime from `/api/notifications/vapid-public-key` — no build-arg, no GH variable. |
 | Migrations | Inline in `init_db()`. No Alembic. Test schema mirrored in `conftest.py`. |
 | SW update reliability | Adopt the minimal half of Do-It's PLAN_037: SW `message` SKIP_WAITING handler + nginx no-cache for `index.html`. Skip the periodic-update React hook (YAGNI for single-user hobby). See Task 12.5. |
 | Package manager | npm (canonical). |
@@ -221,8 +221,8 @@ frontend/src/components/__tests__/NotificationsPanel.test.tsx
 - `frontend/src/__tests__/ModalRouting.test.tsx` — remove telegram fields from mocked user (lines 38, 204)
 - `frontend/src/App.tsx` — mount `<FirstStartPushPrompt />` after `<InstallPrompt />`
 - `frontend/src/pages/ProfilePage.tsx` — replace `<TelegramPanel>` with `<NotificationsPanel>`; drop unused import/prop
-- `frontend/Dockerfile` — `ARG VITE_VAPID_PUBLIC_KEY` + `ENV` before build
-- `.github/workflows/deploy.yml` — pass `--build-arg VITE_VAPID_PUBLIC_KEY`
+
+(`frontend/Dockerfile` and `.github/workflows/deploy.yml` are **not** modified — the originally planned `VITE_VAPID_PUBLIC_KEY` build-arg was dropped during review; the key is fetched at runtime. See Task 20.)
 
 **Frontend (deleted):**
 - `frontend/src/components/TelegramPanel.tsx`
@@ -245,7 +245,7 @@ frontend/src/components/__tests__/NotificationsPanel.test.tsx
 
 ---
 
-### Task 1: Backend dependency [IMPLEMENTED]
+### Task 1: Backend dependency [DONE]
 
 **Files:** Modify `backend/requirements.txt`
 
@@ -264,7 +264,7 @@ git commit -m "chore(backend): add pywebpush for PLAN-027"
 
 ---
 
-### Task 2: Backend config — VAPID, remove Telegram, rename fav-sweep settings [IMPLEMENTED]
+### Task 2: Backend config — VAPID, remove Telegram, rename fav-sweep settings [DONE]
 
 **Depends on:** Task 1
 
@@ -298,7 +298,7 @@ git commit -m "feat(config): add VAPID, remove Telegram settings, rename fav-swe
 
 ---
 
-### Task 3: Backend schema — push_subscriptions, web_push_enabled, drop Telegram DDL, test bootstrap [IMPLEMENTED]
+### Task 3: Backend schema — push_subscriptions, web_push_enabled, drop Telegram DDL, test bootstrap [DONE]
 
 **Depends on:** Task 1
 
@@ -457,7 +457,7 @@ git commit -m "feat(db): push_subscriptions + web_push_enabled; drop telegram sc
 
 ---
 
-### Task 4: Move NotificationPrefs to app/notifications/prefs.py [IMPLEMENTED]
+### Task 4: Move NotificationPrefs to app/notifications/prefs.py [DONE]
 
 **Depends on:** Task 3
 
@@ -582,7 +582,7 @@ git commit -m "feat(notifications): move NotificationPrefs out of telegram, add 
 
 ---
 
-### Task 5: WebPushPlugin + shared send helper [IMPLEMENTED]
+### Task 5: WebPushPlugin + shared send helper [DONE]
 
 **Depends on:** Tasks 2, 3, 4
 
@@ -729,7 +729,7 @@ git commit -m "feat(notifications): WebPushPlugin + shared send_web_push_to_user
 
 ---
 
-### Task 6: WebPushPlugin + helper tests + new fixtures [IMPLEMENTED]
+### Task 6: WebPushPlugin + helper tests + new fixtures [DONE]
 
 **Depends on:** Task 5
 
@@ -937,7 +937,7 @@ git commit -m "test(notifications): cover WebPushPlugin + send helper (incl. use
 
 ---
 
-### Task 7: Notifications REST API [IMPLEMENTED]
+### Task 7: Notifications REST API [DONE]
 
 **Depends on:** Tasks 2, 3, 4
 
@@ -1128,7 +1128,7 @@ git commit -m "feat(api): notifications router — subscriptions + preferences +
 
 ---
 
-### Task 7.5: Remove Telegram API router from routes.py [IMPLEMENTED]
+### Task 7.5: Remove Telegram API router from routes.py [DONE]
 
 **Depends on:** Task 7
 
@@ -1145,7 +1145,7 @@ git commit -m "refactor(api): drop telegram router include"
 
 ---
 
-### Task 7.6: Strip telegram fields from /auth/me [IMPLEMENTED]
+### Task 7.6: Strip telegram fields from /auth/me [DONE]
 
 **Depends on:** Task 3
 
@@ -1173,7 +1173,7 @@ git commit -m "refactor(api): drop telegram fields from /auth/me"
 
 ---
 
-### Task 7.7: Delete Telegram backend + frontend modules and tests [IMPLEMENTED]
+### Task 7.7: Delete Telegram backend + frontend modules and tests [DONE]
 
 **Depends on:** Tasks 4, 7.5, 7.6, 9 (fav_sweep migrated), and frontend Tasks 14 + 19 (importers retargeted)
 
@@ -1211,7 +1211,7 @@ git commit -m "chore: remove Telegram subsystem (PLAN-027)"
 
 ---
 
-### Task 8: REST API tests [IMPLEMENTED]
+### Task 8: REST API tests [DONE]
 
 **Depends on:** Tasks 7, 7.5
 
@@ -1345,7 +1345,7 @@ git commit -m "test(api): cover /api/notifications/* endpoints"
 
 ---
 
-### Task 9: Migrate favorites sweep to Web Push [IMPLEMENTED]
+### Task 9: Migrate favorites sweep to Web Push [DONE]
 
 **Depends on:** Tasks 4, 5
 
@@ -1624,7 +1624,7 @@ git commit -m "feat(notifications): migrate favorites sweep to Web Push"
 
 ---
 
-### Task 9.5: Wire main.py + docker-compose + env example [IMPLEMENTED]
+### Task 9.5: Wire main.py + docker-compose + env example [DONE]
 
 **Depends on:** Tasks 5, 7, 9
 
@@ -1716,7 +1716,7 @@ git commit -m "feat(boot): register WebPushPlugin, ungate fav-sweep, remove tele
 
 ---
 
-### Task 10: Frontend dependencies [IMPLEMENTED]
+### Task 10: Frontend dependencies [DONE]
 
 **Files:** Modify `frontend/package.json`, regenerate `frontend/package-lock.json`
 
@@ -1743,7 +1743,7 @@ git commit -m "chore(frontend): add vite-plugin-pwa + workbox"
 
 ---
 
-### Task 11: PWA detection helpers [IMPLEMENTED]
+### Task 11: PWA detection helpers [DONE]
 
 **Depends on:** Task 10
 
@@ -1826,7 +1826,7 @@ git commit -m "refactor(frontend): extract PWA detection helpers"
 
 ---
 
-### Task 11.5: Remove legacy PWA artifacts [IMPLEMENTED]
+### Task 11.5: Remove legacy PWA artifacts [DONE]
 
 **Depends on:** Task 10
 
@@ -1861,7 +1861,7 @@ git commit -m "chore(pwa): remove legacy sw.js + manifest.json (replaced by vite
 
 ---
 
-### Task 12: Vite PWA config [IMPLEMENTED]
+### Task 12: Vite PWA config [DONE]
 
 **Depends on:** Tasks 10, 11.5
 
@@ -1934,7 +1934,7 @@ git commit -m "feat(frontend): wire vite-plugin-pwa with migrated manifest"
 
 ---
 
-### Task 12.5: PWA update reliability — nginx + SW SKIP_WAITING [IMPLEMENTED]
+### Task 12.5: PWA update reliability — nginx + SW SKIP_WAITING [DONE]
 
 **Depends on:** Task 12, Task 13
 
@@ -1965,7 +1965,7 @@ git commit -m "fix(pwa): never cache index.html so redeploys are discovered"
 
 ---
 
-### Task 13: Service worker (push + notificationclick + skip-waiting) [IMPLEMENTED]
+### Task 13: Service worker (push + notificationclick + skip-waiting) [DONE]
 
 **Depends on:** Task 10
 
@@ -2055,7 +2055,7 @@ git commit -m "feat(sw): push + notificationclick + skip-waiting handlers"
 
 ---
 
-### Task 14: Notifications client + types + remove telegram client surfaces [IMPLEMENTED]
+### Task 14: Notifications client + types + remove telegram client surfaces [DONE]
 
 **Depends on:** Task 10
 
@@ -2223,7 +2223,7 @@ git commit -m "feat(notifications): subscriptions client + DTOs; remove telegram
 
 ---
 
-### Task 15: Device-label helper [IMPLEMENTED]
+### Task 15: Device-label helper [DONE]
 
 **Files:** Create `frontend/src/notifications/device-label.ts` + co-located test
 
@@ -2285,7 +2285,7 @@ git commit -m "feat(notifications): device-label helper"
 
 ---
 
-### Task 16: useWebPushSubscription hook [IMPLEMENTED]
+### Task 16: useWebPushSubscription hook [DONE]
 
 **Depends on:** Tasks 11, 14, 15
 
@@ -2543,7 +2543,7 @@ git commit -m "feat(notifications): useWebPushSubscription hook"
 
 ---
 
-### Task 17: FirstStartPushPrompt banner [IMPLEMENTED]
+### Task 17: FirstStartPushPrompt banner [DONE]
 
 **Depends on:** Tasks 11, 16
 
@@ -2738,7 +2738,7 @@ git commit -m "feat(notifications): FirstStartPushPrompt banner"
 
 ---
 
-### Task 18a: NotificationsPanel — state display [IMPLEMENTED]
+### Task 18a: NotificationsPanel — state display [DONE]
 
 **Depends on:** Tasks 11, 16
 
@@ -2892,7 +2892,7 @@ git commit -m "feat(profile): NotificationsPanel — state display"
 
 ---
 
-### Task 18b: NotificationsPanel — device list + prefs toggle [IMPLEMENTED]
+### Task 18b: NotificationsPanel — device list + prefs toggle [DONE]
 
 **Depends on:** Task 18a, Task 14
 
@@ -3101,7 +3101,7 @@ git commit -m "feat(profile): NotificationsPanel — devices + prefs toggle"
 
 ---
 
-### Task 19: Mount FirstStartPushPrompt + replace TelegramPanel [IMPLEMENTED]
+### Task 19: Mount FirstStartPushPrompt + replace TelegramPanel [DONE]
 
 **Depends on:** Tasks 17, 18b
 
@@ -3144,47 +3144,15 @@ git commit -m "feat(ui): mount FirstStartPushPrompt; replace TelegramPanel with 
 
 ---
 
-### Task 20: Production build path — Dockerfile + GHA [IMPLEMENTED]
+### Task 20: Production build path [DONE]
 
 **Depends on:** Task 12
 
-**Files:** Modify `frontend/Dockerfile`, `.github/workflows/deploy.yml`
-
-**Step 1: `frontend/Dockerfile`** — insert before `RUN npm run build`:
-
-```dockerfile
-ARG VITE_VAPID_PUBLIC_KEY=""
-ENV VITE_VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY
-```
-
-**Step 2: `.github/workflows/deploy.yml`** — add `build-args` to the nginx/frontend build step (lines 39-47):
-
-```yaml
-      - name: Build & push nginx/frontend image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          build-args: |
-            VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-          tags: |
-            ghcr.io/marcoroth1983/rc-network-scraper/nginx:latest
-            ghcr.io/marcoroth1983/rc-network-scraper/nginx:${{ steps.tag.outputs.sha }}
-```
-
-(VAPID public key is public → `vars.VAPID_PUBLIC_KEY` repo variable is correct.)
-
-**Step 3: Commit**
-
-```bash
-git add frontend/Dockerfile .github/workflows/deploy.yml
-git commit -m "chore(ci): wire VITE_VAPID_PUBLIC_KEY into frontend build"
-```
+**Delivered reality (revised during review):** No build-time VAPID wiring. The frontend fetches the public key at runtime from `GET /api/notifications/vapid-public-key`, so the originally planned `VITE_VAPID_PUBLIC_KEY` build-arg (`frontend/Dockerfile`) and the `build-args` line + `vars.VAPID_PUBLIC_KEY` GitHub repository variable (`.github/workflows/deploy.yml`) were **removed** during code review and do not exist. `frontend/Dockerfile` and `.github/workflows/deploy.yml` are therefore unchanged by this plan; the only prod requirement is the backend `VAPID_*` env vars on the VPS `.env` (Task 21). No commit for this task.
 
 ---
 
-### Task 21: Generate VAPID keypair [ ]
+### Task 21: Generate VAPID keypair [DONE]
 
 **Step 1: Run once, locally, outside the repo:**
 
@@ -3208,13 +3176,13 @@ VAPID_SUBJECT=mailto:marco.roth1983@googlemail.com
 
 ---
 
-### Task 22: Verification gate (no commit) [ ]
+### Task 22: Verification gate (no commit) [DONE]
 
 Placeholder — see `## Verification`.
 
 ---
 
-### Task 23: Update definition.md [ ]
+### Task 23: Update definition.md [DONE]
 
 **Depends on:** All implementation tasks
 
@@ -3240,7 +3208,7 @@ git commit -m "docs(definition): activate F5 Web Push, note Telegram removal"
 
 ---
 
-### Task 24: Update architektur.md [ ]
+### Task 24: Update architektur.md [DONE]
 
 **Depends on:** All implementation tasks
 
@@ -3265,7 +3233,7 @@ git commit -m "docs(arch): document Web Push channel; remove Telegram references
 
 ---
 
-### Task 25: Update limitations.md [ ]
+### Task 25: Update limitations.md [DONE]
 
 **Files:** Modify `docs/limitations.md`
 
@@ -3319,7 +3287,7 @@ Expected: existing suite passes; new tests for `pwa-detect`, `device-label`, `us
 
 ```bash
 cd frontend
-VITE_VAPID_PUBLIC_KEY=BDevPub npm run build
+npm run build
 ```
 
 Expected: `tsc -b` passes (no telegram type leftovers), `dist/sw.js` + generated manifest produced, no error.
@@ -3365,5 +3333,5 @@ _Plan review closed 2026-05-30 (cycle 3): 4 blocking addressed across cycles, 5 
 - **`send_web_push_to_user` is the single delivery primitive** — the plugin and the fav sweep both call it. Do not duplicate the send/GC loop.
 - **Telegram is gone** — no compatibility shims, no re-export of the old `app.telegram.prefs` path. Update importers, do not alias.
 - **Vitest globals**: `vite.config.ts` keeps `globals: true`; new tests still import `describe, it, expect, vi` explicitly per CLAUDE.md.
-- **Frontend build args**: `VITE_VAPID_PUBLIC_KEY` is optional in dev — the hook fetches the key at runtime via `/api/notifications/vapid-public-key`. The build-arg only spares prod a request on cold load.
+- **VAPID public key**: the frontend always fetches it at runtime via `/api/notifications/vapid-public-key`. There is no `VITE_VAPID_PUBLIC_KEY` build-arg or GitHub variable (the build-arg was removed during review — see Task 20).
 - **Frequent commits** between sub-steps. Commit message prefixes: `feat(...)`, `fix(...)`, `chore(...)`, `test(...)`, `docs(...)`, `refactor(...)`.

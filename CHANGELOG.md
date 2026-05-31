@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.5.0] - 2026-05-31
+
+### Added
+
+**Web-Push-Benachrichtigungen (PLAN-027)**
+- Benachrichtigungen kommen jetzt direkt im Browser bzw. in der installierten PWA an — pro Gerät einzeln aktivierbar.
+- Auf dem Handy erscheint nach dem Login ein Banner zum Aktivieren der Benachrichtigungen.
+- Im Profil verwaltest du deine registrierten Geräte (einzeln entfernbar) und schaltest Web-Push pro Account an/aus.
+- Benachrichtigt werden weiterhin neue Treffer gespeicherter Suchen sowie Statusänderungen an Merklisten-Einträgen (verkauft / Preisänderung / gelöscht).
+
+### Removed
+
+- Telegram-Benachrichtigungen vollständig entfernt — Web Push ist der einzige Benachrichtigungskanal. Die Telegram-Verknüpfung im Profil entfällt.
+
+### Breaking
+
+- Telegram-Subsystem komplett entfernt: Routen `/api/telegram/*` gelöscht, Einstellungen `TELEGRAM_*` entfernt, DB-Tabelle `telegram_link_tokens` sowie die Spalten `users.telegram_chat_id`/`telegram_linked_at` gelöscht (idempotent, kein Datenmigrations-Code). `/api/auth/me` liefert die Telegram-Felder nicht mehr.
+- Benachrichtigungs-Einstellungen werden jetzt über `GET/PUT /api/notifications/preferences` bedient (vorher `/api/telegram/prefs`).
+- Neue Env-Variablen für Push-Versand erforderlich: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (ohne diese ist Push deaktiviert, kein Crash). Fav-Sweep-Knöpfe umbenannt: `TELEGRAM_FAV_SWEEP_INTERVAL_MIN → FAV_SWEEP_INTERVAL_MIN`, `TELEGRAM_FAV_DELETED_DAYS → FAV_DELETED_DAYS`.
+
+---
+
 ## [2.4.0] - 2026-04-28
 
 ### Fixed
