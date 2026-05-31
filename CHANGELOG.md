@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.6.0] - 2026-05-31
+
+### Added
+
+**Benutzer-Freischaltung im Profil (PLAN-028)**
+- Neue Admin-Karte im Profil zum Freischalten neu registrierter Accounts: eine Liste aller Nutzer mit einem Approved-Schalter pro Zeile. Der eigene Account lässt sich nicht abschalten; beim Entziehen einer Freischaltung erscheint ein Bestätigungsdialog. Die Karte ist nur für Admins sichtbar.
+- Pull-to-Refresh am Handy: die Freischalt-Liste durch Herunterziehen aktualisieren.
+
+---
+
 ## [2.5.0] - 2026-05-31
 
 ### Added
