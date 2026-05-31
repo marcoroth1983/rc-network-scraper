@@ -101,7 +101,7 @@
 
 ---
 
-## Task 1: Backend endpoints (list + approval PATCH) [ ]
+## Task 1: Backend endpoints (list + approval PATCH) [IMPLEMENTED]
 
 **Files:**
 - Modify: `backend/app/api/admin.py`
@@ -453,7 +453,7 @@ git commit -m "feat(admin): add UserApprovalPanel to profile"
 
 ---
 
-## Task 4: Tests (backend admin endpoints + frontend panel) [ ]
+## Task 4: Tests (backend admin endpoints + frontend panel) [IMPLEMENTED backend]
 
 **Depends on:** Task 3
 
