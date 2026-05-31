@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.7.0] - 2026-05-31
+
+### Added
+
+**Eigener Admin-Bereich (PLAN-029)**
+- Neue Subpage `/admin`, nur für Admins erreichbar: Die Admin-Funktionen (LLM-Verwaltung, Nutzer-Freischaltung) sind aus dem Profil dorthin umgezogen. Im Profil führt ein „Admin-Bereich"-Button in den neuen Bereich.
+- In der Freischalt-Liste zeigt jede Nutzerzeile jetzt zusätzlich das „Zuletzt gesehen"-Datum an.
+
+### Changed
+
+- Die Admin-Karten (LLM-Verwaltung, Nutzer-Freischaltung) wurden aus dem Profil in den neuen Admin-Bereich verschoben.
+
+---
+
 ## [2.6.0] - 2026-05-31
 
 ### Added
