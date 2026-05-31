@@ -3,6 +3,7 @@ import type { UserRow } from '../types/api';
 import { getUsers, setUserApproval } from '../api/client';
 import { useConfirm } from './ConfirmDialog';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { formatDate } from '../utils/format';
 
 const cardStyle: React.CSSProperties = {
   background: 'rgba(15, 15, 35, 0.6)',
@@ -118,6 +119,9 @@ export function UserApprovalPanel({ currentUserId }: Props) {
                     )}
                     <p className="text-[11px] mt-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
                       Registriert: {new Date(u.created_at).toLocaleDateString('de-DE')}
+                    </p>
+                    <p className="text-[11px] mt-0.5" style={{ color: 'rgba(248,250,252,0.35)' }}>
+                      Zuletzt gesehen: {formatDate(u.last_seen_at)}
                     </p>
                   </div>
                   <button
