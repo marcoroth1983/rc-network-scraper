@@ -50,9 +50,14 @@ The project owner — a single RC model enthusiast looking for used RC equipment
 - Sort by: distance, price, date
 - Text search across title and description
 
-### F5: Alerts (Future)
-- Optional email/push notifications for new listings matching saved search criteria (distance + keywords)
-- Low priority — end-stage feature
+### F5: Web Push Alerts (active)
+
+- Per-user opt-in via `/profile` notifications panel.
+- Trigger: new listing matches for any **active** SavedSearch (existing pipeline via `notification_registry.dispatch(MatchResult)`).
+- Also delivers favorites status changes (sold / price / deleted) via the favorites sweep.
+- Multi-device: each browser install registers its own subscription; devices removable individually.
+- Sole notification channel — Telegram was removed in PLAN-027.
+- iOS: requires PWA install (Add to Home Screen) — see `limitations.md`.
 
 ## Scope Boundaries
 

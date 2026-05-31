@@ -68,3 +68,21 @@ eBay `shortDescription` fields are typically short headlines (<200 chars),
 unlike rc-network multi-paragraph posts. `model_type`/`model_subtype`
 extraction quality may be lower for eBay listings. Mitigation: fetch the full
 item via `get_item()` before analysis (future improvement).
+
+---
+
+## iOS Web Push requires PWA install
+
+**What:** On iOS Safari, Web Push only works after the user adds the site to their Home Screen so it runs as a standalone PWA. In a regular Safari tab, `Notification.requestPermission()` is unavailable.
+
+**Why:** Apple's policy since iOS 16.4 (March 2023). Cannot be worked around.
+
+**Mitigation:** The frontend detects iOS-without-standalone and suppresses the push prompt. The InstallPrompt banner is shown first; once the user installs the PWA and reopens it, the push prompt becomes available.
+
+---
+
+## Favorites sweep always advances snapshots; opt-out events are not backfilled
+
+**What:** The favorites status sweep (`app/notifications/fav_sweep.py`) always advances each favorite's `last_known_*` snapshot after a run, even for users whose `web_push_enabled` is currently `false`. Status changes (sold / price / deleted) that occur while a user has Web Push disabled are therefore detected against the (now-advanced) snapshot and are **not** delivered later when push is re-enabled — they are intentionally dropped, not queued.
+
+**Why:** Deliberate decision, identical to the previous Telegram behavior. Keeping per-user pending event buffers would add state and complexity that a single-user hobby project does not need; the snapshot is the source of truth for "last seen state", independent of delivery preference.

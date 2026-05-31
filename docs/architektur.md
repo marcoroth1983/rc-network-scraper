@@ -120,3 +120,11 @@ rc-markt-scout/
 ## Ähnliche Inserate (Vergleichs-Popup)
 
 `GET /api/listings/{id}/comparables` liefert bis zu 30 Inserate gleicher Kategorie, gefiltert nach harten Attributen — `model_type`, `model_subtype`, `drive_type` (strikt, falls am Base gesetzt; Kandidaten mit NULL werden toleriert) und `wingspan_mm` ±25 % (ebenfalls NULL-tolerant). Sold + outdated Inserate werden eingeschlossen. Keine Median-/Similarity-Bewertung mehr — rein kategoriale Filterung.
+
+## Notification Channel (Web Push)
+
+`app/notifications/registry.py` holds a singleton `notification_registry`. Plugins implement `NotificationPlugin` (`is_configured()` + `send(MatchResult)`). `WebPushPlugin` is the sole delivery plugin (plus `LogPlugin`); it is registered in `app/main.py:lifespan()` when VAPID is configured. A shared helper `send_web_push_to_user(user_id, payload)` (in `web_push_plugin.py`) owns the per-subscription send loop, 404/410 stale-subscription garbage collection (scoped by `user_id`), and the per-delivered `last_used_at` bump. Both the plugin and the favorites status sweep (`app/notifications/fav_sweep.py`, scheduled every `FAV_SWEEP_INTERVAL_MIN` minutes) use this helper.
+
+Subscriptions live in `push_subscriptions` (multi-device, `ON DELETE CASCADE` on the user). Per-user opt-in is `user_notification_prefs.web_push_enabled`, served via `GET/PUT /api/notifications/preferences` (the single source of truth). The frontend uses `vite-plugin-pwa` in `injectManifest` mode with a custom `src/sw.ts` (built to `dist/sw.js`, served `Cache-Control: no-cache` by `nginx.conf`) handling `push` + `notificationclick` (with an open-redirect-safe URL guard) and a `SKIP_WAITING` message. The frontend fetches the VAPID public key at runtime from `GET /api/notifications/vapid-public-key` (no build-time arg). `index.html` is also served no-cache so redeploys are discovered.
+
+Telegram was fully removed in PLAN-027 (modules, routes, settings, the `telegram_link_tokens` table, and the `users.telegram_chat_id`/`telegram_linked_at` columns).
