@@ -207,6 +207,16 @@ export interface LLMModelRow {
   disabled_until: string | null;    // ISO timestamp; countdown if future
 }
 
+export interface UserRow {
+  id: number;
+  email: string;
+  name: string | null;
+  is_approved: boolean;
+  role: string;
+  created_at: string;        // ISO timestamp
+  last_seen_at: string | null; // ISO timestamp
+}
+
 export interface ComparableListing {
   id: number;
   title: string;

@@ -12,6 +12,7 @@ import type {
   SearchCriteria,
   ScrapeLogEntry,
   ScrapeStatus,
+  UserRow,
 } from '../types/api';
 import { ApiError } from '../types/api';
 
@@ -156,6 +157,20 @@ export async function getLLMModels(): Promise<LLMModelRow[]> {
 export async function refreshLLMModels(): Promise<LLMModelRow[]> {
   const res = await fetch('/api/admin/llm-models/refresh', { method: 'POST' });
   return handleResponse<LLMModelRow[]>(res);
+}
+
+export async function getUsers(): Promise<UserRow[]> {
+  const res = await fetch('/api/admin/users');
+  return handleResponse<UserRow[]>(res);
+}
+
+export async function setUserApproval(userId: number, isApproved: boolean): Promise<UserRow> {
+  const res = await fetch(`/api/admin/users/${userId}/approval`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_approved: isApproved }),
+  });
+  return handleResponse<UserRow>(res);
 }
 
 export async function getComparables(id: number): Promise<ComparablesResponse> {
