@@ -4,6 +4,9 @@
 
 ### Fixed
 
+**Gespeicherte Suchen wieder nutzbar (PLAN-031)**
+- Suchen ließen sich nicht mehr speichern (Button ohne Reaktion) und die Liste gespeicherter Suchen war leer. Ursache: der Datenbank fehlten neun Filter-Spalten, sodass jeder Zugriff fehlschlug. Die Spalten werden jetzt automatisch ergänzt — gespeicherte Suchen funktionieren wieder, vorhandene Suchen waren nie verloren. Schlägt ein Laden künftig fehl, bleibt die bestehende Liste erhalten statt zu verschwinden.
+
 **Entfernungsberechnung bei Postleitzahl ohne Ortsname (PLAN-030)**
 - Inserate, deren Standort nur aus einer Postleitzahl ohne Ortsnamen besteht (z. B. die österreichische „2450"), wurden teils auf ein zufälliges Land im Ausland verortet und zeigten dadurch absurde Entfernungen (beobachtet: 16.230 km). Solche Inserate zeigen jetzt korrekt **keine** Entfernung statt einer falschen. Bereits gespeicherte Altinserate werden dadurch nicht rückwirkend korrigiert.
 

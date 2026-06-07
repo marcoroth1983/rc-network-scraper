@@ -52,7 +52,7 @@ New ALTERs are inserted immediately after this block. **Migration-test implicati
 
 ---
 
-### Task 1: Add the 9 saved_searches filter columns to init_db() [IMPLEMENTED]
+### Task 1: Add the 9 saved_searches filter columns to init_db() [DONE]
 
 **Files:**
 - Modify: `backend/app/db.py:43-45` (insert immediately after the existing `category` ALTER block)
@@ -104,7 +104,7 @@ git commit -m "fix: add missing saved_searches filter columns to init_db migrati
 
 ---
 
-### Task 2: Regression test — init_db re-adds filter columns to a legacy table [IMPLEMENTED]
+### Task 2: Regression test — init_db re-adds filter columns to a legacy table [DONE]
 
 **Depends on:** Task 1
 
@@ -173,7 +173,7 @@ git commit -m "test: regression test for init_db saved_searches column migration
 
 ---
 
-### Task 3: Harden frontend saved-search load/save against silent failure [IMPLEMENTED]
+### Task 3: Harden frontend saved-search load/save against silent failure [DONE]
 
 **Depends on:** none (independent of Tasks 1–2)
 
