@@ -63,7 +63,7 @@ The comment already documents the danger; the guard implementing it is missing. 
 
 ---
 
-### Task 1: Add numeric-only Nominatim guard [ ]
+### Task 1: Add numeric-only Nominatim guard [IMPLEMENTED]
 
 **Files:**
 - Modify: `backend/app/scraper/orchestrator.py:260-268`
@@ -100,7 +100,7 @@ git commit -m "fix: guard Nominatim geocode against bare numeric queries (PLAN-0
 
 ---
 
-### Task 2: Tests for the geo-lookup Nominatim guard [ ]
+### Task 2: Tests for the geo-lookup Nominatim guard [IMPLEMENTED]
 
 **Depends on:** Task 1
 
