@@ -43,6 +43,37 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS category VARCHAR(50)"
         ))
+        # PLAN-031: saved-searches filter columns (added to the SavedSearch model in
+        # commit 983c2e8 but never mirrored here — prod table predates them, so create_all
+        # never added them and every SELECT/INSERT 500'd with UndefinedColumnError).
+        # All nullable, no default — mirrors the model (models.py:110-118).
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS price_min DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS price_max DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS drive_type VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS completeness VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS shipping_available BOOLEAN"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS model_type VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS model_subtype VARCHAR(50)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS show_outdated BOOLEAN"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD COLUMN IF NOT EXISTS only_sold BOOLEAN"
+        ))
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'member'"
         ))
