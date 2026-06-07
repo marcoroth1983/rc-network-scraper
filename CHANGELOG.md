@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.7.1] - 2026-06-07
+
+### Fixed
+
+**Entfernungsberechnung bei Postleitzahl ohne Ortsname (PLAN-030)**
+- Inserate, deren Standort nur aus einer Postleitzahl ohne Ortsnamen besteht (z. B. die österreichische „2450"), wurden teils auf ein zufälliges Land im Ausland verortet und zeigten dadurch absurde Entfernungen (beobachtet: 16.230 km). Solche Inserate zeigen jetzt korrekt **keine** Entfernung statt einer falschen. Bereits gespeicherte Altinserate werden dadurch nicht rückwirkend korrigiert.
+
+---
+
 ## [2.7.0] - 2026-05-31
 
 ### Added

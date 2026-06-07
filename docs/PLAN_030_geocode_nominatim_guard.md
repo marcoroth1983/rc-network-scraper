@@ -54,7 +54,7 @@ The comment already documents the danger; the guard implementing it is missing. 
 
 **`intl_geodata` model** (`backend/app/models.py:72-79`): columns `country` (String(2), PK), `plz` (String(10), PK), `city`, `lat` (Float), `lon` (Float). Lookup SQL `_INTL_GEO_LOOKUP_SQL` (`orchestrator.py:134-139`): `SELECT lat, lon FROM intl_geodata WHERE country = :country AND plz = :plz LIMIT 1`.
 
-**Seed Note (unverified at plan-write time — Docker not reachable from the planning host):** `intl_geodata` is populated only by the manual one-time script `backend/app/seed_intl.py` (`python -m app.seed_intl`), which downloads AT+CH PLZ from GeoNames. There is no evidence it runs at startup/deploy. The Australia bug strongly implies the table is empty or missing AT 2450 on the affected environment. Verifying/running the seed is an **operational** step (Verification §B), not a code task — it is required for AT/CH listings to show a *correct* distance; the code guard only prevents a *wrong* one.
+**Seed Note (VERIFIED on dev 2026-06-07):** `intl_geodata` is seeded (AT 2217, CH 3362 distinct PLZ). The original "table empty" hypothesis was **wrong**: the table is populated, but **PLZ 2450 is genuinely absent from the GeoNames AT export** (neighbours 2444/2451/2452 exist, 2450 is a gap). So Step 3 missed for a data-source reason, not a seeding reason, and Step 5 then sent "2450" to Nominatim → Australia. After the guard, such GeoNames gaps resolve to NULL (no distance) instead of a wrong country. `seed_intl.py` is a manual one-time script; staging/prod seed state was not checked from the planning host. Residual limitation: AT/CH PLZ missing from GeoNames show no distance — candidate for `docs/limitations.md` (pending Human confirmation).
 
 **Test conventions (mirror references):**
 - Async DB integration tests use the `db_session` fixture and insert rows via `text(...)`. Canonical reference: `backend/tests/test_orchestrator_phases.py:20-60` (`@pytest.mark.asyncio` + `@pytest.mark.integration`, `db_session`, `patch(...)` for network).
@@ -63,7 +63,7 @@ The comment already documents the danger; the guard implementing it is missing. 
 
 ---
 
-### Task 1: Add numeric-only Nominatim guard [IMPLEMENTED]
+### Task 1: Add numeric-only Nominatim guard [DONE]
 
 **Files:**
 - Modify: `backend/app/scraper/orchestrator.py:260-268`
@@ -100,7 +100,7 @@ git commit -m "fix: guard Nominatim geocode against bare numeric queries (PLAN-0
 
 ---
 
-### Task 2: Tests for the geo-lookup Nominatim guard [IMPLEMENTED]
+### Task 2: Tests for the geo-lookup Nominatim guard [DONE]
 
 **Depends on:** Task 1
 
@@ -182,6 +182,8 @@ git commit -m "test: cover Nominatim numeric guard and AT intl_geodata resolutio
 ```
 
 ---
+
+_Code review closed 2026-06-07 (python, cycle 1): CLEAN — 0 blocking, 3 suggestions (no action)._
 
 ## Verification
 
