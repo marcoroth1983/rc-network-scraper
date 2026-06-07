@@ -257,10 +257,13 @@ async def _geo_lookup(
             if row:
                 return float(row[1]), float(row[2]), str(row[0])
 
-    # Step 5: Nominatim fallback — only when a city name is available.
-    # Bare PLZ numbers without country context would resolve to any country (e.g. "2450" → Australia).
+    # Step 5: Nominatim fallback — only when a real place NAME is available.
+    # A bare numeric token (e.g. "2450") carries no country context and Nominatim
+    # resolves it to an arbitrary country (observed: "2450" → Coffs Harbour, Australia,
+    # giving a ~16000 km distance). Require at least one alphabetic character so only
+    # genuine place names reach the geocoder; pure-digit strings fall through to NULL.
     query = city.strip() if city else None
-    if query:
+    if query and any(c.isalpha() for c in query):
         await asyncio.sleep(1.0)  # respect Nominatim 1 req/sec ToS
         coords = await _nominatim_geocode(query)
         if coords:
