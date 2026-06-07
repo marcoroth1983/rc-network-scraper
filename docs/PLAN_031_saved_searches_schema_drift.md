@@ -173,7 +173,7 @@ git commit -m "test: regression test for init_db saved_searches column migration
 
 ---
 
-### Task 3: Harden frontend saved-search load/save against silent failure [ ]
+### Task 3: Harden frontend saved-search load/save against silent failure [IMPLEMENTED]
 
 **Depends on:** none (independent of Tasks 1–2)
 
