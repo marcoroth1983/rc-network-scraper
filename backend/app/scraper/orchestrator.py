@@ -8,11 +8,11 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import select, text, update as sa_update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import CATEGORIES, Category, settings
-from app.scraper.crawler import _build_page_url, fetch_listings, fetch_page
+from app.config import CATEGORIES, Category
+from app.scraper.crawler import _build_page_url, fetch_page
 from app.scraper.parser import parse_detail
 
 logger = logging.getLogger(__name__)
