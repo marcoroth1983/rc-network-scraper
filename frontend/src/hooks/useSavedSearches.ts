@@ -24,8 +24,14 @@ export function useSavedSearches(): UseSavedSearchesResult {
   const [searches, setSearches] = useState<SavedSearch[]>([]);
 
   const load = async () => {
-    const result = await getSavedSearches();
-    setSearches(result);
+    try {
+      const result = await getSavedSearches();
+      setSearches(result);
+    } catch (err) {
+      // Keep the previous list rather than blanking it on a transient failure
+      // (a 500 here previously made all saved searches look "gone").
+      console.error('Failed to load saved searches:', err);
+    }
   };
 
   // Load on mount

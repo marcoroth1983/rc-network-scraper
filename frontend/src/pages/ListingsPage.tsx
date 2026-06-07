@@ -168,14 +168,22 @@ export default function ListingsPage({
   }
 
   async function handleSave() {
-    await onSaveSearch(criteriaFromFilter(filter));
-    showFeedback('saved');
+    try {
+      await onSaveSearch(criteriaFromFilter(filter));
+      showFeedback('saved');
+    } catch (err) {
+      console.error('Failed to save search:', err);
+    }
   }
 
   async function handleUpdate() {
     if (activeSavedSearchId == null) return;
-    await onUpdateSearch(activeSavedSearchId, criteriaFromFilter(filter));
-    showFeedback('updated');
+    try {
+      await onUpdateSearch(activeSavedSearchId, criteriaFromFilter(filter));
+      showFeedback('updated');
+    } catch (err) {
+      console.error('Failed to update search:', err);
+    }
   }
 
   const showFab = showSaveNew || showUpdate;
