@@ -458,7 +458,7 @@ git commit -m "feat(admin): DSGVO hard-delete user endpoint"
 
 ---
 
-## Task 4: Frontend API client + types [ ]
+## Task 4: Frontend API client + types [IMPLEMENTED]
 
 **Depends on:** Task 2, Task 3
 
@@ -530,7 +530,7 @@ git commit -m "feat(admin): metrics + delete API client functions"
 
 ---
 
-## Task 5: Frontend SVG chart component (no dependency) [ ]
+## Task 5: Frontend SVG chart component (no dependency) [IMPLEMENTED]
 
 **Depends on:** Task 4
 
@@ -673,7 +673,7 @@ git commit -m "feat(admin): self-contained SVG MiniChart (line/bar)"
 
 ---
 
-## Task 6: Frontend metrics panel — KPI tiles + charts + range selector [ ]
+## Task 6: Frontend metrics panel — KPI tiles + charts + range selector [IMPLEMENTED]
 
 **Depends on:** Task 5
 
@@ -862,7 +862,7 @@ git commit -m "feat(admin): metrics dashboard panel (KPIs + charts + range)"
 
 ---
 
-## Task 7: Frontend — dedicated account-management page (/admin/users) with hard-delete [ ]
+## Task 7: Frontend — dedicated account-management page (/admin/users) with hard-delete [IMPLEMENTED]
 
 **Depends on:** Task 4
 
@@ -1074,7 +1074,7 @@ git commit -m "feat(admin): per-user activity stats endpoint"
 
 ---
 
-## Task 9: Frontend — per-user analysis dialog [ ]
+## Task 9: Frontend — per-user analysis dialog [IMPLEMENTED]
 
 **Depends on:** Task 7, Task 8
 
