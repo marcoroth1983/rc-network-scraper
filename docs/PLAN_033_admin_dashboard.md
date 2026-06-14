@@ -48,7 +48,7 @@
 
 ---
 
-## Task 1: Backend schema — login_events table + saved_searches FK cascade + login telemetry [IMPLEMENTED]
+## Task 1: Backend schema — login_events table + saved_searches FK cascade + login telemetry [DONE]
 
 **Files:**
 - Modify: `backend/app/db.py` (append two idempotent DDL blocks at the end of `init_db()`, after the last existing block ~`db.py:289`)
@@ -209,7 +209,7 @@ git commit -m "feat(admin): login telemetry table + saved_searches FK cascade"
 
 ---
 
-## Task 2: Backend metrics endpoints — summary + timeseries [IMPLEMENTED]
+## Task 2: Backend metrics endpoints — summary + timeseries [DONE]
 
 **Depends on:** Task 1
 
@@ -372,7 +372,7 @@ git commit -m "feat(admin): metrics summary + timeseries endpoints"
 
 ---
 
-## Task 3: Backend user hard-delete (DSGVO) [IMPLEMENTED]
+## Task 3: Backend user hard-delete (DSGVO) [DONE]
 
 **Depends on:** Task 1
 
@@ -458,7 +458,7 @@ git commit -m "feat(admin): DSGVO hard-delete user endpoint"
 
 ---
 
-## Task 4: Frontend API client + types [IMPLEMENTED]
+## Task 4: Frontend API client + types [DONE]
 
 **Depends on:** Task 2, Task 3
 
@@ -530,7 +530,7 @@ git commit -m "feat(admin): metrics + delete API client functions"
 
 ---
 
-## Task 5: Frontend SVG chart component (no dependency) [IMPLEMENTED]
+## Task 5: Frontend SVG chart component (no dependency) [DONE]
 
 **Depends on:** Task 4
 
@@ -673,7 +673,7 @@ git commit -m "feat(admin): self-contained SVG MiniChart (line/bar)"
 
 ---
 
-## Task 6: Frontend metrics panel — KPI tiles + charts + range selector [IMPLEMENTED]
+## Task 6: Frontend metrics panel — KPI tiles + charts + range selector [DONE]
 
 **Depends on:** Task 5
 
@@ -862,7 +862,7 @@ git commit -m "feat(admin): metrics dashboard panel (KPIs + charts + range)"
 
 ---
 
-## Task 7: Frontend — dedicated account-management page (/admin/users) with hard-delete [IMPLEMENTED]
+## Task 7: Frontend — dedicated account-management page (/admin/users) with hard-delete [DONE]
 
 **Depends on:** Task 4
 
@@ -987,7 +987,7 @@ git commit -m "feat(admin): dedicated /admin/users page + DSGVO hard-delete acti
 
 ---
 
-## Task 8: Backend — per-user activity stats endpoint [IMPLEMENTED]
+## Task 8: Backend — per-user activity stats endpoint [DONE]
 
 **Depends on:** Task 1
 
@@ -1074,7 +1074,7 @@ git commit -m "feat(admin): per-user activity stats endpoint"
 
 ---
 
-## Task 9: Frontend — per-user analysis dialog [IMPLEMENTED]
+## Task 9: Frontend — per-user analysis dialog [DONE]
 
 **Depends on:** Task 7, Task 8
 
@@ -1280,7 +1280,7 @@ git commit -m "feat(admin): per-user analysis dialog"
 
 ---
 
-## Task 10: Docs — fix stale single-user/no-auth claims, document admin dashboard [ ]
+## Task 10: Docs — fix stale single-user/no-auth claims, document admin dashboard [DONE]
 
 **Depends on:** Task 6, Task 7, Task 9
 
@@ -1318,7 +1318,11 @@ git commit -m "docs: reflect Google-SSO multi-user auth + admin dashboard (PLAN-
 
 _Code review closed 2026-06-14 (python, cycle 1): MINOR — 0 critical, 0 high, 3 medium, 2 low, 1 suggestion. Medium-1 (missing type hint on _series session) and Medium-3 (silent clamp → Query validator) fixed in follow-up commit a22b9d5; Medium-2 (ADD CONSTRAINT not idempotent under concurrent starts) deferred to backlog (single-container hobby project). No blocking issues._
 
+_Independent review (python, orchestrator-triggered, cycle 1): CLEAN — Codex 0 findings. 2 medium surgical-fixed (merged duplicate fastapi import; asserted users_active_30d); 1 low + 1 suggestion deferred (tracked as backlog PLAN033-NB2). All 12 acceptance criteria verified OK._
+
 _Code review closed 2026-06-14 (frontend, cycle 1): MINOR — 0 critical, 0 high, 3 medium, 3 low, 3 suggestions. M1 (window.confirm → useConfirm) + M2 (optimistic delete + rollback) + M3 (stale-response guard in MetricsPanel) all fixed in commit 5d8055d. Low findings L2/L3 tolerated; L1 (deleteUser re-implements error handling) kept as-is because handleResponse calls res.json() which would fail on 204 No Content. No blocking issues._
+
+_Independent review (frontend, orchestrator-triggered, cycle 1): MINOR — test-diff audit LEGITIMATE (no assertion weakening), Codex 1 finding (stale-closure rollback). 2 medium surgical-fixed (M1 functional delete-rollback w/o clobber; M2 dialog focus-return); M3 + lows/suggestions deferred to backlog PLAN033-FE-NITS. All acceptance criteria (action order, self-guard, 204 handling, TS↔Pydantic parity, a11y, no chart lib) confirmed._
 
 ---
 
