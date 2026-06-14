@@ -123,3 +123,29 @@ async def test_delete_missing_user_404(admin_client):
     client, _ = admin_client
     resp = await client.delete("/api/admin/users/999999")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_user_stats_counts(admin_client, db_session):
+    client, _ = admin_client
+    await _seed_user(db_session, "st-g", "st@example.com", is_approved=True)
+    uid = (await db_session.execute(
+        text("SELECT id FROM users WHERE google_id = 'st-g'")
+    )).scalar_one()
+    await db_session.execute(text("INSERT INTO saved_searches (user_id, name) VALUES (:u, 'a')"), {"u": uid})
+    await db_session.execute(text("INSERT INTO login_events (user_id) VALUES (:u)"), {"u": uid})
+    await db_session.commit()
+
+    resp = await client.get(f"/api/admin/users/{uid}/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["saved_searches"] == 1
+    assert body["logins_total"] == 1
+    assert set(body) >= {"favorites", "push_devices", "logins_30d", "created_at", "last_seen_at"}
+
+
+@pytest.mark.asyncio
+async def test_user_stats_404(admin_client):
+    client, _ = admin_client
+    resp = await client.get("/api/admin/users/999999/stats")
+    assert resp.status_code == 404

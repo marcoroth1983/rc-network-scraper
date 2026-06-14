@@ -281,3 +281,39 @@ async def delete_user(
         if result.fetchone() is None:
             raise HTTPException(status_code=404, detail="User not found")
         await session.commit()
+
+
+class UserStats(BaseModel):
+    user_id: int
+    saved_searches: int
+    favorites: int
+    push_devices: int
+    logins_total: int
+    logins_30d: int
+    created_at: datetime
+    last_seen_at: datetime | None
+
+
+@router.get("/users/{user_id}/stats", response_model=UserStats)
+async def user_stats(user_id: int, _: User = Depends(require_admin)) -> UserStats:
+    """Per-user activity counts for the analysis dialog."""
+    async with AsyncSessionLocal() as session:
+        row = (await session.execute(text("""
+            SELECT
+                u.id AS user_id,
+                (SELECT count(*) FROM saved_searches    WHERE user_id = u.id) AS saved_searches,
+                (SELECT count(*) FROM user_favorites     WHERE user_id = u.id) AS favorites,
+                (SELECT count(*) FROM push_subscriptions WHERE user_id = u.id) AS push_devices,
+                (SELECT count(*) FROM login_events       WHERE user_id = u.id) AS logins_total,
+                (SELECT count(*) FROM login_events       WHERE user_id = u.id
+                    AND logged_in_at >= now() - interval '30 days')           AS logins_30d,
+                u.created_at, u.last_seen_at
+            FROM users u WHERE u.id = :uid
+        """), {"uid": user_id})).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserStats(
+        user_id=row.user_id, saved_searches=row.saved_searches, favorites=row.favorites,
+        push_devices=row.push_devices, logins_total=row.logins_total,
+        logins_30d=row.logins_30d, created_at=row.created_at, last_seen_at=row.last_seen_at,
+    )
