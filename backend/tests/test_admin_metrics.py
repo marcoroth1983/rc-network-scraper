@@ -12,8 +12,8 @@ async def test_metrics_summary_counts(admin_client, db_session):
     # admin_client seeds exactly one approved admin user
     assert body["users_total"] >= 1
     assert body["users_approved"] >= 1
-    assert set(body) >= {"users_pending", "users_active_7d", "listings_total",
-                         "favorites_total", "saved_searches_total"}
+    assert set(body) >= {"users_pending", "users_active_7d", "users_active_30d",
+                         "listings_total", "favorites_total", "saved_searches_total"}
 
 
 @pytest.mark.asyncio

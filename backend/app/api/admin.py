@@ -2,14 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.analysis import model_cascade
 from app.api.deps import require_admin
 from app.db import AsyncSessionLocal
 from app.models import User
-from fastapi import Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
