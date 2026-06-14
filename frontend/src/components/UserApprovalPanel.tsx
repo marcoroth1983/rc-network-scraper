@@ -71,16 +71,22 @@ export function UserApprovalPanel({ currentUserId }: Props) {
   }, [confirm]);
 
   const handleDelete = useCallback(async (u: UserRow) => {
-    const ok = await window.confirm(`Konto ${u.email} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`);
+    const ok = await confirm({
+      title: 'Konto endgültig löschen?',
+      message: `„${u.email}" und alle zugehörigen Daten (Suchen, Favoriten, Geräte) werden unwiderruflich gelöscht (DSGVO).`,
+      confirmLabel: 'Endgültig löschen',
+      destructive: true,
+    });
     if (!ok) return;
+    const prev = rows;
+    setRows((rs) => rs?.filter((r) => r.id !== u.id) ?? rs);  // optimistic removal
     try {
       await deleteUser(u.id);
-      setRows((prev) => prev?.filter((r) => r.id !== u.id) ?? prev);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
-      setError(`Löschen fehlgeschlagen: ${msg}`);
+      setRows(prev ?? null);  // rollback
+      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen');
     }
-  }, []);
+  }, [confirm, rows]);
 
   return (
     <section className="w-full rounded-2xl p-4 sm:p-6" style={cardStyle}>

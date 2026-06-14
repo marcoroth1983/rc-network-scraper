@@ -101,7 +101,8 @@ describe('UserApprovalPanel', () => {
 
   it('hard-deletes a user after confirmation and removes the row', async () => {
     getUsers.mockResolvedValue([baseRow]);          // baseRow.id !== currentUserId
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // Code now uses useConfirm (not window.confirm) — mock via the ConfirmDialog mock
+    confirmMock.mockResolvedValue(true);
     deleteUser.mockResolvedValue(undefined);
     render(<UserApprovalPanel currentUserId={1} />);
     const btn = await screen.findByRole('button', { name: /Konto .* löschen/ });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MetricsSummary, MetricsTimeseries } from '../types/api';
 import { getMetricsSummary, getMetricsTimeseries } from '../api/client';
 import { MiniChart } from './MiniChart';
@@ -30,21 +30,25 @@ export function MetricsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (range: number) => {
+  useEffect(() => {
+    let active = true;
     setLoading(true);
     setError(null);
-    try {
-      const [s, t] = await Promise.all([getMetricsSummary(), getMetricsTimeseries(range)]);
-      setSummary(s);
-      setSeries(t);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(days); }, [load, days]);
+    void (async () => {
+      try {
+        const [s, t] = await Promise.all([getMetricsSummary(), getMetricsTimeseries(days)]);
+        if (active) {
+          setSummary(s);
+          setSeries(t);
+        }
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [days]);
 
   return (
     <section className="w-full rounded-2xl p-4 sm:p-6" style={cardStyle}>
