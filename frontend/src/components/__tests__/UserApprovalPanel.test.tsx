@@ -113,7 +113,8 @@ describe('UserApprovalPanel', () => {
   it('does not render a delete button for the current admin', async () => {
     getUsers.mockResolvedValue([{ ...baseRow, id: 1 }]);  // id === currentUserId
     render(<UserApprovalPanel currentUserId={1} />);
-    await screen.findByText(baseRow.email);
+    // The row shows "pending@example.com (du)" so use regex to find it
+    await screen.findByText(/pending@example\.com/);
     expect(screen.queryByRole('button', { name: /löschen/ })).not.toBeInTheDocument();
   });
 });
