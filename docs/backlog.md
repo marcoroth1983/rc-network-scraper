@@ -2,6 +2,14 @@
 
 ## Open
 
+- **PLAN033-NB1: `_series` metrics helper does 2 queries per series (10 round-trips)** — The zero-fill base date is computed via a second SQL query per series; it could be a pure Python `date.today() - timedelta(days=days-1)`, halving DB round-trips (10→5). Admin-only endpoint, negligible impact. _Aus PLAN_033 Review Cycle 1, 2026-06-14: YAGNI single-user._
+
+- **PLAN033-NB3: `test_admin_metrics` timeseries test asserts length only for 2 of 5 series** — Asserting all 5 series (`listings_new`, `listings_closed`, `users_new`, `logins`, `notifications`) have `len == days` would give fuller zero-fill coverage. _Aus PLAN_033 Review Cycle 1, 2026-06-14._
+
+- **PLAN033-C2-NB1: OAuth-Callback Login-Insert-Pfad ungetestet** — `test_login_telemetry.py` prüft Schema + Cascade, aber nicht den tatsächlichen `INSERT INTO login_events` im `auth.py`-Callback. Ein `test_oauth_callback_records_login_event` (mit gemocktem Google-State) würde Regressionen im Telemetrie-Pfad fangen. Low prio (Single-User). _Aus PLAN_033 Review Cycle 2, 2026-06-14._
+
+- **PLAN033-NB2: `login_events` counts approved OAuth callbacks, not confirmed client sessions** — The login row is committed before the redirect response reaches the client; a failed redirect still persists the event. Acceptable telemetry fidelity for a hobby app; revisit only if the logins/day metric needs to mean "confirmed sessions". _Aus PLAN_033 Review Cycle 1, 2026-06-14._
+
 - **FE-CLEANUP-01: `ProfilePage` `onUserReload` prop is dead plumbing** — `App.tsx` passes `reloadUser` → `ProfilePage` `onUserReload`, but the component never destructures/uses it (leftover after TelegramPanel removal in PLAN-027). Flagged in PLAN-027 and PLAN-029 reviews. Either wire it up for a future in-profile reload action, or drop the prop + the `reloadUser` chain through `App.tsx`. Cosmetic, no breakage. _Aus PLAN_029 Review, 2026-05-31._
 
 - **PLAN027-M1: `vite.config.ts` vitest `globals:true` widerspricht CLAUDE.md-Konvention** — CLAUDE.md schreibt explizite Vitest-Imports vor (`import { describe, it, expect, vi } from 'vitest'`), aber `vite.config.ts` setzt `globals: true`. Pre-existing deviation — nicht in PLAN-027 eingeführt. Klären: entweder `globals: false` setzen und alle Testdateien auf explizite Imports umstellen, oder CLAUDE.md-Konvention anpassen. Nicht in PLAN-027 angefasst, da Änderung bestehende Tests brechen könnte. _Aus PLAN_027 Review Cycle 1, 2026-05-31._

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PLAN-033 — Admin Dashboard Mockup</title>
+<style>
+  :root {
+    --bg0: #0a0a1f; --bg1: #12122e; --text: #F8FAFC;
+    --muted: rgba(248,250,252,0.5); --muted2: rgba(248,250,252,0.35);
+    --accent: #A78BFA; --indigo: #6366F1; --pink: #EC4899; --green: #34D399; --amber: #FBBF24;
+    --card-bg: rgba(15,15,35,0.6); --card-border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(99,102,241,0.25), transparent 60%),
+      radial-gradient(900px 500px at 10% 110%, rgba(236,72,153,0.18), transparent 55%),
+      linear-gradient(160deg, var(--bg0), var(--bg1));
+    min-height: 100vh; padding: 0 0 64px;
+  }
+  .wrap { max-width: 64rem; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin: 8px 0 24px; }
+  .note { font-size: 12px; color: var(--muted2); margin: -16px 0 24px; }
+  .routebar { font-size: 11px; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; margin: 40px 0 16px; display:flex; align-items:center; gap:10px; }
+  .routebar::before, .routebar::after { content:""; height:1px; flex:1; background: rgba(167,139,250,0.25); }
+  .stack { display: flex; flex-direction: column; gap: 24px; }
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); border-radius: 16px; padding: 24px; }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--accent); margin: 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .seg { display: flex; gap: 4px; }
+  .seg button { border: none; cursor: pointer; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; color: var(--muted); background: rgba(255,255,255,0.06); }
+  .seg button.active { background: linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9)); color: #fff; }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (min-width: 640px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 1024px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  .tile { border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); }
+  .tile .lbl { font-size: 11px; color: var(--muted); margin: 0; }
+  .tile .val { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 2px 0 0; }
+  .tile .sub { font-size: 11px; color: rgba(248,250,252,0.4); margin: 2px 0 0; }
+  .charts { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 640px) { .charts { grid-template-columns: repeat(2, 1fr); } }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .chart-head .t { font-size: 12px; font-weight: 600; margin: 0; }
+  .chart-head .tot { font-size: 12px; color: rgba(248,250,252,0.55); font-variant-numeric: tabular-nums; }
+  .axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--muted2); font-variant-numeric: tabular-nums; }
+  svg { width: 100%; height: 96px; display: block; }
+  .linkcard { display:flex; align-items:center; justify-content:space-between; text-decoration:none; }
+  .linkcard .l { font-size: 14px; font-weight: 600; color: var(--accent); }
+  .linkcard .r { color: rgba(248,250,252,0.6); font-size: 18px; }
+  .backlink { display:inline-block; font-size: 13px; color: rgba(248,250,252,0.6); margin-bottom: 16px; text-decoration:none; }
+  .ulist { display: flex; flex-direction: column; gap: 12px; }
+  .urow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .uinfo { min-width: 0; }
+  .uinfo .em { font-size: 14px; color: rgba(248,250,252,0.85); margin: 0; }
+  .uinfo .nm { font-size: 12px; color: var(--muted); margin: 0; }
+  .uinfo .meta { font-size: 11px; color: var(--muted2); margin: 2px 0 0; }
+  .actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .btn-an { border-radius: 8px; padding: 8px 10px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--accent); background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.25); }
+  .toggle { position: relative; width: 36px; height: 20px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); }
+  .toggle.on { background: linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9)); border-color: rgba(139,92,246,0.5); }
+  .toggle .knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background:#fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  .toggle.on .knob { transform: translateX(16px); }
+  .del { border-radius: 8px; padding: 8px 10px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--pink); background: rgba(236,72,153,0.08); border: 1px solid rgba(236,72,153,0.25); }
+  .placeholder { color: var(--muted2); font-size: 13px; }
+  .legend { font-size: 11px; color: var(--muted2); margin-top: 12px; }
+  .pill { display:inline-block; font-size:10px; padding:2px 8px; border-radius:999px; background:rgba(167,139,250,0.15); color:var(--accent); margin-left:8px; vertical-align:middle;}
+  /* dialog */
+  .scrim { position: relative; margin-top: 16px; border-radius: 16px; background: rgba(0,0,0,0.45); padding: 28px; display:flex; justify-content:center; border:1px dashed rgba(255,255,255,0.12); }
+  .dialog { width: 100%; max-width: 360px; border-radius: 16px; padding: 24px; background: rgba(15,15,35,0.92); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 16px 48px rgba(0,0,0,0.5); }
+  .dhead { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom: 16px; }
+  .dhead .dt { font-size: 14px; font-weight: 600; color: var(--accent); margin:0; }
+  .dhead .de { font-size: 12px; color: var(--muted); margin:0; }
+  .dhead .x { color: rgba(248,250,252,0.6); font-size: 20px; cursor:pointer; line-height:1; background:none;border:none; }
+  .drow { display:flex; align-items:center; justify-content:space-between; padding: 5px 0; }
+  .drow dt { font-size: 13px; color: rgba(248,250,252,0.6); }
+  .drow dd { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; margin:0; }
+  .dcap { font-size:10px; color:var(--muted2); text-align:center; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Admin-Bereich <span class="pill">Mockup · PLAN-033</span></h1>
+  <p class="note">Statische Vorschau mit Beispieldaten. Charts = echte Inline-SVG (geplante <code>MiniChart</code>). Zwei Routen: <code>/admin</code> (Dashboard) und <code>/admin/users</code> (Benutzer-Verwaltung).</p>
+
+  <!-- ===================== ROUTE 1: /admin (Dashboard) ===================== -->
+  <div class="routebar">Route 1 · /admin · Dashboard</div>
+  <div class="stack">
+    <section class="card">
+      <div class="row">
+        <p class="card-title">Nutzungs-Metriken</p>
+        <div class="seg" role="group" aria-label="Zeitraum">
+          <button>7 Tage</button><button class="active">30 Tage</button><button>90 Tage</button>
+        </div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><p class="lbl">Nutzer gesamt</p><p class="val">14</p><p class="sub">2 wartend</p></div>
+        <div class="tile"><p class="lbl">Freigeschaltet</p><p class="val">12</p></div>
+        <div class="tile"><p class="lbl">Aktiv (7 T)</p><p class="val">8</p><p class="sub">11 in 30 T</p></div>
+        <div class="tile"><p class="lbl">Annoncen gesamt</p><p class="val">3 421</p></div>
+        <div class="tile"><p class="lbl">Favoriten</p><p class="val">76</p></div>
+        <div class="tile"><p class="lbl">Gespeicherte Suchen</p><p class="val">23</p></div>
+      </div>
+      <div class="charts" id="charts"></div>
+    </section>
+
+    <section class="card"><p class="card-title">LLM-Cascade</p><p class="placeholder" style="margin-top:12px;">↳ bestehendes Panel (unverändert).</p></section>
+
+    <a class="card linkcard" href="#users"><span class="l">Benutzer-Verwaltung</span><span class="r">→</span></a>
+  </div>
+
+  <!-- ===================== ROUTE 2: /admin/users ===================== -->
+  <div class="routebar" id="users">Route 2 · /admin/users · Benutzer-Verwaltung</div>
+  <a class="backlink" href="#">← Dashboard</a>
+  <div class="stack">
+    <section class="card">
+      <p class="card-title">Benutzer-Verwaltung</p>
+      <div class="ulist" style="margin-top:16px;" id="userlist"></div>
+      <p class="legend">Pro Zeile: <b>Analyse</b> (Aktivitäts-Dialog) · <b>Toggle</b> (Freischaltung) · <b>Löschen</b> (DSGVO-Hard-Delete, Confirm-Dialog). Eigenes Konto: Aktionen gesperrt.</p>
+
+      <!-- Analysis dialog (shown open over the user list) -->
+      <div class="scrim">
+        <div class="dialog" role="dialog" aria-modal="true" aria-label="Analyse carolin@example.com">
+          <div class="dhead">
+            <div><p class="dt">Nutzer-Analyse</p><p class="de">carolin@example.com</p></div>
+            <button class="x" aria-label="Schließen">×</button>
+          </div>
+          <dl style="margin:0;">
+            <div class="drow"><dt>Gespeicherte Suchen</dt><dd>5</dd></div>
+            <div class="drow"><dt>Favoriten</dt><dd>12</dd></div>
+            <div class="drow"><dt>Push-Geräte</dt><dd>2</dd></div>
+            <div class="drow"><dt>Logins gesamt</dt><dd>48</dd></div>
+            <div class="drow"><dt>Logins (30 T)</dt><dd>9</dd></div>
+            <div class="drow"><dt>Registriert</dt><dd>02.02.2026</dd></div>
+            <div class="drow"><dt>Zuletzt gesehen</dt><dd>13.06.2026</dd></div>
+          </dl>
+        </div>
+      </div>
+      <p class="dcap">↑ Analyse-Dialog (öffnet sich über „Analyse"); Esc / × / Klick außerhalb schließt</p>
+    </section>
+  </div>
+</div>
+
+<script>
+const W=320, PAD=4, H=96, innerH=H-PAD*2;
+function chart(title, data, type, accent){
+  const total=data.reduce((s,v)=>s+v,0), max=Math.max(1,...data), n=data.length;
+  const stepX=n>1?(W-PAD*2)/(n-1):0, x=i=>PAD+i*stepX, y=v=>PAD+innerH*(1-v/max);
+  let body='';
+  [0.5,1].forEach(g=>{ body+=`<line x1="${PAD}" x2="${W-PAD}" y1="${PAD+innerH*g}" y2="${PAD+innerH*g}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`; });
+  if(type==='line'){
+    body+=`<polyline fill="none" stroke="${accent}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="${data.map((v,i)=>`${x(i)},${y(v)}`).join(' ')}"/>`;
+    data.forEach((v,i)=>{ body+=`<rect x="${x(i)-1.2}" y="${PAD}" width="2.4" height="${innerH}" fill="transparent"><title>${v}</title></rect>`; });
+  } else {
+    data.forEach((v,i)=>{ const bw=Math.max(1,stepX*0.6), bh=innerH*(v/max); body+=`<rect x="${x(i)-bw/2}" y="${PAD+innerH-bh}" width="${bw}" height="${bh}" rx="1" fill="${accent}" opacity="0.85"><title>${v}</title></rect>`; });
+  }
+  return `<div><div class="chart-head"><p class="t" style="color:${accent}">${title}</p><span class="tot">${total}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${title}: ${total} insgesamt">${body}</svg>
+    <div class="axis"><span>01.05</span><span>30.05</span></div></div>`;
+}
+const rnd=(s=>()=>(s=(s*9301+49297)%233280)/233280)(42);
+const series=n=>Array.from({length:30},()=>Math.round(rnd()*n));
+document.getElementById('charts').innerHTML =
+  chart('Neue Annoncen / Tag', series(40),'bar','#6366F1') +
+  chart('Verkauft / Tag', series(18),'bar','#EC4899') +
+  chart('Neue Nutzer / Tag', series(3),'bar','#A78BFA') +
+  chart('Logins / Tag', series(12),'line','#34D399') +
+  chart('Benachrichtigungen / Tag', series(9),'line','#FBBF24');
+
+const users=[
+  {em:'marco.roth1983@googlemail.com', nm:'Marco Roth (du)', reg:'12.01.2026', seen:'14.06.2026', on:true, self:true},
+  {em:'neuer.nutzer@example.com', nm:'Neuer Nutzer', reg:'13.06.2026', seen:'–', on:false, self:false},
+  {em:'carolin@example.com', nm:'Carolin Roth', reg:'02.02.2026', seen:'13.06.2026', on:true, self:false},
+  {em:'pilot42@example.com', nm:null, reg:'20.03.2026', seen:'10.06.2026', on:true, self:false},
+];
+document.getElementById('userlist').innerHTML = users.map(u=>`
+  <div class="urow">
+    <div class="uinfo">
+      <p class="em">${u.em}</p>${u.nm?`<p class="nm">${u.nm}</p>`:''}
+      <p class="meta">Registriert: ${u.reg} · Zuletzt gesehen: ${u.seen}</p>
+    </div>
+    <div class="actions">
+      ${u.self?'':'<button class="btn-an">Analyse</button>'}
+      <button class="toggle ${u.on?'on':''}" ${u.self?'disabled style="opacity:.4;cursor:not-allowed"':''} aria-label="Freischaltung"><span class="knob"></span></button>
+      ${u.self?'':'<button class="del">Löschen</button>'}
+    </div>
+  </div>`).join('');
+</script>
+</body>
+</html>
