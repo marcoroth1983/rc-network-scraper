@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.8.0] - 2026-06-14
+
+### Added
+
+**Admin-Dashboard mit Nutzungs-Metriken (PLAN-033)**
+- Der Admin-Bereich (`/admin`) zeigt jetzt ein Dashboard: Kennzahlen-Kacheln (Nutzer gesamt/freigeschaltet/aktiv, Annoncen, Favoriten, gespeicherte Suchen) und Verlaufs-Graphen über 7/30/90 Tage — neue Annoncen pro Tag, verkaufte pro Tag, neue Nutzer, Logins und Benachrichtigungen.
+- Die Benutzer-Verwaltung ist auf eine eigene Seite (`/admin/users`) umgezogen, erreichbar über eine Karte im Dashboard.
+- Pro Nutzer gibt es einen Analyse-Dialog mit Aktivitätswerten: gespeicherte Suchen, Favoriten, Push-Geräte, Logins gesamt und in den letzten 30 Tagen, Registriert- und Zuletzt-gesehen-Datum.
+- Accounts lassen sich jetzt vollständig löschen (DSGVO) — inklusive aller zugehörigen Daten (Suchen, Favoriten, Geräte). Das eigene Konto ist davor geschützt.
+
+### Changed
+
+- Logins werden jetzt server-seitig erfasst, um die Login-Statistik im Dashboard darzustellen.
+
+---
+
 ## [2.7.1] - 2026-06-07
 
 ### Fixed
