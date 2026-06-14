@@ -117,6 +117,13 @@ async def auth_google_callback(
         response.delete_cookie("oauth_state")
         return response
 
+    # PLAN-033: record successful, approved login for usage metrics
+    await session.execute(
+        text("INSERT INTO login_events (user_id) VALUES (:uid)"),
+        {"uid": user_id},
+    )
+    await session.commit()
+
     token = create_jwt(user_id)
     response = RedirectResponse(settings.FRONTEND_URL)
     response.delete_cookie("oauth_state")

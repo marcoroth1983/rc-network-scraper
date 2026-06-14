@@ -94,11 +94,25 @@ class User(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LoginEvent(Base):
+    __tablename__ = "login_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    logged_in_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class SavedSearch(Base):
     __tablename__ = "saved_searches"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name: Mapped[str | None] = mapped_column(String(255))
     search: Mapped[str | None] = mapped_column(String(255))
     plz: Mapped[str | None] = mapped_column(String(10))

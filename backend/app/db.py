@@ -288,6 +288,51 @@ async def init_db() -> None:
         await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_chat_id"))
         await conn.execute(text("ALTER TABLE users DROP COLUMN IF EXISTS telegram_linked_at"))
 
+        # PLAN-033: login telemetry (one row per successful, approved login)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS login_events (
+                id           SERIAL PRIMARY KEY,
+                user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                logged_in_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_login_events_logged_in_at "
+            "ON login_events (logged_in_at)"
+        ))
+        # PostgreSQL does NOT auto-index FK columns. Needed for the per-user
+        # stats COUNT (Task 8) and to keep the ON DELETE CASCADE delete fast.
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_login_events_user_id "
+            "ON login_events (user_id)"
+        ))
+
+        # PLAN-033: make saved_searches.user_id cascade on user delete (DSGVO hard-delete).
+        # Do NOT assume the auto-generated constraint name — discover and drop whatever
+        # FK currently sits on saved_searches.user_id, then re-add with ON DELETE CASCADE.
+        # Idempotent: re-running drops the cascade FK we just added and recreates it.
+        await conn.execute(text("""
+            DO $$
+            DECLARE cname text;
+            BEGIN
+                SELECT con.conname INTO cname
+                FROM pg_constraint con
+                JOIN pg_class rel ON rel.oid = con.conrelid
+                JOIN pg_attribute att
+                  ON att.attrelid = con.conrelid AND att.attnum = ANY(con.conkey)
+                WHERE rel.relname = 'saved_searches'
+                  AND con.contype = 'f'
+                  AND att.attname = 'user_id';
+                IF cname IS NOT NULL THEN
+                    EXECUTE format('ALTER TABLE saved_searches DROP CONSTRAINT %I', cname);
+                END IF;
+            END $$;
+        """))
+        await conn.execute(text(
+            "ALTER TABLE saved_searches ADD CONSTRAINT saved_searches_user_id_fkey "
+            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ))
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async database session."""
