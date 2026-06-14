@@ -9,7 +9,9 @@ from app.analysis import model_cascade
 from app.api.deps import require_admin
 from app.db import AsyncSessionLocal
 from app.models import User
+from fastapi import Query
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -227,7 +229,7 @@ _SERIES_SQL: dict[str, str] = {
 }
 
 
-async def _series(session, key: str, days: int) -> list[TimeseriesPoint]:
+async def _series(session: AsyncSession, key: str, days: int) -> list[TimeseriesPoint]:
     """Run a fixed series query and zero-fill every day in the window."""
     rows = (await session.execute(text(_SERIES_SQL[key]), {"n": days})).all()
     counts = {r.d.isoformat(): r.c for r in rows}
@@ -244,11 +246,10 @@ async def _series(session, key: str, days: int) -> list[TimeseriesPoint]:
 
 @router.get("/metrics/timeseries", response_model=MetricsTimeseries)
 async def metrics_timeseries(
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     _: User = Depends(require_admin),
 ) -> MetricsTimeseries:
-    """Per-day counts for the selected window. days clamped to 1..365."""
-    days = max(1, min(days, 365))
+    """Per-day counts for the selected window (1–365 days)."""
     async with AsyncSessionLocal() as session:
         return MetricsTimeseries(
             days=days,
