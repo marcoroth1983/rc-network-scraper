@@ -78,15 +78,17 @@ export function UserApprovalPanel({ currentUserId }: Props) {
       destructive: true,
     });
     if (!ok) return;
-    const prev = rows;
     setRows((rs) => rs?.filter((r) => r.id !== u.id) ?? rs);  // optimistic removal
     try {
       await deleteUser(u.id);
     } catch (err: unknown) {
-      setRows(prev ?? null);  // rollback
+      // Rollback by re-inserting the row functionally — avoids clobbering any
+      // concurrent state change (e.g. a parallel approval toggle) that a captured
+      // snapshot of `rows` would overwrite.
+      setRows((rs) => (rs && !rs.some((r) => r.id === u.id) ? [...rs, u] : rs));
       setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen');
     }
-  }, [confirm, rows]);
+  }, [confirm]);
 
   return (
     <section className="w-full rounded-2xl p-4 sm:p-6" style={cardStyle}>

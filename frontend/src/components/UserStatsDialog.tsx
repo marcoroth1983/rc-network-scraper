@@ -27,6 +27,12 @@ export function UserStatsDialog({ userId, email, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Restore focus to the triggering element (the "Analyse" button) on close (a11y).
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+    return () => { trigger?.focus?.(); };
+  }, []);
+
   const rows: [string, string][] = stats ? [
     ['Gespeicherte Suchen', String(stats.saved_searches)],
     ['Favoriten', String(stats.favorites)],
