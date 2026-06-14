@@ -258,3 +258,26 @@ async def metrics_timeseries(
             logins=await _series(session, "logins", days),
             notifications=await _series(session, "notifications", days),
         )
+
+
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: int,
+    current_admin: User = Depends(require_admin),
+) -> None:
+    """DSGVO hard-delete: remove a user and all owned data (cascade).
+
+    Cascades: saved_searches (+ their notifications), user_favorites,
+    push_subscriptions, login_events. Refuses self-deletion (lockout guard).
+    """
+    if user_id == current_admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            text("DELETE FROM users WHERE id = :uid RETURNING id"),
+            {"uid": user_id},
+        )
+        if result.fetchone() is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        await session.commit()

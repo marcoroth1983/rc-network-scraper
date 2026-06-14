@@ -87,3 +87,39 @@ async def test_non_admin_forbidden_patch(authenticated_client):
     # member must not be able to approve users via PATCH
     resp = await authenticated_client.patch("/api/admin/users/1/approval", json={"is_approved": True})
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_user_hard_deletes_and_cascades(admin_client, db_session):
+    client, _admin_id = admin_client
+    await _seed_user(db_session, "del-g", "del@example.com", is_approved=True)
+    uid = (await db_session.execute(
+        text("SELECT id FROM users WHERE google_id = 'del-g'")
+    )).scalar_one()
+    await db_session.execute(
+        text("INSERT INTO saved_searches (user_id, name) VALUES (:u, 'x')"), {"u": uid}
+    )
+    await db_session.commit()
+
+    resp = await client.delete(f"/api/admin/users/{uid}")
+    assert resp.status_code == 204
+    assert (await db_session.execute(
+        text("SELECT count(*) FROM users WHERE id = :u"), {"u": uid}
+    )).scalar_one() == 0
+    assert (await db_session.execute(
+        text("SELECT count(*) FROM saved_searches WHERE user_id = :u"), {"u": uid}
+    )).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_self_is_blocked(admin_client):
+    client, admin_id = admin_client
+    resp = await client.delete(f"/api/admin/users/{admin_id}")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_delete_missing_user_404(admin_client):
+    client, _ = admin_client
+    resp = await client.delete("/api/admin/users/999999")
+    assert resp.status_code == 404
