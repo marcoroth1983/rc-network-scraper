@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { UserRow } from '../types/api';
-import { getUsers, setUserApproval } from '../api/client';
+import { getUsers, setUserApproval, deleteUser } from '../api/client';
 import { useConfirm } from './ConfirmDialog';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { formatDate } from '../utils/format';
+import { UserStatsDialog } from './UserStatsDialog';
 
 const cardStyle: React.CSSProperties = {
   background: 'rgba(15, 15, 35, 0.6)',
@@ -22,6 +23,7 @@ export function UserApprovalPanel({ currentUserId }: Props) {
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statsUser, setStatsUser] = useState<UserRow | null>(null);
 
   // Single refetch codepath: used by the mount effect AND by the pull-to-refresh
   // onRefresh callback. Manages loading + clears prior error so both entry points
@@ -67,6 +69,18 @@ export function UserApprovalPanel({ currentUserId }: Props) {
       setError(err instanceof Error ? err.message : 'Aktualisierung fehlgeschlagen');
     }
   }, [confirm]);
+
+  const handleDelete = useCallback(async (u: UserRow) => {
+    const ok = await window.confirm(`Konto ${u.email} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`);
+    if (!ok) return;
+    try {
+      await deleteUser(u.id);
+      setRows((prev) => prev?.filter((r) => r.id !== u.id) ?? prev);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      setError(`Löschen fehlgeschlagen: ${msg}`);
+    }
+  }, []);
 
   return (
     <section className="w-full rounded-2xl p-4 sm:p-6" style={cardStyle}>
@@ -124,31 +138,49 @@ export function UserApprovalPanel({ currentUserId }: Props) {
                       Zuletzt gesehen: {formatDate(u.last_seen_at)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={u.is_approved}
-                    aria-label={`Freischaltung für ${u.email}`}
-                    disabled={isSelf}
-                    onClick={() => { void handleToggle(u); }}
-                    className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                      background: u.is_approved
-                        ? 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))'
-                        : 'rgba(255,255,255,0.1)',
-                      border: u.is_approved
-                        ? '1px solid rgba(139,92,246,0.5)'
-                        : '1px solid rgba(255,255,255,0.15)',
-                    }}
-                  >
-                    <span className="inline-block h-3.5 w-3.5 rounded-full transition-transform duration-200"
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!isSelf && (
+                      <button type="button" onClick={() => setStatsUser(u)}
+                        aria-label={`Analyse ${u.email}`}
+                        className="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
+                        style={{ color: '#A78BFA', background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.25)' }}>
+                        Analyse
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={u.is_approved}
+                      aria-label={`Freischaltung für ${u.email}`}
+                      disabled={isSelf}
+                      onClick={() => { void handleToggle(u); }}
+                      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{
-                        background: '#fff',
-                        transform: u.is_approved ? 'translateX(18px)' : 'translateX(2px)',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                        background: u.is_approved
+                          ? 'linear-gradient(135deg, rgba(99,102,241,0.9), rgba(139,92,246,0.9))'
+                          : 'rgba(255,255,255,0.1)',
+                        border: u.is_approved
+                          ? '1px solid rgba(139,92,246,0.5)'
+                          : '1px solid rgba(255,255,255,0.15)',
                       }}
-                      aria-hidden="true" />
-                  </button>
+                    >
+                      <span className="inline-block h-3.5 w-3.5 rounded-full transition-transform duration-200"
+                        style={{
+                          background: '#fff',
+                          transform: u.is_approved ? 'translateX(18px)' : 'translateX(2px)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                        }}
+                        aria-hidden="true" />
+                    </button>
+                    {!isSelf && (
+                      <button type="button" onClick={() => { void handleDelete(u); }}
+                        aria-label={`Konto ${u.email} löschen`}
+                        className="rounded-lg px-2 py-2 text-xs font-medium transition-colors"
+                        style={{ color: '#EC4899', background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.25)' }}>
+                        Löschen
+                      </button>
+                    )}
+                  </div>
                 </li>
               );
             })}
@@ -160,6 +192,9 @@ export function UserApprovalPanel({ currentUserId }: Props) {
           </ul>
         )}
       </div>
+      {statsUser && (
+        <UserStatsDialog userId={statsUser.id} email={statsUser.email} onClose={() => setStatsUser(null)} />
+      )}
     </section>
   );
 }

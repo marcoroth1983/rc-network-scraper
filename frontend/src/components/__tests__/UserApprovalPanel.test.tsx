@@ -4,15 +4,20 @@ import { UserApprovalPanel } from '../UserApprovalPanel';
 
 const getUsers = vi.fn();
 const setUserApproval = vi.fn();
+const deleteUser = vi.fn();
 const confirmMock = vi.fn();
 
 vi.mock('../../api/client', () => ({
   getUsers: (...a: unknown[]) => getUsers(...a),
   setUserApproval: (...a: unknown[]) => setUserApproval(...a),
+  deleteUser: (...a: unknown[]) => deleteUser(...a),
 }));
 vi.mock('../ConfirmDialog', () => ({
   useConfirm: () => confirmMock,
   ConfirmProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock('../UserStatsDialog', () => ({
+  UserStatsDialog: () => null,
 }));
 
 let capturedOnRefresh: (() => Promise<void>) | null = null;
@@ -33,6 +38,7 @@ describe('UserApprovalPanel', () => {
   beforeEach(() => {
     getUsers.mockReset();
     setUserApproval.mockReset();
+    deleteUser.mockReset();
     confirmMock.mockReset();
     capturedOnRefresh = null;
   });
@@ -91,5 +97,23 @@ describe('UserApprovalPanel', () => {
     render(<UserApprovalPanel currentUserId={1} />);
     await screen.findByText('pending@example.com');
     expect(screen.getByText(/Zuletzt gesehen:\s*20\.05\.2026/)).toBeInTheDocument();
+  });
+
+  it('hard-deletes a user after confirmation and removes the row', async () => {
+    getUsers.mockResolvedValue([baseRow]);          // baseRow.id !== currentUserId
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    deleteUser.mockResolvedValue(undefined);
+    render(<UserApprovalPanel currentUserId={1} />);
+    const btn = await screen.findByRole('button', { name: /Konto .* löschen/ });
+    fireEvent.click(btn);
+    await waitFor(() => expect(deleteUser).toHaveBeenCalledWith(baseRow.id));
+    await waitFor(() => expect(screen.queryByText(baseRow.email)).not.toBeInTheDocument());
+  });
+
+  it('does not render a delete button for the current admin', async () => {
+    getUsers.mockResolvedValue([{ ...baseRow, id: 1 }]);  // id === currentUserId
+    render(<UserApprovalPanel currentUserId={1} />);
+    await screen.findByText(baseRow.email);
+    expect(screen.queryByRole('button', { name: /löschen/ })).not.toBeInTheDocument();
   });
 });

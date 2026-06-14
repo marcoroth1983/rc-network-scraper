@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { AdminPage } from './pages/AdminPage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
 import ScrapeLog from './components/ScrapeLog';
 import FavoritesModal from './components/FavoritesModal';
 import CategoryModal from './components/CategoryModal';
@@ -183,6 +184,7 @@ function AuthenticatedAppInner({ user, logout, reloadUser }: { user: AuthUser; l
           <Route path="/profile" element={<ProfilePage user={user} onLogout={logout} onUserReload={reloadUser} />} />
           <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/admin" element={<AdminPage user={user} />} />
+          <Route path="/admin/users" element={<AdminUsersPage user={user} />} />
         </Routes>
         {background && (
           <Routes>
