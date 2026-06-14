@@ -1316,6 +1316,8 @@ git add docs/definition.md docs/architektur.md
 git commit -m "docs: reflect Google-SSO multi-user auth + admin dashboard (PLAN-033)"
 ```
 
+_Code review closed 2026-06-14 (python, cycle 1): MINOR — 0 critical, 0 high, 3 medium, 2 low, 1 suggestion. Medium-1 (missing type hint on _series session) and Medium-3 (silent clamp → Query validator) fixed in follow-up commit a22b9d5; Medium-2 (ADD CONSTRAINT not idempotent under concurrent starts) deferred to backlog (single-container hobby project). No blocking issues._
+
 ---
 
 ## Verification
