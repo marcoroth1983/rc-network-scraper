@@ -1,7 +1,8 @@
 # RC-Markt Scout — Architecture
 
-> **Scope:** Personal hobby project — single user, no auth, no multi-tenancy.
-> VPS deployment is private (only the owner has access).
+> **Scope:** Personal hobby project, invite-only. Multiple authenticated users via
+> Google SSO with an admin approval whitelist (no public signup). VPS deployment is
+> private (firewall/VPN restricted to the owner). Roles: `member` and `admin`.
 
 ## Tech Stack
 
@@ -102,13 +103,21 @@ rc-markt-scout/
 - Client-side PLZ stored in localStorage
 - API calls via fetch/axios with React Query for caching
 - Responsive card grid layout (mobile-first)
-- No auth required — read-only public interface
+- Auth-gated SPA — unauthenticated users hit `/login` (Google SSO redirect); the `useAuth` hook gates all routes; `/admin` and `/admin/users` require `role === 'admin'`
+
+## Auth & Admin
+
+- **Login:** Google OAuth2. Callback `/api/auth/google/callback` upserts the user by `google_id`, gates on an `is_approved` whitelist flag, and issues a JWT session cookie. Unapproved users are redirected to `/login?error=not_approved`. 2FA is enforced at the Google-account level (no app-side TOTP).
+- **Roles:** `member` (read-only browsing + saved searches/favorites/push) and `admin`. `require_admin` guards every `/api/admin/*` endpoint.
+- **Admin endpoints:** `GET /admin/users`, `PATCH /admin/users/{id}/approval`, `DELETE /admin/users/{id}` (DSGVO hard-delete — cascades to saved searches, favorites, push subscriptions, login events; self-deletion blocked), `GET /admin/users/{id}/stats`, `GET /admin/metrics/summary`, `GET /admin/metrics/timeseries`, plus LLM cascade management.
+- **Telemetry:** `login_events` table records one row per successful approved login (backend-only, no external analytics). The "Aktiv (7/30 T)" metric is derived from `users.last_seen_at`, which is updated on every authenticated API call (`/api/auth/me`) — so it approximates users who made API requests in the window, not raw login counts (those come from `login_events`).
+- **Frontend:** `/admin` is the metrics dashboard (KPI tiles + in-house SVG charts, no charting library); `/admin/users` is the dedicated account-management page (approval toggle, DSGVO delete, per-user analysis dialog).
 
 ## Test Strategy
 
-- **Backend:** pytest, focused on parser (known HTML fixtures) and geo calculations
-- **Frontend:** Vitest + React Testing Library for component tests
-- **Integration:** Scraper tests against saved HTML snapshots (no live requests in CI)
+- **Backend:** pytest (async), focused on parser (known HTML fixtures), geo calculations, and the admin API. Admin tests use the `admin_client` fixture (seeds an `admin` role, yields `(client, admin_id)`) and `authenticated_client` (member role). No live external requests.
+- **Frontend:** Vitest + React Testing Library for component tests. **Vitest globals are NOT enabled** — every test imports them explicitly (`import { describe, it, expect, vi } from 'vitest'`).
+- **Integration:** Scraper tests against saved HTML snapshots (no live requests in CI).
 
 ## Deployment (VPS)
 

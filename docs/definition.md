@@ -1,7 +1,10 @@
 # RC-Markt Scout — Product Definition
 
-> **Personal hobby project** — built for a single user, not a public service.
-> No enterprise concerns (multi-tenancy, auth, SLAs). Keep it simple.
+> **Personal hobby project, invite-only.** Access is gated by Google SSO with an
+> admin approval whitelist — multiple authenticated users, but no public signup.
+> Roles: `member` (read-only browsing + saved searches/favorites/push) and `admin`
+> (user approval, DSGVO hard-delete, metrics dashboard, LLM cascade management).
+> Keep it simple — no enterprise concerns beyond this auth/approval gate.
 
 ## Vision
 
