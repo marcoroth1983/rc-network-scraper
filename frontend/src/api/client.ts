@@ -5,6 +5,8 @@ import type {
   ListingDetail,
   ListingSummary,
   LLMModelRow,
+  MetricsSummary,
+  MetricsTimeseries,
   NotificationPrefs,
   PaginatedResponse,
   PlzResponse,
@@ -13,6 +15,7 @@ import type {
   ScrapeLogEntry,
   ScrapeStatus,
   UserRow,
+  UserStats,
 } from '../types/api';
 import { ApiError } from '../types/api';
 
@@ -190,4 +193,26 @@ export async function updateNotificationPrefs(partial: Partial<NotificationPrefs
     body: JSON.stringify(partial),
   });
   return handleResponse<NotificationPrefs>(res);
+}
+
+export async function getMetricsSummary(): Promise<MetricsSummary> {
+  const res = await fetch('/api/admin/metrics/summary');
+  return handleResponse<MetricsSummary>(res);
+}
+
+export async function getMetricsTimeseries(days: number): Promise<MetricsTimeseries> {
+  const res = await fetch(`/api/admin/metrics/timeseries?days=${days}`);
+  return handleResponse<MetricsTimeseries>(res);
+}
+
+export async function deleteUser(userId: number): Promise<void> {
+  const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new ApiError(res.status, `HTTP ${res.status}`);
+  }
+}
+
+export async function getUserStats(userId: number): Promise<UserStats> {
+  const res = await fetch(`/api/admin/users/${userId}/stats`);
+  return handleResponse<UserStats>(res);
 }
