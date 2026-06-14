@@ -1,6 +1,6 @@
 """Admin-only endpoints: LLM cascade management."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -158,3 +158,103 @@ async def set_user_approval(
         created_at=row.created_at,
         last_seen_at=row.last_seen_at,
     )
+
+
+class MetricsSummary(BaseModel):
+    users_total: int
+    users_approved: int
+    users_pending: int
+    users_active_7d: int
+    users_active_30d: int
+    listings_total: int
+    favorites_total: int
+    saved_searches_total: int
+
+
+class TimeseriesPoint(BaseModel):
+    day: str  # ISO date (YYYY-MM-DD)
+    value: int
+
+
+class MetricsTimeseries(BaseModel):
+    days: int
+    listings_new: list[TimeseriesPoint]
+    listings_closed: list[TimeseriesPoint]
+    users_new: list[TimeseriesPoint]
+    logins: list[TimeseriesPoint]
+    notifications: list[TimeseriesPoint]
+
+
+@router.get("/metrics/summary", response_model=MetricsSummary)
+async def metrics_summary(_: User = Depends(require_admin)) -> MetricsSummary:
+    """Snapshot counts for KPI tiles."""
+    async with AsyncSessionLocal() as session:
+        row = (await session.execute(text("""
+            SELECT
+                (SELECT count(*) FROM users)                                          AS users_total,
+                (SELECT count(*) FROM users WHERE is_approved)                        AS users_approved,
+                (SELECT count(*) FROM users WHERE NOT is_approved)                    AS users_pending,
+                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '7 days')  AS active_7d,
+                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '30 days') AS active_30d,
+                (SELECT count(*) FROM listings)                                       AS listings_total,
+                (SELECT count(*) FROM user_favorites)                                 AS favorites_total,
+                (SELECT count(*) FROM saved_searches)                                 AS saved_total
+        """))).one()
+    return MetricsSummary(
+        users_total=row.users_total,
+        users_approved=row.users_approved,
+        users_pending=row.users_pending,
+        users_active_7d=row.active_7d,
+        users_active_30d=row.active_30d,
+        listings_total=row.listings_total,
+        favorites_total=row.favorites_total,
+        saved_searches_total=row.saved_total,
+    )
+
+
+# Fixed, server-controlled series definitions (no user input in SQL identifiers).
+_SERIES_SQL: dict[str, str] = {
+    "listings_new": "SELECT created_at::date AS d, count(*) AS c FROM listings "
+                    "WHERE created_at >= now()::date - make_interval(days => :n - 1) GROUP BY d",
+    "listings_closed": "SELECT sold_at::date AS d, count(*) AS c FROM listings "
+                       "WHERE sold_at IS NOT NULL AND sold_at >= now()::date - make_interval(days => :n - 1) GROUP BY d",
+    "users_new": "SELECT created_at::date AS d, count(*) AS c FROM users "
+                 "WHERE created_at >= now()::date - make_interval(days => :n - 1) GROUP BY d",
+    "logins": "SELECT logged_in_at::date AS d, count(*) AS c FROM login_events "
+              "WHERE logged_in_at >= now()::date - make_interval(days => :n - 1) GROUP BY d",
+    "notifications": "SELECT notified_at::date AS d, count(*) AS c FROM search_notifications "
+                     "WHERE notified_at >= now()::date - make_interval(days => :n - 1) GROUP BY d",
+}
+
+
+async def _series(session, key: str, days: int) -> list[TimeseriesPoint]:
+    """Run a fixed series query and zero-fill every day in the window."""
+    rows = (await session.execute(text(_SERIES_SQL[key]), {"n": days})).all()
+    counts = {r.d.isoformat(): r.c for r in rows}
+    # Zero-fill the full window so charts have a continuous x-axis.
+    base = (await session.execute(
+        text("SELECT (now()::date - make_interval(days => :n - 1))::date AS start"), {"n": days}
+    )).scalar_one()
+    out: list[TimeseriesPoint] = []
+    for i in range(days):
+        day = (base + timedelta(days=i)).isoformat()
+        out.append(TimeseriesPoint(day=day, value=counts.get(day, 0)))
+    return out
+
+
+@router.get("/metrics/timeseries", response_model=MetricsTimeseries)
+async def metrics_timeseries(
+    days: int = 30,
+    _: User = Depends(require_admin),
+) -> MetricsTimeseries:
+    """Per-day counts for the selected window. days clamped to 1..365."""
+    days = max(1, min(days, 365))
+    async with AsyncSessionLocal() as session:
+        return MetricsTimeseries(
+            days=days,
+            listings_new=await _series(session, "listings_new", days),
+            listings_closed=await _series(session, "listings_closed", days),
+            users_new=await _series(session, "users_new", days),
+            logins=await _series(session, "logins", days),
+            notifications=await _series(session, "notifications", days),
+        )
