@@ -1318,6 +1318,8 @@ git commit -m "docs: reflect Google-SSO multi-user auth + admin dashboard (PLAN-
 
 _Code review closed 2026-06-14 (python, cycle 1): MINOR — 0 critical, 0 high, 3 medium, 2 low, 1 suggestion. Medium-1 (missing type hint on _series session) and Medium-3 (silent clamp → Query validator) fixed in follow-up commit a22b9d5; Medium-2 (ADD CONSTRAINT not idempotent under concurrent starts) deferred to backlog (single-container hobby project). No blocking issues._
 
+_Code review closed 2026-06-14 (frontend, cycle 1): MINOR — 0 critical, 0 high, 3 medium, 3 low, 3 suggestions. M1 (window.confirm → useConfirm) + M2 (optimistic delete + rollback) + M3 (stale-response guard in MetricsPanel) all fixed in commit 5d8055d. Low findings L2/L3 tolerated; L1 (deleteUser re-implements error handling) kept as-is because handleResponse calls res.json() which would fail on 204 No Content. No blocking issues._
+
 ---
 
 ## Verification
