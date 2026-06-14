@@ -48,7 +48,7 @@
 
 ---
 
-## Task 1: Backend schema — login_events table + saved_searches FK cascade + login telemetry [ ]
+## Task 1: Backend schema — login_events table + saved_searches FK cascade + login telemetry [IMPLEMENTED]
 
 **Files:**
 - Modify: `backend/app/db.py` (append two idempotent DDL blocks at the end of `init_db()`, after the last existing block ~`db.py:289`)
@@ -209,7 +209,7 @@ git commit -m "feat(admin): login telemetry table + saved_searches FK cascade"
 
 ---
 
-## Task 2: Backend metrics endpoints — summary + timeseries [ ]
+## Task 2: Backend metrics endpoints — summary + timeseries [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -372,7 +372,7 @@ git commit -m "feat(admin): metrics summary + timeseries endpoints"
 
 ---
 
-## Task 3: Backend user hard-delete (DSGVO) [ ]
+## Task 3: Backend user hard-delete (DSGVO) [IMPLEMENTED]
 
 **Depends on:** Task 1
 
@@ -987,7 +987,7 @@ git commit -m "feat(admin): dedicated /admin/users page + DSGVO hard-delete acti
 
 ---
 
-## Task 8: Backend — per-user activity stats endpoint [ ]
+## Task 8: Backend — per-user activity stats endpoint [IMPLEMENTED]
 
 **Depends on:** Task 1
 
