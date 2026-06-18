@@ -63,3 +63,11 @@
   - *LLM as label generator + small classifier*: professional pattern, but overkill at current scale.
 
   **Recommendation as of 2026-04-18**: Do PRICE-01 (similarity ranking) first — gets 80% of user value at 10% of the effort. Treat PRICE-02 Phase 0 as a separate, future exploration that needs explicit go-ahead. Do not commit to full PRICE-02 vision up-front.
+
+## Admin Console (PLAN-034) — deferred review items
+
+_From PLAN-034 cycle-1 python review (2026-06-18):_
+- **Auth callback error-path tests** — add HTTP-level tests for `auth_google_callback` failure branches (missing code/state, CSRF state mismatch) so a future refactor that drops a `delete_cookie` is caught (review MEDIUM-3).
+- **`@pytest.mark.integration` markers** — the `auth_google` HTTP-level tests boot the full ASGI app; mark them integration so unit-only CI runs can skip (review MEDIUM-2).
+- **CI admin health-check** — `deploy.yml` only curls the PWA `/health`; add an explicit admin-subdomain health check.
+- **Deep-link return after login** — unauthenticated visit to e.g. `/users` returns to admin root after OAuth, not the requested route (accepted MVP).

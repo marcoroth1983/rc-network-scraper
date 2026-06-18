@@ -524,7 +524,7 @@ git add docker-compose.prod.yml .github/workflows/deploy.yml docs/architektur.md
 git commit -m "build(admin): compose service, Traefik subdomain router, CI image, env (PLAN-034)"
 ```
 
-_Code review closed 2026-06-18 (python, cycle 1): 0 Critical, 1 High (tolerated — single-operator, no rogue subdomains), 3 Medium (fixed), 1 Low (fixed), 2 Suggestion (deferred)._
+_Code review closed 2026-06-18 (python, cycle 1): 1 High fixed (`delete_cookie` missing `path="/"` → cookies now cleared correctly, deduped via `_cookie_kwargs`/`_clear_oauth_cookies`); 1 Medium fixed (return-type hints); 2 Medium deferred to backlog (callback-error-path tests, integration markers); subdomain cookie-scope tolerated (single-operator). Fix commit d0c1860._
 
 ---
 
