@@ -212,7 +212,7 @@ git commit -m "feat(admin): auth adapter, api client, login + admin role gate (P
 
 ---
 
-## Task 3: App shell — sidebar + top bar layout [ ]
+## Task 3: App shell — sidebar + top bar layout [DONE]
 
 **Depends on:** Task 2
 
@@ -529,6 +529,8 @@ _Code review closed 2026-06-18 (python, cycle 1): 1 High fixed (`delete_cookie` 
 ---
 
 _Code review closed 2026-06-18 (frontend, cycle 1): 0 Critical, 0 High; M2 fixed (deleteUser now routes through handleResponse); M1/M3/M4 tolerated per plan scope; 3 Low/3 Suggestion deferred._
+
+_Code review closed 2026-06-18 (frontend, cycle 2 — Task 3): 0 Critical, 0 High; M1 fixed (AppShell named export); M3 fixed (@/ alias for useAuth); L1 fixed (Mock cast in Sidebar test); M2 deferred to backlog (dual useAuth fetch → context provider); L2/S1/S2 deferred._
 
 ## Verification
 
