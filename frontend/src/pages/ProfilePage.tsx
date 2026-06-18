@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { version } from '../../package.json';
 import type { AuthUser } from '../hooks/useAuth';
 import { resolvePlz } from '../api/client';
@@ -23,7 +22,6 @@ function getInitials(email: string): string {
 }
 
 export function ProfilePage({ user, onLogout }: Props) {
-  const navigate = useNavigate();
   // The page renders on all viewports — desktop reaches it via the
   // "Einstellungen" link in the PlzBar person-popover; mobile via bottom nav.
 
@@ -203,34 +201,6 @@ export function ProfilePage({ user, onLogout }: Props) {
               style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
               className="mb-5"
             />
-
-            {/* Admin-Bereich link — only visible to admins */}
-            {user.role === 'admin' && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => navigate('/admin')}
-                  className="w-full rounded-xl py-2.5 text-sm font-medium transition-all duration-150"
-                  style={{
-                    background: 'rgba(167, 139, 250, 0.08)',
-                    border: '1px solid rgba(167, 139, 250, 0.35)',
-                    color: '#A78BFA',
-                  }}
-                  onPointerEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167, 139, 250, 0.16)';
-                  }}
-                  onPointerLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167, 139, 250, 0.08)';
-                  }}
-                >
-                  Admin-Bereich
-                </button>
-                <div
-                  style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
-                  className="my-5"
-                />
-              </>
-            )}
 
             {/* Logout */}
             <button
