@@ -524,6 +524,8 @@ git add docker-compose.prod.yml .github/workflows/deploy.yml docs/architektur.md
 git commit -m "build(admin): compose service, Traefik subdomain router, CI image, env (PLAN-034)"
 ```
 
+_Code review closed 2026-06-18 (frontend, cycle 1, Tasks 2+3): 1 High fixed (`handleResponse` 204-guard for `deleteUser`); 3 Medium/Low fixed (AuthUser dedup, LoginPage hover stale-closure → Tailwind, IconButton `type="button"`); 1 test added (RequireAdmin redirect-URL assertion); dual-`useAuth` fetch deferred to backlog. Fix commit 4c53dde._
+
 _Code review closed 2026-06-18 (python, cycle 1): 1 High fixed (`delete_cookie` missing `path="/"` → cookies now cleared correctly, deduped via `_cookie_kwargs`/`_clear_oauth_cookies`); 1 Medium fixed (return-type hints); 2 Medium deferred to backlog (callback-error-path tests, integration markers); subdomain cookie-scope tolerated (single-operator). Fix commit d0c1860._
 
 ---
