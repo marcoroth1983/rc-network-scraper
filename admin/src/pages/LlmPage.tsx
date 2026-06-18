@@ -56,6 +56,12 @@ export function LlmPage() {
   // Tick every 30 s to update countdowns in-place without refetching
   const [tick, setTick] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +85,7 @@ export function LlmPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // 30 s countdown ticker — only while there are disabled rows
+  // 30 s countdown ticker — keeps disabled-until countdowns current without refetching
   useEffect(() => {
     intervalRef.current = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => {
@@ -95,11 +101,11 @@ export function LlmPage() {
     setRefreshError(null);
     try {
       const updated = await refreshLLMModels();
-      setRows(updated);
+      if (mountedRef.current) setRows(updated);
     } catch (err: unknown) {
-      setRefreshError(err instanceof Error ? err.message : 'Refresh fehlgeschlagen');
+      if (mountedRef.current) setRefreshError(err instanceof Error ? err.message : 'Refresh fehlgeschlagen');
     } finally {
-      setRefreshing(false);
+      if (mountedRef.current) setRefreshing(false);
     }
   }
 
