@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.9.0] - 2026-06-18
+
+### Added
+
+**Eigenständige Admin-Konsole „RC-Scout Ops" (PLAN-034)**
+- Der komplette Admin-Bereich läuft jetzt als separate Desktop-Anwendung auf einer eigenen Subdomain (`admin.rcn-scout.d2x-labs.de`) — getrennt von der Endnutzer-App, aber gegen dasselbe Backend. Eigener Google-Login, Zugang nur für Administratoren.
+- Neues, dunkles „Ops-Console"-Design (Sidebar-Navigation, Übersicht/Metriken/LLM-Kaskade/Nutzer), desktop-orientiert und zugleich mobil nutzbar.
+- Metriken (Kennzahlen-Kacheln + Verlaufs-Graphen 7/30/90 Tage), LLM-Kaskade (Status-Tabelle mit Aktiv/Pausiert/Inaktiv + Countdown) und Nutzer-Verwaltung (Freischaltung, Löschen, Aktivitäts-Analyse) — wie zuvor, nur in der neuen Konsole.
+
+### Changed
+
+- Die Anmelde-Session gilt jetzt über Subdomains hinweg (Cookie-Domain), damit die Admin-Konsole dieselbe Anmeldung nutzen kann.
+
+### Removed
+
+- **Breaking:** Der Admin-Bereich (`/admin`, `/admin/users`) wurde aus der Endnutzer-App (PWA) entfernt — er ist ausschließlich über die neue Admin-Konsole erreichbar. Bestehende Anmeldungen werden beim ersten Deploy einmalig ungültig (einmal neu per Google anmelden).
+
+---
+
 ## [2.8.0] - 2026-06-14
 
 ### Added
