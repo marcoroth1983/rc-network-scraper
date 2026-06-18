@@ -24,12 +24,14 @@ function renderProfile(user: AuthUser) {
 }
 
 describe('ProfilePage', () => {
-  it('shows the Admin-Bereich button for an admin', () => {
+  // PLAN-034: the admin area moved to a standalone console (admin.rcn-scout.d2x-labs.de);
+  // the PWA no longer links to /admin for anyone, including admins.
+  it('no longer shows an Admin-Bereich button for an admin', () => {
     renderProfile(adminUser);
-    expect(screen.getByRole('button', { name: 'Admin-Bereich' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Admin-Bereich' })).not.toBeInTheDocument();
   });
 
-  it('hides the Admin-Bereich button for a non-admin', () => {
+  it('shows no Admin-Bereich button for a non-admin either', () => {
     renderProfile(memberUser);
     expect(screen.queryByRole('button', { name: 'Admin-Bereich' })).not.toBeInTheDocument();
   });
