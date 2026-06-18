@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage';
 import { RequireAdmin } from './routes/RequireAdmin';
 import { AppShell } from './components/AppShell';
 import { MetricsPage } from './pages/MetricsPage';
+import { LlmPage } from './pages/LlmPage';
 
 export default function App() {
   return (
@@ -17,7 +18,7 @@ export default function App() {
       >
         <Route index element={<MetricsPage />} />
         <Route path="metrics" element={<MetricsPage />} />
-        <Route path="llm" element={<div className="text-text-primary">LLM-Kaskade (Stub)</div>} />
+        <Route path="llm" element={<LlmPage />} />
         <Route path="users" element={<div className="text-text-primary">Nutzer (Stub)</div>} />
       </Route>
     </Routes>
