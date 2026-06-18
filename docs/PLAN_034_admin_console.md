@@ -528,6 +528,8 @@ _Code review closed 2026-06-18 (frontend, cycle 1, Tasks 2+3): 1 High fixed (`ha
 
 _Code review closed 2026-06-18 (python, cycle 1): 1 High fixed (`delete_cookie` missing `path="/"` → cookies now cleared correctly, deduped via `_cookie_kwargs`/`_clear_oauth_cookies`); 1 Medium fixed (return-type hints); 2 Medium deferred to backlog (callback-error-path tests, integration markers); subdomain cookie-scope tolerated (single-operator). Fix commit d0c1860._
 
+_Code review closed 2026-06-18 (frontend, orchestrator cycle 2, Tasks 4+5+6): MINOR, 0 blocking. Fixed: German plural grammar in `formatRelativeTime`, `formatCountdown` Math.floor + dead-branch removal, `UserStatsDialog` `number|null` sentinel, `TrendChart` `useId` gradient ids. Deferred to backlog: rollback tail-reinsert, unmount-guard style unification, badge `<span>`-in-`<td>`, explicit delete-failure test. Fix commit ef6ee47._
+
 ---
 
 _Code review closed 2026-06-18 (frontend, cycle 1): 0 Critical, 0 High; M2 fixed (deleteUser now routes through handleResponse); M1/M3/M4 tolerated per plan scope; 3 Low/3 Suggestion deferred._

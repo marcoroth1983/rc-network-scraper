@@ -72,3 +72,4 @@ _From PLAN-034 cycle-1 python review (2026-06-18):_
 - **CI admin health-check** — `deploy.yml` only curls the PWA `/health`; add an explicit admin-subdomain health check.
 - **Deep-link return after login** — unauthenticated visit to e.g. `/users` returns to admin root after OAuth, not the requested route (accepted MVP).
 - **Admin console — AuthContext provider** — each `useAuth()` consumer (RequireAdmin, AppShell, Sidebar) fetches `/api/auth/me` independently. Wrap once in an AuthContext to dedupe the request (PLAN-034 frontend cycle-1 M2).
+- **Admin console — view nits (PLAN-034 fe cycle-2 deferred):** optimistic-delete rollback re-inserts row at list tail not original position; `LlmPage` uses two unmount-guard patterns (cancelled bool vs mountedRef) — unify; shadcn `Badge` renders `<div>` inside `<td>` (prefer `<span>`); add explicit delete-failure rollback test in UsersPage.
