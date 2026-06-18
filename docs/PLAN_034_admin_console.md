@@ -427,7 +427,7 @@ git commit -m "feat(auth): session cookie domain + validated post-login return t
 
 ---
 
-## Task 8: Remove `/admin` from the PWA [ ]
+## Task 8: Remove `/admin` from the PWA [IN PROGRESS]
 
 **Depends on:** Task 4, Task 5, Task 6 (console must cover the functionality before the PWA drops it)
 
@@ -459,7 +459,7 @@ git commit -m "refactor(pwa): remove /admin area — relocated to standalone con
 
 ---
 
-## Task 9: Deployment — image, compose service, Traefik router, CI, env [ ]
+## Task 9: Deployment — image, compose service, Traefik router, CI, env [DONE]
 
 **Depends on:** Task 1, Task 7
 

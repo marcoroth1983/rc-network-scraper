@@ -18,6 +18,17 @@ Browsing rc-network.de "Biete" forums is tedious: listings don't show location i
 
 The project owner — a single RC model enthusiast looking for used RC equipment within a reasonable travel distance.
 
+## Components
+
+| Component | Description |
+|-----------|-------------|
+| PWA (`rcn-scout.d2x-labs.de`) | User-facing React app — listing browse, search, favorites, saved searches, web push |
+| Admin Console (`admin.rcn-scout.d2x-labs.de`) | Standalone desktop-first ops dashboard — metrics, LLM cascade management, user approval/delete. Own Vite/React app with dedicated nginx + Traefik subdomain router. Shares the backend (same-origin via `/api/` proxy). |
+| Backend | FastAPI service — scraper, API, Google OAuth, admin endpoints, web push dispatch |
+| Database | PostgreSQL 16 — listings, users, saved searches, favorites, push subscriptions |
+
+> Note: The PWA previously contained `/admin` and `/admin/users` routes. These were removed in PLAN-034 and are now exclusively part of the Admin Console. Any navigation to the old paths in the PWA falls through to the SPA fallback (listings view).
+
 ## Core Features
 
 ### F1: Listing Scraper

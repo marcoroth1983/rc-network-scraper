@@ -31,6 +31,8 @@ services:
       FRONTEND_URL: https://rcn-scout.d2x-labs.de
       ALLOWED_ORIGINS: https://rcn-scout.d2x-labs.de
       COOKIE_SECURE: "true"
+      COOKIE_DOMAIN: .rcn-scout.d2x-labs.de
+      ADMIN_URL: https://admin.rcn-scout.d2x-labs.de
       SCRAPE_DELAY: "1.0"
       # PLAN-027: Web Push
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
@@ -50,6 +52,22 @@ services:
       - "traefik.http.routers.rcn-scout.entrypoints=websecure"
       - "traefik.http.routers.rcn-scout.tls.certresolver=letsencrypt"
       - "traefik.http.services.rcn-scout.loadbalancer.server.port=80"
+      - "traefik.docker.network=web"
+    networks:
+      - default
+      - web
+
+  admin:
+    image: ghcr.io/marcoroth1983/rc-network-scraper/admin:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rcn-admin.rule=Host(`admin.rcn-scout.d2x-labs.de`)"
+      - "traefik.http.routers.rcn-admin.entrypoints=websecure"
+      - "traefik.http.routers.rcn-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.services.rcn-admin.loadbalancer.server.port=80"
       - "traefik.docker.network=web"
     networks:
       - default
