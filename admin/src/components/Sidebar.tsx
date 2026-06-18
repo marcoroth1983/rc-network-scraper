@@ -3,7 +3,7 @@ import { LayoutDashboard, BarChart3, Cpu, Users, LogOut, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 
 interface NavItem {
   label: string;

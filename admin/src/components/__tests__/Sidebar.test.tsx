@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // Must be mocked before importing any component that uses react-router-dom
@@ -27,8 +27,8 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Sidebar } from '../Sidebar';
 
-const mockUseLocation = useLocation as ReturnType<typeof vi.fn>;
-const mockUseAuth = useAuth as ReturnType<typeof vi.fn>;
+const mockUseLocation = useLocation as Mock;
+const mockUseAuth = useAuth as Mock;
 
 beforeEach(() => {
   mockUseAuth.mockReturnValue({

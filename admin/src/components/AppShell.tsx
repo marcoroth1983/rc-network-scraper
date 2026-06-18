@@ -11,7 +11,7 @@ const titleMap: Record<string, string> = {
   '/users': 'Nutzer',
 };
 
-export default function AppShell() {
+export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { pathname } = useLocation();
 
