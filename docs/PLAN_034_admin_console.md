@@ -71,7 +71,7 @@ shadcn/ui components are **copied into the repo** (`admin/src/components/ui/`), 
 
 ---
 
-## Task 1: Scaffold `admin/` Vite app + theme + serving [ ]
+## Task 1: Scaffold `admin/` Vite app + theme + serving [DONE]
 
 **Files:**
 - Create: `admin/package.json`, `admin/vite.config.ts`, `admin/tsconfig.json`, `admin/tsconfig.app.json`, `admin/tsconfig.node.json`, `admin/postcss.config.js`, `admin/eslint.config.js`, `admin/tailwind.config.js`, `admin/index.html`, `admin/nginx.conf`, `admin/Dockerfile`, `admin/.dockerignore`
@@ -347,7 +347,7 @@ git commit -m "feat(admin): user approval, delete and stats view (PLAN-034)"
 
 ---
 
-## Task 7: Backend — session cookie domain + post-login return target [ ]
+## Task 7: Backend — session cookie domain + post-login return target [IN PROGRESS]
 
 **Depends on:** (none — independent of admin frontend; can run in parallel)
 
