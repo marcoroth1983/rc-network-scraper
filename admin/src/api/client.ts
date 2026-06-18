@@ -47,9 +47,7 @@ export async function setUserApproval(userId: number, isApproved: boolean): Prom
 
 export async function deleteUser(userId: number): Promise<void> {
   const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
-  if (!res.ok) {
-    throw new ApiError(res.status, `HTTP ${res.status}`);
-  }
+  return handleResponse<void>(res);
 }
 
 export async function getUserStats(userId: number): Promise<UserStats> {
