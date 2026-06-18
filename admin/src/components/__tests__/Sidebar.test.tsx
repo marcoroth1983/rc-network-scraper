@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // Must be mocked before importing any component that uses react-router-dom
+type AriaCurrent = React.AnchorHTMLAttributes<HTMLAnchorElement>['aria-current'];
+
 vi.mock('react-router-dom', () => ({
   useLocation: vi.fn(),
   Link: ({ to, children, className, onClick, 'aria-current': ariaCurrent }: {
@@ -9,7 +11,7 @@ vi.mock('react-router-dom', () => ({
     children: React.ReactNode;
     className?: string;
     onClick?: () => void;
-    'aria-current'?: string;
+    'aria-current'?: AriaCurrent;
   }) => (
     <a href={to} className={className} onClick={onClick} aria-current={ariaCurrent}>
       {children}

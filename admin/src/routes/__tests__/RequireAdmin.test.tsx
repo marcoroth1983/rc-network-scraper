@@ -5,7 +5,8 @@ import { RequireAdmin } from '../RequireAdmin';
 vi.mock('../../hooks/useAuth');
 
 import { useAuth } from '../../hooks/useAuth';
-const mockUseAuth = useAuth as vi.Mock;
+import type { Mock } from 'vitest';
+const mockUseAuth = useAuth as Mock;
 
 describe('RequireAdmin', () => {
   it('shows loader while auth is loading', () => {
