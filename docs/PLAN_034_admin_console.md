@@ -347,7 +347,7 @@ git commit -m "feat(admin): user approval, delete and stats view (PLAN-034)"
 
 ---
 
-## Task 7: Backend — session cookie domain + post-login return target [IN PROGRESS]
+## Task 7: Backend — session cookie domain + post-login return target [DONE]
 
 **Depends on:** (none — independent of admin frontend; can run in parallel)
 
@@ -523,6 +523,8 @@ And extend the deploy pull (`:64`): `docker compose -f docker-compose.prod.yml p
 git add docker-compose.prod.yml .github/workflows/deploy.yml docs/architektur.md docs/definition.md
 git commit -m "build(admin): compose service, Traefik subdomain router, CI image, env (PLAN-034)"
 ```
+
+_Code review closed 2026-06-18 (python, cycle 1): 0 Critical, 1 High (tolerated — single-operator, no rogue subdomains), 3 Medium (fixed), 1 Low (fixed), 2 Suggestion (deferred)._
 
 ---
 
