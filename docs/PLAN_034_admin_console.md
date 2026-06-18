@@ -427,7 +427,7 @@ git commit -m "feat(auth): session cookie domain + validated post-login return t
 
 ---
 
-## Task 8: Remove `/admin` from the PWA [IN PROGRESS]
+## Task 8: Remove `/admin` from the PWA [DONE]
 
 **Depends on:** Task 4, Task 5, Task 6 (console must cover the functionality before the PWA drops it)
 
@@ -541,6 +541,8 @@ _Code review closed 2026-06-18 (frontend, cycle 1 — Task 4): 0 Critical, 0 Hig
 _Code review closed 2026-06-18 (frontend, cycle 1 — Task 5): 0 Critical, 0 High; M2 fixed (ticker comment); M3 fixed (mountedRef guard in handleRefresh); M1 tolerated (verbatim copy per plan spec — pre-existing source bug, scope of Task 8 removal); L1/L2/S1/S2/S3 deferred._
 
 _Code review closed 2026-06-18 (frontend, cycle 1 — Task 6): 0 Critical, 0 High; M1 fixed (active flag in useEffect IIFE); M2 fixed (setError(null) in performToggle/performDelete); M3 fixed (optimistic-flip assertion in test 2); M4 fixed (named useCallback for onOpenChange); M5 fixed (UserStatsDialog mounted unconditionally); L1 fixed (user guard after all hooks); L3 fixed (makeUser typed as UserRow); L2/S1/S2/S3 deferred._
+
+_Code review closed 2026-06-18 (frontend, cycle 1 — Task 8): 1 Critical fixed (stale navigate('/admin') + unused useNavigate import removed from ProfilePage.tsx, commit 9e43975); 0 High/Medium/Low. All 15 admin files deleted, shared symbols confirmed intact, build clean._
 
 ## Verification
 
