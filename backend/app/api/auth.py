@@ -28,6 +28,31 @@ def _cookie_domain_kwargs() -> dict[str, str]:
     return {"domain": settings.COOKIE_DOMAIN} if settings.COOKIE_DOMAIN else {}
 
 
+def _cookie_kwargs(*, max_age: int | None = None) -> dict:
+    """Return full attribute dict for set_cookie/delete_cookie calls.
+
+    Centralises path, httponly, samesite, secure, and domain so every call site
+    is guaranteed to use identical attributes — mismatches silently prevent
+    browsers from deleting cookies (HIGH-1).
+    """
+    kwargs: dict = {
+        "path": "/",
+        "httponly": True,
+        "samesite": "lax",
+        "secure": settings.COOKIE_SECURE,
+        **_cookie_domain_kwargs(),
+    }
+    if max_age is not None:
+        kwargs["max_age"] = max_age
+    return kwargs
+
+
+def _clear_oauth_cookies(resp: RedirectResponse) -> None:
+    """Delete oauth_state and oauth_return cookies with fully-matched attributes."""
+    resp.delete_cookie("oauth_state", **_cookie_kwargs())
+    resp.delete_cookie("oauth_return", **_cookie_kwargs())
+
+
 def _resolve_return_base(return_to: str | None) -> str:
     """Validate return_to against the exact-match allowlist; fall back to FRONTEND_URL.
 
@@ -41,7 +66,7 @@ def _resolve_return_base(return_to: str | None) -> str:
 async def auth_google(
     request: Request,
     return_to: str | None = Query(default=None),
-):
+) -> RedirectResponse:
     """Redirect browser to Google OAuth consent screen."""
     state = secrets.token_hex(16)
     params = {
@@ -54,18 +79,8 @@ async def auth_google(
     }
     return_base = _resolve_return_base(return_to)
     response = RedirectResponse(f"{_GOOGLE_AUTH_URL}?{urlencode(params)}")
-    response.set_cookie(
-        "oauth_state", state,
-        httponly=True, max_age=300, samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        **_cookie_domain_kwargs(),
-    )
-    response.set_cookie(
-        "oauth_return", quote(return_base, safe=""),
-        httponly=True, max_age=300, samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        **_cookie_domain_kwargs(),
-    )
+    response.set_cookie("oauth_state", state, **_cookie_kwargs(max_age=300))
+    response.set_cookie("oauth_return", quote(return_base, safe=""), **_cookie_kwargs(max_age=300))
     return response
 
 
@@ -76,7 +91,7 @@ async def auth_google_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle Google OAuth callback."""
     raw_return = request.cookies.get("oauth_return")
     base = _resolve_return_base(unquote(raw_return) if raw_return else None)
@@ -84,22 +99,19 @@ async def auth_google_callback(
     # User denied consent
     if error:
         resp = RedirectResponse(f"{base}/login?error=denied")
-        resp.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-        resp.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        _clear_oauth_cookies(resp)
         return resp
 
     if not code or not state:
         resp = RedirectResponse(f"{base}/login?error=denied")
-        resp.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-        resp.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        _clear_oauth_cookies(resp)
         return resp
 
     # Validate CSRF state
     stored_state = request.cookies.get("oauth_state")
     if not stored_state or not secrets.compare_digest(stored_state, state):
         resp = RedirectResponse(f"{base}/login?error=denied")
-        resp.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-        resp.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        _clear_oauth_cookies(resp)
         return resp
 
     # Exchange code for access token
@@ -125,8 +137,7 @@ async def auth_google_callback(
     except httpx.HTTPStatusError:
         # Code already used or Google rejected the exchange (e.g. duplicate callback)
         resp = RedirectResponse(f"{base}/login?error=denied")
-        resp.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-        resp.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        _clear_oauth_cookies(resp)
         return resp
 
     google_id = userinfo["id"]
@@ -153,8 +164,7 @@ async def auth_google_callback(
         response = RedirectResponse(
             f"{base}/login?error=not_approved&email={quote(email)}"
         )
-        response.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-        response.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        _clear_oauth_cookies(response)
         return response
 
     # PLAN-033: record successful, approved login for usage metrics
@@ -166,16 +176,8 @@ async def auth_google_callback(
 
     token = create_jwt(user_id)
     response = RedirectResponse(base)
-    response.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-    response.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
-    response.set_cookie(
-        "session", token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite="lax",
-        max_age=settings.JWT_EXPIRE_DAYS * 86400,
-        **_cookie_domain_kwargs(),
-    )
+    _clear_oauth_cookies(response)
+    response.set_cookie("session", token, **_cookie_kwargs(max_age=settings.JWT_EXPIRE_DAYS * 86400))
     return response
 
 
@@ -183,7 +185,7 @@ async def auth_google_callback(
 async def auth_me(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
-):
+) -> dict:
     """Return current authenticated user. 401 if not authenticated."""
     await session.execute(
         text("UPDATE users SET last_seen_at = now() WHERE id = :uid"),
@@ -199,14 +201,8 @@ async def auth_me(
 
 
 @router.post("/auth/logout")
-async def auth_logout(_: User = Depends(get_current_user)):
+async def auth_logout(_: User = Depends(get_current_user)) -> JSONResponse:
     """Clear session cookie."""
     response = JSONResponse({"ok": True})
-    response.delete_cookie(
-        "session",
-        httponly=True,
-        samesite="lax",
-        secure=settings.COOKIE_SECURE,
-        **_cookie_domain_kwargs(),
-    )
+    response.delete_cookie("session", **_cookie_kwargs())
     return response
