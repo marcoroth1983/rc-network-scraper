@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import type { UserRow } from '../../types/api';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../../api/client', () => ({
@@ -19,15 +20,7 @@ vi.mock('../../hooks/useAuth', () => ({
 import { UsersPage } from '../UsersPage';
 import { getUsers, setUserApproval, deleteUser } from '../../api/client';
 
-const makeUser = (overrides: Partial<{
-  id: number;
-  email: string;
-  name: string | null;
-  is_approved: boolean;
-  role: string;
-  created_at: string;
-  last_seen_at: string | null;
-}> = {}) => ({
+const makeUser = (overrides: Partial<UserRow> = {}): UserRow => ({
   id: 99,
   email: 'user@test.com',
   name: null,
@@ -74,9 +67,27 @@ describe('UsersPage', () => {
 
     // is_approved = false → true: no confirmation dialog, proceed immediately
     const switchEl = screen.getByRole('switch', { name: /Freischaltung für other@test.com/i });
+
+    // Delay resolution to observe the optimistic flip before the API resolves
+    let resolveApproval!: (value: UserRow) => void;
+    vi.mocked(setUserApproval).mockImplementation(
+      () => new Promise<UserRow>((res) => { resolveApproval = res; }),
+    );
+
     fireEvent.click(switchEl);
 
-    await waitFor(() => expect(setUserApproval).toHaveBeenCalledWith(2, true));
+    // Optimistic update: switch should be checked before API resolves
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /Freischaltung für other@test.com/i }))
+        .toHaveAttribute('aria-checked', 'true'),
+    );
+
+    // Resolve the API call
+    await act(async () => {
+      resolveApproval({ ...user2, is_approved: true });
+    });
+
+    expect(setUserApproval).toHaveBeenCalledWith(2, true);
   });
 
   it('rolls back the toggle when setUserApproval rejects', async () => {

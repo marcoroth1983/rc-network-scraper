@@ -27,8 +27,6 @@ import { UserStatsDialog } from '@/components/UserStatsDialog';
 
 export function UsersPage() {
   const { user } = useAuth();
-  // user is guaranteed non-null inside RequireAdmin
-  const currentUserId = user!.id;
 
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,26 +37,31 @@ export function UsersPage() {
   const [pendingToggle, setPendingToggle] = useState<UserRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getUsers();
-      setRows(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
-    } finally {
-      setLoading(false);
-    }
+  // Mirror loadUsers from UserApprovalPanel.tsx:32-43 (verbatim logic).
+  // setState calls wrapped in async IIFE to satisfy react-hooks/set-state-in-effect.
+  // Active flag guards against setState on unmounted tree.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getUsers();
+        if (active) setRows(data);
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    void (async () => { await loadUsers(); })();
-  }, [loadUsers]);
-
+  // Mirror handleToggle from UserApprovalPanel.tsx:51-71.
   // Executes the actual toggle after confirmation (or immediately for approve).
   const performToggle = useCallback(async (u: UserRow) => {
     const next = !u.is_approved;
+    setError(null);
     // Optimistic update with rollback on failure
     setRows((rs) => rs?.map((r) => (r.id === u.id ? { ...r, is_approved: next } : r)) ?? rs);
     try {
@@ -79,7 +82,7 @@ export function UsersPage() {
         // Revoking approval — show confirmation dialog first
         setPendingToggle(u);
       } else {
-        // Granting approval — proceed immediately
+        // Granting approval — proceed immediately without confirmation
         void performToggle(u);
       }
     },
@@ -97,12 +100,15 @@ export function UsersPage() {
     setPendingDelete(u);
   }, []);
 
+  // Mirror handleDelete from UserApprovalPanel.tsx:73-91.
   const performDelete = useCallback(async (u: UserRow) => {
+    setError(null);
     setRows((rs) => rs?.filter((r) => r.id !== u.id) ?? rs); // optimistic removal
     try {
       await deleteUser(u.id);
     } catch (err: unknown) {
-      // Rollback by re-inserting the row functionally — avoids clobbering concurrent state changes
+      // Rollback by re-inserting the row functionally — avoids clobbering any
+      // concurrent state change that a captured snapshot of `rows` would overwrite.
       setRows((rs) => (rs && !rs.some((r) => r.id === u.id) ? [...rs, u] : rs));
       setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen');
     }
@@ -114,6 +120,24 @@ export function UsersPage() {
     setPendingDelete(null);
     void performDelete(u);
   }, [pendingDelete, performDelete]);
+
+  // Named onOpenChange callbacks — avoids new function references on every render
+  const handleToggleDialogChange = useCallback(
+    (open: boolean) => { if (!open) setPendingToggle(null); },
+    [],
+  );
+  const handleDeleteDialogChange = useCallback(
+    (open: boolean) => { if (!open) setPendingDelete(null); },
+    [],
+  );
+  const handleStatsDialogChange = useCallback(
+    (open: boolean) => { if (!open) setStatsUser(null); },
+    [],
+  );
+
+  // user is guaranteed non-null inside RequireAdmin — guard placed after all hooks.
+  if (!user) return null;
+  const currentUserId = user.id;
 
   return (
     <div className="space-y-6">
@@ -169,6 +193,7 @@ export function UsersPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Button
+                          type="button"
                           variant="outline"
                           size="sm"
                           onClick={() => setStatsUser(u)}
@@ -183,6 +208,7 @@ export function UsersPage() {
                           aria-label={`Freischaltung für ${u.email}`}
                         />
                         <Button
+                          type="button"
                           variant="destructive"
                           size="sm"
                           disabled={isSelf}
@@ -201,8 +227,8 @@ export function UsersPage() {
         </div>
       )}
 
-      {/* Revoke approval confirmation */}
-      <AlertDialog open={!!pendingToggle} onOpenChange={(open) => { if (!open) setPendingToggle(null); }}>
+      {/* Revoke approval confirmation — verbatim German strings from UserApprovalPanel.tsx:54-59 */}
+      <AlertDialog open={!!pendingToggle} onOpenChange={handleToggleDialogChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Freischaltung entziehen?</AlertDialogTitle>
@@ -222,8 +248,8 @@ export function UsersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete confirmation */}
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+      {/* Delete confirmation — verbatim German strings from UserApprovalPanel.tsx:74-79 */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={handleDeleteDialogChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Konto endgültig löschen?</AlertDialogTitle>
@@ -244,15 +270,13 @@ export function UsersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Stats dialog */}
-      {statsUser && (
-        <UserStatsDialog
-          open={!!statsUser}
-          onOpenChange={(open) => { if (!open) setStatsUser(null); }}
-          userId={statsUser.id}
-          email={statsUser.email}
-        />
-      )}
+      {/* Stats dialog — mounted unconditionally so Radix can animate the close transition */}
+      <UserStatsDialog
+        open={!!statsUser}
+        onOpenChange={handleStatsDialogChange}
+        userId={statsUser?.id ?? 0}
+        email={statsUser?.email ?? ''}
+      />
     </div>
   );
 }
