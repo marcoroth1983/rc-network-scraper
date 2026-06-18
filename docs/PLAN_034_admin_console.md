@@ -145,7 +145,7 @@ git commit -m "feat(admin): scaffold standalone admin console app (PLAN-034)"
 
 ---
 
-## Task 2: Auth adapter, API client, login screen, role gate [ ]
+## Task 2: Auth adapter, API client, login screen, role gate [DONE]
 
 **Depends on:** Task 1
 
@@ -527,6 +527,8 @@ git commit -m "build(admin): compose service, Traefik subdomain router, CI image
 _Code review closed 2026-06-18 (python, cycle 1): 1 High fixed (`delete_cookie` missing `path="/"` → cookies now cleared correctly, deduped via `_cookie_kwargs`/`_clear_oauth_cookies`); 1 Medium fixed (return-type hints); 2 Medium deferred to backlog (callback-error-path tests, integration markers); subdomain cookie-scope tolerated (single-operator). Fix commit d0c1860._
 
 ---
+
+_Code review closed 2026-06-18 (frontend, cycle 1): 0 Critical, 0 High; M2 fixed (deleteUser now routes through handleResponse); M1/M3/M4 tolerated per plan scope; 3 Low/3 Suggestion deferred._
 
 ## Verification
 
