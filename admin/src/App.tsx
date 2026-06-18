@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import { RequireAdmin } from './routes/RequireAdmin';
 import { AppShell } from './components/AppShell';
+import MetricsPage from './pages/MetricsPage';
 
 export default function App() {
   return (
@@ -14,8 +15,8 @@ export default function App() {
           </RequireAdmin>
         }
       >
-        <Route index element={<div className="text-text-primary">Übersicht (Stub)</div>} />
-        <Route path="metrics" element={<div className="text-text-primary">Metriken (Stub)</div>} />
+        <Route index element={<MetricsPage />} />
+        <Route path="metrics" element={<MetricsPage />} />
         <Route path="llm" element={<div className="text-text-primary">LLM-Kaskade (Stub)</div>} />
         <Route path="users" element={<div className="text-text-primary">Nutzer (Stub)</div>} />
       </Route>
