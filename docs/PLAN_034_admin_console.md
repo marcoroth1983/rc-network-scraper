@@ -315,7 +315,7 @@ git commit -m "feat(admin): LLM cascade status view (PLAN-034)"
 
 ---
 
-## Task 6: Users view (approval + delete + stats) [ ]
+## Task 6: Users view (approval + delete + stats) [DONE]
 
 **Depends on:** Task 3
 
@@ -537,6 +537,8 @@ _Code review closed 2026-06-18 (frontend, cycle 2 — Task 3): 0 Critical, 0 Hig
 _Code review closed 2026-06-18 (frontend, cycle 1 — Task 4): 0 Critical, 0 High; M2 fixed (clear stale series/summary before refetch); M3 fixed (guard placement comment); L1 fixed (gradient id includes title slug); L2 fixed (named export); L3 fixed (named colour constants); M1 retained per plan spec (all-zero = empty state)._
 
 _Code review closed 2026-06-18 (frontend, cycle 1 — Task 5): 0 Critical, 0 High; M2 fixed (ticker comment); M3 fixed (mountedRef guard in handleRefresh); M1 tolerated (verbatim copy per plan spec — pre-existing source bug, scope of Task 8 removal); L1/L2/S1/S2/S3 deferred._
+
+_Code review closed 2026-06-18 (frontend, cycle 1 — Task 6): 0 Critical, 0 High; M1 fixed (active flag in useEffect IIFE); M2 fixed (setError(null) in performToggle/performDelete); M3 fixed (optimistic-flip assertion in test 2); M4 fixed (named useCallback for onOpenChange); M5 fixed (UserStatsDialog mounted unconditionally); L1 fixed (user guard after all hooks); L3 fixed (makeUser typed as UserRow); L2/S1/S2/S3 deferred._
 
 ## Verification
 
