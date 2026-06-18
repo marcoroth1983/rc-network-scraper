@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:4200"
     ALLOWED_ORIGINS: str = "http://localhost:4200"  # comma-separated
     COOKIE_SECURE: bool = False  # set True in production (HTTPS)
+    COOKIE_DOMAIN: str = ""  # e.g. ".rcn-scout.d2x-labs.de" in prod; empty = host-only (dev)
+    ADMIN_URL: str = "http://localhost:4300"  # admin console origin (post-login return allowlist)
 
     # OpenRouter — optional, analysis disabled if not set or if LLM_ANALYSIS_ENABLED=false
     LLM_ANALYSIS_ENABLED: bool = True
