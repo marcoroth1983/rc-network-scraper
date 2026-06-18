@@ -15,9 +15,11 @@ export default function MetricsPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
     void (async () => {
+      if (active) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const [s, t] = await Promise.all([getMetricsSummary(), getMetricsTimeseries(days)]);
         if (active) {
