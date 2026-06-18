@@ -18,18 +18,20 @@ function isCurrentlyDisabled(row: LLMModelRow): boolean {
 }
 
 /**
- * German-language countdown: "noch X Std Y Min" / "noch X Min" / "noch < 1 Min"
+ * German-language countdown: "noch X Std Y Min" / "noch X Min"
+ *
+ * Uses Math.floor so a model disabled for e.g. 59m30s shows "noch 59 Min"
+ * rather than being rounded up into the hours branch by Math.ceil.
  */
 function formatCountdown(iso: string): string {
   const diffMs = new Date(iso).getTime() - Date.now();
   if (!Number.isFinite(diffMs) || diffMs <= 0) return '';
-  const totalMin = Math.ceil(diffMs / 60_000);
+  const totalMin = Math.floor(diffMs / 60_000);
   if (totalMin >= 60) {
     const hrs = Math.floor(totalMin / 60);
     const min = totalMin % 60;
     return min > 0 ? `noch ${hrs} Std ${min} Min` : `noch ${hrs} Std`;
   }
-  if (totalMin < 1) return 'noch < 1 Min';
   return `noch ${totalMin} Min`;
 }
 

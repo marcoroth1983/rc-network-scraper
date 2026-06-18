@@ -274,7 +274,7 @@ export function UsersPage() {
       <UserStatsDialog
         open={!!statsUser}
         onOpenChange={handleStatsDialogChange}
-        userId={statsUser?.id ?? 0}
+        userId={statsUser?.id ?? null}
         email={statsUser?.email ?? ''}
       />
     </div>

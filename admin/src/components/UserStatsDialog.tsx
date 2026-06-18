@@ -13,7 +13,7 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  userId: number;
+  userId: number | null;
   email: string;
 }
 
@@ -22,8 +22,10 @@ export function UserStatsDialog({ open, onOpenChange, userId, email }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // Reset state and fetch fresh on each userId change (each open for a new user).
+  // Guard against null userId — dialog should never be open without a real user,
+  // but the null type makes the sentinel-free contract explicit and safe.
   useEffect(() => {
-    if (!open) return;
+    if (!open || userId === null) return;
     let active = true;
     void (async () => {
       setStats(null);

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
   AreaChart,
   Area,
@@ -41,9 +42,10 @@ const TOOLTIP_STYLE = {
 } as const;
 
 export function TrendChart({ title, data, type, accent, loading }: TrendChartProps) {
-  // Include title slug in gradient id to avoid SVG id collision when
-  // the same accent colour is reused across multiple chart instances.
-  const gradId = `grad-${accent.replace('#', '')}-${title.replace(/\s+/g, '')}`;
+  // useId() guarantees a unique, stable id per component instance — immune to
+  // title/accent collisions and safe under concurrent rendering.
+  const uid = useId();
+  const gradId = `grad-${uid.replace(/:/g, '')}`;
   const isEmpty = data.length === 0 || data.every((p) => p.value === 0);
 
   return (

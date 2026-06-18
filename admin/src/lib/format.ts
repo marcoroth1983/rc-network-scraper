@@ -19,9 +19,9 @@ export function formatRelativeTime(iso: string): string {
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 60) return `vor ${diffSec} Sek`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `vor ${diffMin} Min`;
+  if (diffMin < 60) return diffMin === 1 ? 'vor 1 Minute' : `vor ${diffMin} Min`;
   const diffHrs = Math.floor(diffMin / 60);
-  if (diffHrs < 24) return `vor ${diffHrs} Std`;
+  if (diffHrs < 24) return diffHrs === 1 ? 'vor 1 Stunde' : `vor ${diffHrs} Std`;
   const diffDays = Math.floor(diffHrs / 24);
-  return `vor ${diffDays} Tagen`;
+  return diffDays === 1 ? 'vor 1 Tag' : `vor ${diffDays} Tagen`;
 }
