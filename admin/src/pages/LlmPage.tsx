@@ -59,16 +59,23 @@ export function LlmPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    getLLMModels()
-      .then((data) => { if (!cancelled) { setRows(data); setLoading(false); } })
-      .catch((err: unknown) => {
+    void (async () => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getLLMModels();
+        if (!cancelled) {
+          setRows(data);
+          setLoading(false);
+        }
+      } catch (err: unknown) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
           setLoading(false);
         }
-      });
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 

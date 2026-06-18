@@ -67,7 +67,8 @@ describe('LlmPage', () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText('Aktiv')).toBeInTheDocument());
+    // "Aktiv" appears twice: once as the table column header, once inside the status badge
+    await waitFor(() => expect(screen.getAllByText('Aktiv').length).toBeGreaterThanOrEqual(2));
   });
 
   it('shows a Pausiert badge with countdown for a disabled model', async () => {
