@@ -96,15 +96,12 @@ export default function LoginPage() {
           type="button"
           onClick={handleLogin}
           disabled={loggingIn}
-          className="flex items-center justify-center gap-3 w-full rounded-xl px-4 py-3.5 text-sm font-semibold border transition-all duration-200"
+          className="flex items-center justify-center gap-3 w-full rounded-xl px-4 py-3.5 text-sm font-semibold border transition-all duration-200 disabled:cursor-not-allowed hover:enabled:[box-shadow:0_0_20px_rgba(99,102,241,0.15)]"
           style={{
             background: loggingIn ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
             borderColor: 'rgba(255,255,255,0.12)',
             color: loggingIn ? 'rgba(226,232,240,0.4)' : '#E2E8F0',
-            cursor: loggingIn ? 'not-allowed' : 'pointer',
           }}
-          onMouseOver={e => { if (!loggingIn) { e.currentTarget.style.background = 'rgba(255,255,255,0.14)'; e.currentTarget.style.boxShadow = '0 0 20px rgba(99,102,241,0.15)'; } }}
-          onMouseOut={e => { if (!loggingIn) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.boxShadow = 'none'; } }}
         >
           <GoogleIcon />
           {loggingIn ? 'Weiterleitung…' : error === 'not_approved' ? 'Mit anderem Account anmelden' : 'Mit Google anmelden'}
@@ -135,10 +132,7 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => setPrivacyOpen(true)}
-          className="text-xs transition-colors"
-          style={{ color: 'rgba(248,250,252,0.3)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.6)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.3)' }}
+          className="text-xs transition-colors text-white/30 hover:text-white/60"
         >
           Datenschutzerklärung
         </button>

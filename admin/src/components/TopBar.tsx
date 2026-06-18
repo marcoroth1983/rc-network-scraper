@@ -50,6 +50,7 @@ function IconButton({
 }) {
   return (
     <button
+      type="button"
       className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
       aria-label={label}
     >

@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
+import type { AuthUser } from '../types/api'
 
-export type AuthUser = {
-  id: number;
-  email: string;
-  name: string | null;
-  role: 'member' | 'admin';
-}
+export type { AuthUser }
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null)

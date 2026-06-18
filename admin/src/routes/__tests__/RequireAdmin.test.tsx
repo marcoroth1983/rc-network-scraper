@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { RequireAdmin } from '../RequireAdmin';
 
@@ -37,5 +37,36 @@ describe('RequireAdmin', () => {
     render(<RequireAdmin><div>Protected</div></RequireAdmin>);
     expect(screen.getByText('Kein Zugriff')).toBeInTheDocument();
     expect(screen.queryByText('Protected')).not.toBeInTheDocument();
+  });
+
+  describe('unauthenticated redirect (security-critical path)', () => {
+    let originalLocation: Location;
+
+    beforeEach(() => {
+      originalLocation = window.location;
+      // Replace window.location with a writable mock so we can assert href assignment.
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        writable: true,
+        value: { ...originalLocation, href: '' },
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        writable: true,
+        value: originalLocation,
+      });
+    });
+
+    it('redirects to /api/auth/google with encoded origin when unauthenticated', () => {
+      mockUseAuth.mockReturnValue({ user: null, loading: false, logout: vi.fn(), reloadUser: vi.fn() });
+      render(<RequireAdmin><div>Protected</div></RequireAdmin>);
+      const expectedHref =
+        '/api/auth/google?return_to=' + encodeURIComponent(window.location.origin);
+      expect(window.location.href).toBe(expectedHref);
+      expect(screen.queryByText('Protected')).not.toBeInTheDocument();
+    });
   });
 });
