@@ -282,7 +282,7 @@ git commit -m "feat(admin): metrics view with KPI tiles and Recharts trends (PLA
 
 ---
 
-## Task 5: LLM cascade view [ ]
+## Task 5: LLM cascade view [IMPLEMENTED]
 
 **Depends on:** Task 3
 
