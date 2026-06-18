@@ -3,7 +3,7 @@ import secrets
 from urllib.parse import quote, unquote, urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,17 +19,20 @@ router = APIRouter()
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 
 
-def _cookie_domain_kwargs() -> dict:
-    """Return domain kwarg for set_cookie/delete_cookie when COOKIE_DOMAIN is configured."""
-    return {"domain": settings.COOKIE_DOMAIN} if settings.COOKIE_DOMAIN else {}
-
-
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
+def _cookie_domain_kwargs() -> dict[str, str]:
+    """Return domain kwarg for set_cookie/delete_cookie when COOKIE_DOMAIN is configured."""
+    return {"domain": settings.COOKIE_DOMAIN} if settings.COOKIE_DOMAIN else {}
+
+
 def _resolve_return_base(return_to: str | None) -> str:
-    """Validate return_to against the exact-match allowlist; fall back to FRONTEND_URL."""
+    """Validate return_to against the exact-match allowlist; fall back to FRONTEND_URL.
+
+    Reads settings live — correct; tests can monkeypatch the singleton.
+    """
     allowed = {settings.FRONTEND_URL, settings.ADMIN_URL}
     return return_to if return_to in allowed else settings.FRONTEND_URL
 
@@ -86,7 +89,10 @@ async def auth_google_callback(
         return resp
 
     if not code or not state:
-        raise HTTPException(400, "Missing code or state")
+        resp = RedirectResponse(f"{base}/login?error=denied")
+        resp.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        resp.delete_cookie("oauth_return", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE, **_cookie_domain_kwargs())
+        return resp
 
     # Validate CSRF state
     stored_state = request.cookies.get("oauth_state")
