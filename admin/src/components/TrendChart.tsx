@@ -24,16 +24,26 @@ function fmtDay(iso: string): string {
   return `${d}.${m}`;
 }
 
+// Structural colour constants — map to styleguide tokens surface-2, border, text-primary, text-tertiary.
+// Using inline hex here because Recharts SVG props do not accept Tailwind class names.
+const COLOR_SURFACE_2 = '#1C1C1C';   // --surface-2
+const COLOR_BORDER = '#262626';       // --border
+const COLOR_TEXT_PRIMARY = '#FAFAFA'; // --text-primary
+const COLOR_TEXT_TERTIARY = '#6B6B70'; // --text-tertiary
+const COLOR_GRID = '#1C1C1C';         // same as --surface-2 per styleguide chart spec
+
 const TOOLTIP_STYLE = {
-  background: '#1C1C1C',
-  border: '1px solid #262626',
+  background: COLOR_SURFACE_2,
+  border: `1px solid ${COLOR_BORDER}`,
   borderRadius: 8,
-  color: '#FAFAFA',
+  color: COLOR_TEXT_PRIMARY,
   fontSize: 12,
 } as const;
 
 export function TrendChart({ title, data, type, accent, loading }: TrendChartProps) {
-  const gradId = `grad-${accent.replace('#', '')}`;
+  // Include title slug in gradient id to avoid SVG id collision when
+  // the same accent colour is reused across multiple chart instances.
+  const gradId = `grad-${accent.replace('#', '')}-${title.replace(/\s+/g, '')}`;
   const isEmpty = data.length === 0 || data.every((p) => p.value === 0);
 
   return (
@@ -49,11 +59,11 @@ export function TrendChart({ title, data, type, accent, loading }: TrendChartPro
       ) : type === 'bar' ? (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1C1C1C" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={COLOR_GRID} vertical={false} />
             <XAxis
               dataKey="day"
               tickFormatter={fmtDay}
-              tick={{ fill: '#6B6B70', fontSize: 11 }}
+              tick={{ fill: COLOR_TEXT_TERTIARY, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
@@ -74,11 +84,11 @@ export function TrendChart({ title, data, type, accent, loading }: TrendChartPro
                 <stop offset="100%" stopColor={accent} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1C1C1C" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={COLOR_GRID} vertical={false} />
             <XAxis
               dataKey="day"
               tickFormatter={fmtDay}
-              tick={{ fill: '#6B6B70', fontSize: 11 }}
+              tick={{ fill: COLOR_TEXT_TERTIARY, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />

@@ -6,7 +6,7 @@ import { TrendChart } from '../components/TrendChart';
 
 const RANGES = [7, 30, 90] as const;
 
-export default function MetricsPage() {
+export function MetricsPage() {
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [series, setSeries] = useState<MetricsTimeseries | null>(null);
   const [days, setDays] = useState<number>(30);
@@ -16,9 +16,14 @@ export default function MetricsPage() {
   useEffect(() => {
     let active = true;
     void (async () => {
+      // Clear stale data before fetching so charts don't show old data
+      // during the range-change transition. Inside the IIFE to satisfy
+      // the react-hooks/set-state-in-effect lint rule.
       if (active) {
         setLoading(true);
         setError(null);
+        setSummary(null);
+        setSeries(null);
       }
       try {
         const [s, t] = await Promise.all([getMetricsSummary(), getMetricsTimeseries(days)]);

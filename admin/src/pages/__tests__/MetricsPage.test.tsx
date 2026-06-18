@@ -19,7 +19,7 @@ vi.mock('recharts', async (importOriginal) => {
   };
 });
 
-import MetricsPage from '../MetricsPage';
+import { MetricsPage } from '../MetricsPage';
 import { getMetricsSummary, getMetricsTimeseries } from '../../api/client';
 
 const mockSummary = {

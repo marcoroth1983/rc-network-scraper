@@ -2,7 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import { RequireAdmin } from './routes/RequireAdmin';
 import { AppShell } from './components/AppShell';
-import MetricsPage from './pages/MetricsPage';
+import { MetricsPage } from './pages/MetricsPage';
 
 export default function App() {
   return (
