@@ -4,6 +4,7 @@ import { RequireAdmin } from './routes/RequireAdmin';
 import { AppShell } from './components/AppShell';
 import { MetricsPage } from './pages/MetricsPage';
 import { LlmPage } from './pages/LlmPage';
+import { UsersPage } from './pages/UsersPage';
 
 export default function App() {
   return (
@@ -19,7 +20,7 @@ export default function App() {
         <Route index element={<MetricsPage />} />
         <Route path="metrics" element={<MetricsPage />} />
         <Route path="llm" element={<LlmPage />} />
-        <Route path="users" element={<div className="text-text-primary">Nutzer (Stub)</div>} />
+        <Route path="users" element={<UsersPage />} />
       </Route>
     </Routes>
   );
