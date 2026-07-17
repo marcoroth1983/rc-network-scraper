@@ -86,3 +86,16 @@ item via `get_item()` before analysis (future improvement).
 **What:** The favorites status sweep (`app/notifications/fav_sweep.py`) always advances each favorite's `last_known_*` snapshot after a run, even for users whose `web_push_enabled` is currently `false`. Status changes (sold / price / deleted) that occur while a user has Web Push disabled are therefore detected against the (now-advanced) snapshot and are **not** delivered later when push is re-enabled — they are intentionally dropped, not queued.
 
 **Why:** Deliberate decision, identical to the previous Telegram behavior. Keeping per-user pending event buffers would add state and complexity that a single-user hobby project does not need; the snapshot is the source of truth for "last seen state", independent of delivery preference.
+
+---
+
+## Standalone Admin Console built but frozen — to be replaced by the central d2x-control-plane cockpit
+
+**What:** The standalone Admin Console (`admin/`, subdomain `admin.rcn-scout.d2x-labs.de`, built in PLAN-034) is fully implemented in the repo but is **intentionally NOT deployed to production, and will not be.** Decision 2026-07-17: the admin + analytics function is being centralized into a separate project, **`d2x-control-plane`** — a general admin/analytics cockpit for all d2x apps (Umami analytics already runs there). rc-scanner's admin capability is to become a module of that central cockpit instead of a per-app SPA.
+
+**Why:** Avoids one-admin-console-per-app. Analytics (Umami) is already centralized; the admin side follows. Deploying the standalone console now would cost a Traefik/Let's-Encrypt cert setup plus a second cross-subdomain-cookie login-reset for all users — for a UI that is about to be superseded.
+
+**Status & consequences:**
+- The `admin/` Vite/React SPA is **frozen** — no further feature work. A future plan removes it once the control-plane cockpit covers its features.
+- The backend `/api/admin/*` endpoints (`backend/app/api/admin.py`) stay, but their future auth path will differ. The current model — a shared session cookie on `COOKIE_DOMAIN=.rcn-scout.d2x-labs.de` — is an **app-local SSO that does NOT generalize across different app domains**. A central cockpit spanning multiple apps needs a real IdP (Keycloak/Authentik/Auth0) or a per-app service-token/read-API. That auth redesign is a `d2x-control-plane` concern and must be brainstormed there, not here.
+- Production therefore deploys only the public frontend + backend. The `admin` service in `docker-compose.prod.yml` remains **defined-but-undeployed** (see `backlog.md` DEPLOY-01/-02).
