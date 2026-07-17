@@ -93,7 +93,9 @@ git commit -m "feat(analytics): cookieless Umami snippet on public frontend (ana
 
 ### Task 3: Release + deploy [DONE]
 
-**DONE 2026-07-17 — bumped `frontend/package.json` → `2.9.1`, CHANGELOG `[2.9.1]` (commit `9513307`); GitHub Release `v2.9.1` cut → deploy workflow ran (see below). NOTE: prod was on `v2.7.1`; this release ships the accumulated PLAN-033 (2.8.0) + PLAN-034 (2.9.0, breaking auth) + Umami + privacy together, per Human decision 2026-07-17.**
+**DONE 2026-07-17 — bumped `frontend/package.json` → `2.9.1`, CHANGELOG `[2.9.1]` (commit `9513307`); merged to `main` (`53ec360`), pushed; GitHub Release `v2.9.1` cut.**
+
+**Deploy reality (Option A):** The `release: published` workflow reported success but deployed **nothing** — `docker compose pull nginx backend admin` aborted with `no such service: admin` (the VPS compose is still v2.7.1 and has no `admin` service; the workflow does not sync the compose file), so nginx/backend were never re-pulled and the `/health` gate hit the still-running old site → false green. Diagnosed via VPS SSH (containers dated 2026-06-07; prod HTML `Last-Modified: 07 Jun`). **Resolution (Human decision 2026-07-17, Option A):** manually ran `docker compose pull nginx backend` + `up -d --force-recreate nginx backend` on the VPS. Verified live: umami snippet present in prod HTML, `Last-Modified: 17 Jul`, site 200, `script.js` 200, `/api/auth/me` 401. This ships Umami + privacy/Impressum + backend PLAN-033/034 changes; **the admin console was intentionally NOT deployed**. Follow-ups filed: `backlog.md` DEPLOY-01 (workflow false-green / compose sync) and DEPLOY-02 (admin console prod rollout).
 
 **Depends on:** Task 2
 

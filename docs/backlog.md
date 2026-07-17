@@ -64,6 +64,12 @@
 
   **Recommendation as of 2026-04-18**: Do PRICE-01 (similarity ranking) first — gets 80% of user value at 10% of the effort. Treat PRICE-02 Phase 0 as a separate, future exploration that needs explicit go-ahead. Do not commit to full PRICE-02 vision up-front.
 
+## Deployment / Infra (entdeckt bei PLAN-035 Release v2.9.1, 2026-07-17)
+
+- **DEPLOY-01: Deploy-Workflow liefert False-Green — `no such service: admin` bricht den Pull ab.** Der `release: published`-Workflow SSHt auf den VPS und ruft `docker compose -f docker-compose.prod.yml pull nginx backend admin` gegen die **dort vorhandene** Compose-Datei — er **synct die Datei nicht**. Die VPS-`/opt/rcn-scout/docker-compose.prod.yml` ist noch v2.7.1-Stand (nur db/backend/nginx, **kein `admin`-Service**), daher bricht `pull` mit `no such service: admin` ab → nginx/backend werden **nicht** gezogen → `up -d` recreatet nichts → der `/health`-Check trifft die alte Seite → Job „grün", obwohl **nichts deployed** wurde. **Fix nötig:** (a) neue `docker-compose.prod.yml` beim Deploy auf den VPS kopieren (z. B. via scp im Workflow oder Repo-Checkout auf dem VPS), (b) `up -d --force-recreate` erzwingen, (c) Health-Gate schärfen, damit ein unveränderter Alt-Stand nicht als Erfolg zählt (z. B. Version-/Build-Header prüfen statt nur 200). Bis dahin schlägt **jedes** künftige Release still fehl. _v2.9.1 wurde am 2026-07-17 manuell via `pull nginx backend` + `up -d --force-recreate nginx backend` auf dem VPS nachgezogen (Option A)._
+
+- **DEPLOY-02: Admin-Console (PLAN-034) auf Prod nie ausgerollt.** Es existiert kein `rcn-scout-admin-1`-Container; die VPS-Compose kennt den `admin`-Service nicht; `admin.rcn-scout.d2x-labs.de` hat noch kein gültiges Let's-Encrypt-Cert (Traefik-Default, `SEC_E_UNTRUSTED_ROOT`), DNS zeigt aber korrekt auf den VPS. Vollständiger Rollout braucht: neue Compose auf VPS (admin-Service + Traefik-Router-Labels), VPS-`.env` um `ADMIN_URL` + `COOKIE_DOMAIN=.rcn-scout.d2x-labs.de` (Cross-Subdomain-Login) ergänzen, admin-Image ziehen, Cert-Provisioning abwarten. Eigenes Vorhaben — hängt an DEPLOY-01. _Bewusst aus PLAN-035 Option A ausgeklammert._
+
 ## Admin Console (PLAN-034) — deferred review items
 
 _From PLAN-034 cycle-1 python review (2026-06-18):_
