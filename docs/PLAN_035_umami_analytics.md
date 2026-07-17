@@ -64,7 +64,11 @@ print("rcn-scout website-id:", site.get("id"), s)
 
 ---
 
-### Task 2: Add the Umami snippet to the public HTML shell (no CSP change) [ ]
+### Task 2: Add the Umami snippet to the public HTML shell (no CSP change) [DONE]
+
+**DONE 2026-07-16 — commit `fde53a4`.** Snippet with `data-website-id="b9f5f2b4-…"` inserted before `</head>` in `frontend/index.html`; no CSP/admin changes. Frontend prod image (`tsc -b && vite build`) verified green.
+
+**Addendum (2026-07-17, commit `17ac7c8`) — GDPR disclosure gap closed:** The original plan shipped tracking but omitted the legally required analytics disclosure. Added a "Reichweitenmessung" section (Art. 6 Abs. 1 lit. f DSGVO, cookieless, no IP storage, no third-party sharing) to the Datenschutz modal in `frontend/src/pages/LoginPage.tsx`, plus an Impressum link in the footer redirecting to `https://d2x-labs.de/impressum.html` (no Impressum existed before).
 
 **Depends on:** Task 1
 
@@ -87,7 +91,9 @@ git commit -m "feat(analytics): cookieless Umami snippet on public frontend (ana
 
 ---
 
-### Task 3: Release + deploy [ ]
+### Task 3: Release + deploy [DONE]
+
+**DONE 2026-07-17 — bumped `frontend/package.json` → `2.9.1`, CHANGELOG `[2.9.1]` (commit `9513307`); GitHub Release `v2.9.1` cut → deploy workflow ran (see below). NOTE: prod was on `v2.7.1`; this release ships the accumulated PLAN-033 (2.8.0) + PLAN-034 (2.9.0, breaking auth) + Umami + privacy together, per Human decision 2026-07-17.**
 
 **Depends on:** Task 2
 
@@ -96,6 +102,8 @@ git commit -m "feat(analytics): cookieless Umami snippet on public frontend (ana
 **Step 2:** Cut a GitHub Release for the new tag. The `release: published` workflow (`.github/workflows/deploy.yml`) builds the nginx/frontend image and SSH-deploys it to the VPS (`/health`-gated). The snippet reaches prod once the release deploys.
 
 ---
+
+_Code review skipped 2026-07-17 (frontend): Task 2 is a verbatim, plan-reviewed one-line snippet; the privacy/Impressum addendum is static text + one external link — additive, no logic. Both diffs verified against spec by the orchestrator; all three prod images build green. Proportional to a thin, automated-only plan._
 
 ## Verification
 
