@@ -126,16 +126,30 @@ export default function LoginPage() {
           borderTop: '1px solid rgba(255,255,255,0.06)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setPrivacyOpen(true)}
-          className="text-xs transition-colors"
-          style={{ color: 'rgba(248,250,252,0.3)' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.6)' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.3)' }}
-        >
-          Datenschutzerklärung
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPrivacyOpen(true)}
+            className="text-xs transition-colors"
+            style={{ color: 'rgba(248,250,252,0.3)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.6)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(248,250,252,0.3)' }}
+          >
+            Datenschutzerklärung
+          </button>
+          <span className="text-xs" style={{ color: 'rgba(248,250,252,0.15)' }}>·</span>
+          <a
+            href="https://d2x-labs.de/impressum.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs transition-colors"
+            style={{ color: 'rgba(248,250,252,0.3)' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(248,250,252,0.6)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(248,250,252,0.3)' }}
+          >
+            Impressum
+          </a>
+        </div>
       </div>
 
       {/* Privacy modal */}
@@ -185,6 +199,10 @@ export default function LoginPage() {
               <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Hosting & Betrieb</h3>
               <p>
                 Die Anwendung wird auf einem privaten VPS betrieben, der ausschließlich dem Betreiber zugänglich ist. Es werden keine Nutzerdaten zu Werbezwecken verarbeitet oder verkauft.
+              </p>
+              <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Reichweitenmessung</h3>
+              <p>
+                Zur anonymen Auswertung der Seitennutzung kommt eine selbst gehostete, cookielose Analyse-Software auf eigener Infrastruktur (Server in Deutschland) zum Einsatz. Erfasst werden ausschließlich aggregierte, nicht personenbezogene Nutzungsdaten (z. B. aufgerufene Seiten, ungefähre Herkunftsregion sowie Browser- und Gerätetyp). Es werden keine Cookies gesetzt, keine IP-Adressen gespeichert, keine geräteübergreifenden Profile gebildet und keine Daten an Dritte weitergegeben. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer datensparsamen Reichweitenmessung).
               </p>
               <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgba(248,250,252,0.35)' }}>Kontakt</h3>
               <p>
