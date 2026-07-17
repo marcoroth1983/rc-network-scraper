@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.9.1] - 2026-07-17
+
+### Added
+
+- **Cookielose Zugriffsstatistik (Umami) auf der öffentlichen Seite** — anonyme, selbst gehostete Reichweitenmessung ohne Cookies (Server in Deutschland), keine IP-Speicherung, keine geräteübergreifenden Profile.
+- Datenschutzerklärung um den Abschnitt „Reichweitenmessung" ergänzt sowie Impressum-Link (Weiterleitung auf `d2x-labs.de/impressum.html`) im Footer der Login-Seite.
+
+---
+
 ## [2.9.0] - 2026-06-18
 
 ### Added
