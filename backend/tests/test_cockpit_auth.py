@@ -184,6 +184,22 @@ async def test_embedded_x5u_rejected():
         await _verify(token)
 
 
+@pytest.mark.asyncio
+async def test_embedded_jwk_rejected():
+    """Token with an inline 'jwk' in the header is rejected (key injection prevention)."""
+    token = _mint(extra_headers={"jwk": {"kty": "RSA", "n": "x", "e": "AQAB"}})
+    with pytest.raises(InvalidTokenError):
+        await _verify(token)
+
+
+@pytest.mark.asyncio
+async def test_embedded_x5c_rejected():
+    """Token with an inline 'x5c' cert chain in the header is rejected."""
+    token = _mint(extra_headers={"x5c": ["MIIB..."]})
+    with pytest.raises(InvalidTokenError):
+        await _verify(token)
+
+
 # ---------------------------------------------------------------------------
 # Claim / TTL checks (all require mock_get_key so signature verifies)
 # ---------------------------------------------------------------------------

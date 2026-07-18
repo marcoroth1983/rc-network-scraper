@@ -135,6 +135,7 @@ def patch_async_session_local(test_engine) -> None:
         "app.notifications.prefs",          # PLAN-027
         "app.notifications.web_push_plugin", # PLAN-027
         "app.notifications.fav_sweep",       # PLAN-027
+        "app.api.admin",                     # PLAN-036 — binds AsyncSessionLocal at import time
     ]
 
     originals: dict = {"app.db": _db_module.AsyncSessionLocal}

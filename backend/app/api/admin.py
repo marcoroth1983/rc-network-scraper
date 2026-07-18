@@ -185,7 +185,7 @@ async def refresh_llm_models(
     """
     # jti single-use check (contract §8 #4) — cookie path has jti=None → skipped
     if operator.jti is not None:
-        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+        if not consume_jti(operator.jti, operator.token_exp or (datetime.now(timezone.utc).timestamp() + 300)):
             raise HTTPException(status_code=409, detail="assertion already used")
 
     await model_cascade.refresh_from_openrouter()
@@ -241,7 +241,7 @@ async def set_user_approval(
     """
     # 1. jti replay (before any DB I/O)
     if operator.jti is not None:
-        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+        if not consume_jti(operator.jti, operator.token_exp or (datetime.now(timezone.utc).timestamp() + 300)):
             raise HTTPException(status_code=409, detail="assertion already used")
 
     async with AsyncSessionLocal() as session:
@@ -316,7 +316,7 @@ async def delete_user(
     """
     # 1. jti replay (before any DB I/O)
     if operator.jti is not None:
-        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+        if not consume_jti(operator.jti, operator.token_exp or (datetime.now(timezone.utc).timestamp() + 300)):
             raise HTTPException(status_code=409, detail="assertion already used")
 
     async with AsyncSessionLocal() as session:

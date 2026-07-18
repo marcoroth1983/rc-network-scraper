@@ -146,6 +146,8 @@ async def verify_cockpit_bearer(request: Request) -> CockpitOperator:
         raise HTTPException(401, "cockpit assertion required")
     claims = await _verify(auth[7:])
     google_id = claims["sub"]
+    if not google_id:   # reject empty `sub` at the source → self-guards can't be short-circuited
+        raise InvalidTokenError("empty sub")
     return CockpitOperator(
         google_id=google_id,
         email=claims.get("email", ""),
