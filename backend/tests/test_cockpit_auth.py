@@ -133,7 +133,8 @@ async def test_alg_none_rejected():
     # Simplest: encode a regular token then override the alg claim in the header.
     # Instead, we test that a token with alg="none" in get_unverified_header fails.
     # We can build such a token using the low-level API.
-    import base64, json
+    import base64
+    import json
 
     def _b64url(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
@@ -149,7 +150,10 @@ async def test_alg_none_rejected():
 @pytest.mark.asyncio
 async def test_hs256_rejected():
     """HS256 token (no 'kid' header) is rejected at the alg/kid check."""
-    import hmac, hashlib, base64, json
+    import hmac
+    import hashlib
+    import base64
+    import json
 
     def _b64url(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
