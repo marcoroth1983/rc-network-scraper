@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     LLM_CASCADE_DISABLE_HOURS: float = 1.0    # hours a disabled model stays out
     LLM_CASCADE_REFRESH_HOURS: float = 12.0   # how often to refresh from OpenRouter
 
+    # Cockpit RS256 assertion auth (server-to-server, contract §8)
+    COCKPIT_AUTH_ENABLED: bool = False           # master switch — feature dormant until configured
+    COCKPIT_JWKS_URL: str = ""                    # e.g. https://admin.d2x-labs.de/.well-known/jwks.json
+    COCKPIT_ISSUER: str = "d2x-cockpit"
+    COCKPIT_AUDIENCE: str = "rcn-scraper-admin"
+    COCKPIT_MAX_TOKEN_TTL_SECONDS: int = 300      # enforce exp - iat <= this
+    COCKPIT_CLOCK_SKEW_SECONDS: int = 60
+
     # eBay Browse API — optional, eBay fetch disabled if not set
     ebay_client_id: str = ""
     ebay_client_secret: str = ""
@@ -100,6 +108,16 @@ class Settings(BaseSettings):
         if not v.strip():
             raise ValueError("must not be empty")
         return v
+
+    @model_validator(mode="after")
+    def cockpit_jwks_url_required_when_enabled(self) -> "Settings":
+        if self.COCKPIT_AUTH_ENABLED:
+            url = self.COCKPIT_JWKS_URL.strip()
+            if not url:
+                raise ValueError("COCKPIT_JWKS_URL must be set when COCKPIT_AUTH_ENABLED is True")
+            if not url.startswith("https://"):
+                raise ValueError("COCKPIT_JWKS_URL must be an https:// URL")
+        return self
 
     @property
     def allowed_origins_list(self) -> list[str]:
