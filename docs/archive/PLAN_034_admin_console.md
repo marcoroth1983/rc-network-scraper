@@ -1,5 +1,7 @@
 # Standalone Admin Console ("RC-Scout Ops") Implementation Plan
 
+> **⚠ ARCHIVED / FROZEN (2026-07-18):** All tasks implemented & merged to `main`, but the console was **never deployed to production and will not be** — decision 2026-07-17: admin+analytics move into the central `d2x-control-plane` cockpit. The `admin/` SPA is frozen; the `admin` service stays defined-but-undeployed in `docker-compose.prod.yml`. See `docs/limitations.md` → "Standalone Admin Console built but frozen", and `docs/PLAN_036_cockpit_admin_auth.md` (the cockpit-integration successor).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use dglabs.executing-plans to implement this plan task-by-task.
 
 **Goal:** Extract the entire PWA `/admin` area (metrics, LLM cascade, user approval) into a standalone, desktop-first Vite/React app on its own subdomain (`admin.rcn-scout.d2x-labs.de`), running against the same backend, styled 1:1 per `docs/admin_console_styleguide.md` (Coinza dark dashboard).
