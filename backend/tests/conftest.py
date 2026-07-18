@@ -363,8 +363,22 @@ async def admin_client(test_engine, db_session: AsyncSession) -> AsyncGenerator[
             row = r.one()
             return User(id=row[0], google_id=row[1], email=row[2], name=row[3], is_approved=row[4], role=row[5])
 
+    # Also override require_any_admin (admin routes now use dual-auth dep, not require_admin).
+    # google_id matches the inserted admin row so self-guards work correctly.
+    from app.api.deps import require_any_admin  # noqa: PLC0415
+    from app.cockpit_auth import CockpitOperator  # noqa: PLC0415
+
+    async def _fake_cockpit_operator() -> CockpitOperator:
+        return CockpitOperator(
+            google_id="admin-client-google",
+            email="admin_client@example.com",
+            jti=None,
+            token_exp=None,
+        )
+
     app.dependency_overrides[get_session] = _override_get_session
     app.dependency_overrides[get_current_user] = _fake_user
+    app.dependency_overrides[require_any_admin] = _fake_cockpit_operator
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client, admin_id
@@ -409,8 +423,17 @@ async def authenticated_client(test_engine, db_session: AsyncSession) -> AsyncGe
             row = r.one()
             return User(id=row[0], google_id=row[1], email=row[2], name=row[3], is_approved=row[4], role=row[5])
 
+    # Override require_any_admin to return 403 for non-admin access tests.
+    # Admin routes use require_any_admin (not require_admin) after dual-auth refactor.
+    from app.api.deps import require_any_admin  # noqa: PLC0415
+    from fastapi import HTTPException as _HTTPException  # noqa: PLC0415
+
+    async def _forbid_admin() -> None:
+        raise _HTTPException(status_code=403, detail="Admin role required")
+
     app.dependency_overrides[get_session] = _override_get_session
     app.dependency_overrides[get_current_user] = _fake_user
+    app.dependency_overrides[require_any_admin] = _forbid_admin
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

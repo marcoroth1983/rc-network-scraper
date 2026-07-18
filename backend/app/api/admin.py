@@ -1,18 +1,27 @@
-"""Admin-only endpoints: LLM cascade management."""
+"""Admin-only endpoints: LLM cascade management, user administration, metrics."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-
-from app.analysis import model_cascade
-from app.api.deps import require_admin
-from app.db import AsyncSessionLocal
-from app.models import User
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analysis import model_cascade
+from app.api.deps import require_any_admin
+from app.cockpit_auth import CockpitOperator, consume_jti
+from app.db import AsyncSessionLocal
+from app.models import User
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas
+# ---------------------------------------------------------------------------
 
 
 class UserRow(BaseModel):
@@ -41,6 +50,47 @@ class LLMModelRow(BaseModel):
     consecutive_failures: int
     disabled_until: datetime | None
     last_error: str | None
+
+
+class MetricsSummary(BaseModel):
+    users_total: int
+    users_approved: int
+    users_pending: int
+    users_active_7d: int
+    users_active_30d: int
+    listings_total: int
+    favorites_total: int
+    saved_searches_total: int
+
+
+class TimeseriesPoint(BaseModel):
+    day: str  # ISO date (YYYY-MM-DD)
+    value: int
+
+
+class MetricsTimeseries(BaseModel):
+    days: int
+    listings_new: list[TimeseriesPoint]
+    listings_closed: list[TimeseriesPoint]
+    users_new: list[TimeseriesPoint]
+    logins: list[TimeseriesPoint]
+    notifications: list[TimeseriesPoint]
+
+
+class UserStats(BaseModel):
+    user_id: int
+    saved_searches: int
+    favorites: int
+    push_devices: int
+    logins_total: int
+    logins_30d: int
+    created_at: datetime
+    last_seen_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 async def _fetch_all_rows() -> list[LLMModelRow]:
@@ -84,135 +134,6 @@ async def _fetch_all_rows() -> list[LLMModelRow]:
     ]
 
 
-@router.get("/llm-models", response_model=list[LLMModelRow])
-async def list_llm_models(_: User = Depends(require_admin)) -> list[LLMModelRow]:
-    """Return all cascade models with live active_now computed field."""
-    return await _fetch_all_rows()
-
-
-@router.post("/llm-models/refresh", response_model=list[LLMModelRow])
-async def refresh_llm_models(_: User = Depends(require_admin)) -> list[LLMModelRow]:
-    """Trigger an immediate cascade refresh from OpenRouter, return updated rows."""
-    await model_cascade.refresh_from_openrouter()
-    return await _fetch_all_rows()
-
-
-@router.get("/users", response_model=list[UserRow])
-async def list_users(_: User = Depends(require_admin)) -> list[UserRow]:
-    """Return all users: not-yet-approved first; within each group: newest-registered first."""
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(text("""
-            SELECT id, email, name, is_approved, role, created_at, last_seen_at
-            FROM users
-            ORDER BY is_approved ASC, created_at DESC
-        """))
-        rows = result.all()
-    return [
-        UserRow(
-            id=row.id,
-            email=row.email,
-            name=row.name,
-            is_approved=row.is_approved,
-            role=row.role,
-            created_at=row.created_at,
-            last_seen_at=row.last_seen_at,
-        )
-        for row in rows
-    ]
-
-
-@router.patch("/users/{user_id}/approval", response_model=UserRow)
-async def set_user_approval(
-    user_id: int,
-    body: ApprovalUpdate,
-    current_admin: User = Depends(require_admin),
-) -> UserRow:
-    """Set a user's is_approved flag. Returns the updated row.
-
-    Refuses to revoke the calling admin's own approval (self-lockout guard).
-    """
-    if user_id == current_admin.id and not body.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot revoke your own approval")
-
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            text("""
-                UPDATE users SET is_approved = :is_approved
-                WHERE id = :user_id
-                RETURNING id, email, name, is_approved, role, created_at, last_seen_at
-            """),
-            {"is_approved": body.is_approved, "user_id": user_id},
-        )
-        row = result.fetchone()
-
-        if row is None:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        await session.commit()
-
-    return UserRow(
-        id=row.id,
-        email=row.email,
-        name=row.name,
-        is_approved=row.is_approved,
-        role=row.role,
-        created_at=row.created_at,
-        last_seen_at=row.last_seen_at,
-    )
-
-
-class MetricsSummary(BaseModel):
-    users_total: int
-    users_approved: int
-    users_pending: int
-    users_active_7d: int
-    users_active_30d: int
-    listings_total: int
-    favorites_total: int
-    saved_searches_total: int
-
-
-class TimeseriesPoint(BaseModel):
-    day: str  # ISO date (YYYY-MM-DD)
-    value: int
-
-
-class MetricsTimeseries(BaseModel):
-    days: int
-    listings_new: list[TimeseriesPoint]
-    listings_closed: list[TimeseriesPoint]
-    users_new: list[TimeseriesPoint]
-    logins: list[TimeseriesPoint]
-    notifications: list[TimeseriesPoint]
-
-
-@router.get("/metrics/summary", response_model=MetricsSummary)
-async def metrics_summary(_: User = Depends(require_admin)) -> MetricsSummary:
-    """Snapshot counts for KPI tiles."""
-    async with AsyncSessionLocal() as session:
-        row = (await session.execute(text("""
-            SELECT
-                (SELECT count(*) FROM users)                                          AS users_total,
-                (SELECT count(*) FROM users WHERE is_approved)                        AS users_approved,
-                (SELECT count(*) FROM users WHERE NOT is_approved)                    AS users_pending,
-                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '7 days')  AS active_7d,
-                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '30 days') AS active_30d,
-                (SELECT count(*) FROM listings)                                       AS listings_total,
-                (SELECT count(*) FROM user_favorites)                                 AS favorites_total,
-                (SELECT count(*) FROM saved_searches)                                 AS saved_total
-        """))).one()
-    return MetricsSummary(
-        users_total=row.users_total,
-        users_approved=row.users_approved,
-        users_pending=row.users_pending,
-        users_active_7d=row.active_7d,
-        users_active_30d=row.active_30d,
-        listings_total=row.listings_total,
-        favorites_total=row.favorites_total,
-        saved_searches_total=row.saved_total,
-    )
-
-
 # Fixed, server-controlled series definitions (no user input in SQL identifiers).
 _SERIES_SQL: dict[str, str] = {
     "listings_new": "SELECT created_at::date AS d, count(*) AS c FROM listings "
@@ -243,37 +164,186 @@ async def _series(session: AsyncSession, key: str, days: int) -> list[Timeseries
     return out
 
 
-@router.get("/metrics/timeseries", response_model=MetricsTimeseries)
-async def metrics_timeseries(
-    days: int = Query(default=30, ge=1, le=365),
-    _: User = Depends(require_admin),
-) -> MetricsTimeseries:
-    """Per-day counts for the selected window (1–365 days)."""
+# ---------------------------------------------------------------------------
+# Routes 1–2: LLM model management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/llm-models", response_model=list[LLMModelRow])
+async def list_llm_models(_: CockpitOperator = Depends(require_any_admin)) -> list[LLMModelRow]:
+    """Return all cascade models with live active_now computed field."""
+    return await _fetch_all_rows()
+
+
+@router.post("/llm-models/refresh", response_model=list[LLMModelRow])
+async def refresh_llm_models(
+    operator: CockpitOperator = Depends(require_any_admin),
+) -> list[LLMModelRow]:
+    """Trigger an immediate cascade refresh from OpenRouter, return updated rows.
+
+    jti replay protection: cockpit assertion cannot be replayed on this destructive route.
+    """
+    # jti single-use check (contract §8 #4) — cookie path has jti=None → skipped
+    if operator.jti is not None:
+        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+            raise HTTPException(status_code=409, detail="assertion already used")
+
+    await model_cascade.refresh_from_openrouter()
+    logger.info(
+        "admin_action action=refresh_llm_models operator_google_id=%s operator_email=%s jti=%s",
+        operator.google_id, operator.email, operator.jti,
+    )
+    return await _fetch_all_rows()
+
+
+# ---------------------------------------------------------------------------
+# Routes 3–5: User management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/users", response_model=list[UserRow])
+async def list_users(_: CockpitOperator = Depends(require_any_admin)) -> list[UserRow]:
+    """Return all users: not-yet-approved first; within each group: newest-registered first."""
     async with AsyncSessionLocal() as session:
-        return MetricsTimeseries(
-            days=days,
-            listings_new=await _series(session, "listings_new", days),
-            listings_closed=await _series(session, "listings_closed", days),
-            users_new=await _series(session, "users_new", days),
-            logins=await _series(session, "logins", days),
-            notifications=await _series(session, "notifications", days),
+        result = await session.execute(text("""
+            SELECT id, email, name, is_approved, role, created_at, last_seen_at
+            FROM users
+            ORDER BY is_approved ASC, created_at DESC
+        """))
+        rows = result.all()
+    return [
+        UserRow(
+            id=row.id,
+            email=row.email,
+            name=row.name,
+            is_approved=row.is_approved,
+            role=row.role,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
         )
+        for row in rows
+    ]
+
+
+@router.patch("/users/{user_id}/approval", response_model=UserRow)
+async def set_user_approval(
+    user_id: int,
+    body: ApprovalUpdate,
+    operator: CockpitOperator = Depends(require_any_admin),
+) -> UserRow:
+    """Set a user's is_approved flag. Returns the updated row.
+
+    Guards (in order):
+    1. jti single-use replay (cockpit path only, contract §8 #4).
+    2. Self-guard: operator cannot revoke their own admin approval (by google_id).
+    3. Last-admin invariant: refuses to demote the last approved admin (contract §8 #1).
+    Both last-admin checks use SELECT FOR UPDATE to prevent TOCTOU races.
+    """
+    # 1. jti replay (before any DB I/O)
+    if operator.jti is not None:
+        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+            raise HTTPException(status_code=409, detail="assertion already used")
+
+    async with AsyncSessionLocal() as session:
+        # Load target first
+        target = (
+            await session.execute(select(User).where(User.id == user_id))
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 2. Self-guard by google_id (uniform for matched/unmatched operators)
+        if operator.google_id and target.google_id == operator.google_id and not body.is_approved:
+            raise HTTPException(status_code=400, detail="Cannot revoke your own approval")
+
+        # 3. Last-admin invariant — only when demoting an approved admin
+        if target.role == "admin" and target.is_approved and not body.is_approved:
+            locked = (
+                await session.execute(
+                    select(User.id)
+                    .where(User.role == "admin", User.is_approved == True)  # noqa: E712
+                    .with_for_update()
+                )
+            ).scalars().all()
+            if len(locked) <= 1:
+                raise HTTPException(status_code=409, detail="cannot remove the last approved admin")
+
+        # Mutate
+        result = await session.execute(
+            text("""
+                UPDATE users SET is_approved = :is_approved
+                WHERE id = :user_id
+                RETURNING id, email, name, is_approved, role, created_at, last_seen_at
+            """),
+            {"is_approved": body.is_approved, "user_id": user_id},
+        )
+        row = result.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        await session.commit()
+
+    logger.info(
+        "admin_action action=set_approval target_id=%d is_approved=%s "
+        "operator_google_id=%s operator_email=%s jti=%s",
+        user_id, body.is_approved, operator.google_id, operator.email, operator.jti,
+    )
+    return UserRow(
+        id=row.id,
+        email=row.email,
+        name=row.name,
+        is_approved=row.is_approved,
+        role=row.role,
+        created_at=row.created_at,
+        last_seen_at=row.last_seen_at,
+    )
 
 
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,
-    current_admin: User = Depends(require_admin),
+    operator: CockpitOperator = Depends(require_any_admin),
 ) -> None:
     """DSGVO hard-delete: remove a user and all owned data (cascade).
 
     Cascades: saved_searches (+ their notifications), user_favorites,
-    push_subscriptions, login_events. Refuses self-deletion (lockout guard).
+    push_subscriptions, login_events.
+
+    Guards (in order):
+    1. jti single-use replay (cockpit path only, contract §8 #4).
+    2. Self-guard: operator cannot delete their own account (by google_id).
+    3. Last-admin invariant: refuses to delete the last approved admin (contract §8 #1).
+    Both last-admin checks use SELECT FOR UPDATE to prevent TOCTOU races.
     """
-    if user_id == current_admin.id:
-        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    # 1. jti replay (before any DB I/O)
+    if operator.jti is not None:
+        if not consume_jti(operator.jti, operator.token_exp or 0.0):
+            raise HTTPException(status_code=409, detail="assertion already used")
 
     async with AsyncSessionLocal() as session:
+        # Load target first
+        target = (
+            await session.execute(select(User).where(User.id == user_id))
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 2. Self-guard by google_id
+        if operator.google_id and target.google_id == operator.google_id:
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+        # 3. Last-admin invariant — only for approved admins
+        if target.role == "admin" and target.is_approved:
+            locked = (
+                await session.execute(
+                    select(User.id)
+                    .where(User.role == "admin", User.is_approved == True)  # noqa: E712
+                    .with_for_update()
+                )
+            ).scalars().all()
+            if len(locked) <= 1:
+                raise HTTPException(status_code=409, detail="cannot remove the last approved admin")
+
+        # Mutate
         result = await session.execute(
             text("DELETE FROM users WHERE id = :uid RETURNING id"),
             {"uid": user_id},
@@ -282,20 +352,23 @@ async def delete_user(
             raise HTTPException(status_code=404, detail="User not found")
         await session.commit()
 
+    logger.info(
+        "admin_action action=delete_user target_id=%d "
+        "operator_google_id=%s operator_email=%s jti=%s",
+        user_id, operator.google_id, operator.email, operator.jti,
+    )
 
-class UserStats(BaseModel):
-    user_id: int
-    saved_searches: int
-    favorites: int
-    push_devices: int
-    logins_total: int
-    logins_30d: int
-    created_at: datetime
-    last_seen_at: datetime | None
+
+# ---------------------------------------------------------------------------
+# Routes 6–8: Stats + Metrics
+# ---------------------------------------------------------------------------
 
 
 @router.get("/users/{user_id}/stats", response_model=UserStats)
-async def user_stats(user_id: int, _: User = Depends(require_admin)) -> UserStats:
+async def user_stats(
+    user_id: int,
+    _: CockpitOperator = Depends(require_any_admin),
+) -> UserStats:
     """Per-user activity counts for the analysis dialog."""
     async with AsyncSessionLocal() as session:
         row = (await session.execute(text("""
@@ -317,3 +390,47 @@ async def user_stats(user_id: int, _: User = Depends(require_admin)) -> UserStat
         push_devices=row.push_devices, logins_total=row.logins_total,
         logins_30d=row.logins_30d, created_at=row.created_at, last_seen_at=row.last_seen_at,
     )
+
+
+@router.get("/metrics/summary", response_model=MetricsSummary)
+async def metrics_summary(_: CockpitOperator = Depends(require_any_admin)) -> MetricsSummary:
+    """Snapshot counts for KPI tiles."""
+    async with AsyncSessionLocal() as session:
+        row = (await session.execute(text("""
+            SELECT
+                (SELECT count(*) FROM users)                                          AS users_total,
+                (SELECT count(*) FROM users WHERE is_approved)                        AS users_approved,
+                (SELECT count(*) FROM users WHERE NOT is_approved)                    AS users_pending,
+                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '7 days')  AS active_7d,
+                (SELECT count(*) FROM users WHERE last_seen_at >= now() - interval '30 days') AS active_30d,
+                (SELECT count(*) FROM listings)                                       AS listings_total,
+                (SELECT count(*) FROM user_favorites)                                 AS favorites_total,
+                (SELECT count(*) FROM saved_searches)                                 AS saved_total
+        """))).one()
+    return MetricsSummary(
+        users_total=row.users_total,
+        users_approved=row.users_approved,
+        users_pending=row.users_pending,
+        users_active_7d=row.active_7d,
+        users_active_30d=row.active_30d,
+        listings_total=row.listings_total,
+        favorites_total=row.favorites_total,
+        saved_searches_total=row.saved_total,
+    )
+
+
+@router.get("/metrics/timeseries", response_model=MetricsTimeseries)
+async def metrics_timeseries(
+    days: int = Query(default=30, ge=1, le=365),
+    _: CockpitOperator = Depends(require_any_admin),
+) -> MetricsTimeseries:
+    """Per-day counts for the selected window (1–365 days)."""
+    async with AsyncSessionLocal() as session:
+        return MetricsTimeseries(
+            days=days,
+            listings_new=await _series(session, "listings_new", days),
+            listings_closed=await _series(session, "listings_closed", days),
+            users_new=await _series(session, "users_new", days),
+            logins=await _series(session, "logins", days),
+            notifications=await _series(session, "notifications", days),
+        )
