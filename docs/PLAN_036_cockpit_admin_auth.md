@@ -35,7 +35,7 @@ _Plan review closed 2026-07-18 (2 cycles). Bound to the Codex-hardened contract 
 
 ---
 
-## Task 1: Cockpit-auth config [ ]
+## Task 1: Cockpit-auth config [DONE]
 
 **Files:** Modify `backend/app/config.py`
 
@@ -58,7 +58,7 @@ git commit -m "feat(config): cockpit-auth settings (RS256/JWKS, off by default)"
 
 ---
 
-## Task 2: Cockpit assertion verifier + `require_cockpit_admin` [ ]
+## Task 2: Cockpit assertion verifier + `require_cockpit_admin` [DONE]
 
 **Depends on:** Task 1
 
@@ -185,7 +185,7 @@ git commit -m "feat(auth): RS256/JWKS cockpit assertion verifier + require_cockp
 
 ---
 
-## Task 3: Wire dual-auth + last-admin invariant + audit into admin routes [ ]
+## Task 3: Wire dual-auth + last-admin invariant + audit into admin routes [DONE]
 
 **Depends on:** Task 2
 
@@ -252,7 +252,7 @@ git commit -m "feat(admin): dual-auth (cookie|cockpit) + last-admin invariant + 
 
 ---
 
-## Task 4: Internal network for cockpit reachability [ ]
+## Task 4: Internal network for cockpit reachability [DONE]
 
 **Depends on:** none (infra); independent of code tasks.
 
@@ -281,7 +281,7 @@ git commit -m "feat(infra): backend joins internal d2x-internal network (alias r
 
 ---
 
-## Task 5: Doc hygiene [ ]
+## Task 5: Doc hygiene [DONE]
 
 **Depends on:** none
 
