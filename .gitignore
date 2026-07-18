@@ -19,9 +19,15 @@ frontend/node_modules/
 frontend/dist/
 admin/node_modules/
 admin/dist/
+admin/.vite/
 
 # Docs
 docs/mockup.html
+docs/scratch/
+
+# Local artifacts / tooling
+backups/
+.claude/worktrees/
 
 # Editor
 .vscode/
