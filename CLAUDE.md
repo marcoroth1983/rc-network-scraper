@@ -4,7 +4,8 @@ Personal hobby project — scrapes RC airplane listings from rc-network.de, enri
 
 ## Key Facts
 
-- **Single user** — no auth, no multi-tenancy, no public access
+- **Single owner** — Google-SSO login, role-based admin (`role="admin"`), no multi-tenancy
+- **Admin API accepts two auth paths:** cookie session (break-glass) or cockpit RS256 assertion (server-to-server, PLAN-036)
 - **VPS deployment is private** — firewall/VPN restricted to the owner only
 - **Keep it simple** — no enterprise patterns, no over-engineering
 - Docs are the source of truth: `docs/definition.md`, `docs/architektur.md`
@@ -45,7 +46,7 @@ docker compose exec backend pytest tests/ -v  # Run tests
 
 ## Guidelines
 
-- No auth/permission layers — single user behind network restriction
+- Auth layers exist: Google-SSO for users, role-based admin (`role="admin"`), cockpit RS256 for server-to-server admin calls
 - Prefer simple solutions over configurable/extensible ones
 - Rate-limit scraping (min 500ms between requests)
 - Tests use saved HTML fixtures, no live requests
