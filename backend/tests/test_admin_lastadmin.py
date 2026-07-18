@@ -299,6 +299,62 @@ async def test_replayed_jti_delete_409(test_engine, db_session):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# S3 — real require_any_admin cookie break-glass (no fixture override)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_real_require_any_admin_admin_cookie_200_member_cookie_403(test_engine, db_session):
+    """S3: COCKPIT_AUTH_ENABLED=False — admin cookie → 200, non-admin cookie → 403.
+
+    Uses the REAL require_any_admin (no dependency_overrides for it), exercising
+    the cookie break-glass path end-to-end through the actual implementation.
+    """
+    from app.db import get_session  # noqa: PLC0415
+    from app.main import app  # noqa: PLC0415
+    from app.security import create_jwt  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: PLC0415
+
+    admin_id = await _seed_admin(db_session, "s3-real-admin", "s3-real-admin@example.com")
+    member_id = await _seed_member(db_session, "s3-real-member", "s3-real-member@example.com")
+
+    factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _override_get_session():
+        async with factory() as session:
+            yield session
+
+    # Override get_session for admin route handlers that use Depends(get_session),
+    # but do NOT override require_any_admin — that is the whole point of this test.
+    app.dependency_overrides[get_session] = _override_get_session
+
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # Admin cookie → 200 (cookie break-glass allows access)
+            admin_token = create_jwt(admin_id)
+            r_admin = await client.get(
+                "/api/admin/users",
+                cookies={"session": admin_token},
+            )
+            assert r_admin.status_code == 200, (
+                f"admin should get 200 via cookie, got {r_admin.status_code}: {r_admin.text}"
+            )
+
+            # Non-admin (member) cookie → 403
+            member_token = create_jwt(member_id)
+            r_member = await client.get(
+                "/api/admin/users",
+                cookies={"session": member_token},
+            )
+            assert r_member.status_code == 403, (
+                f"member should get 403 via cookie, got {r_member.status_code}: {r_member.text}"
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+
 @pytest.mark.asyncio
 async def test_cookie_break_glass_jti_none_no_replay(test_engine, db_session, monkeypatch):
     """Cookie-path operator (jti=None) can call destructive routes repeatedly without 409."""

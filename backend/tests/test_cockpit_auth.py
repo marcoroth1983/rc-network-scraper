@@ -113,7 +113,7 @@ async def test_valid_token_verify_cockpit_bearer_returns_operator(mock_get_key):
         "query_string": b"",
     }
     request = Request(scope)
-    operator = await verify_cockpit_bearer(request, db=None)  # type: ignore[arg-type]
+    operator = await verify_cockpit_bearer(request)
     assert isinstance(operator, CockpitOperator)
     assert operator.google_id == "google-sub-123"
     assert operator.jti == "jti-test-1"
@@ -273,6 +273,7 @@ async def test_oversized_jwks_rejected(monkeypatch):
     class _FakeResponse:
         content = b"x" * (_mod._MAX_JWKS_BYTES + 1)
         status_code = 200
+        headers: dict = {}  # no Content-Length → Content-Length check skipped, backstop fires
 
         def raise_for_status(self) -> None:
             pass
@@ -323,3 +324,58 @@ def test_consume_jti_expired_entry_pruned_and_reaccepted():
     assert consume_jti("old-jti", exp_past) is True
     # Second call: the entry has exp < now, so it's pruned first, then re-accepted
     assert consume_jti("old-jti", time.time() + 300) is True
+
+
+# ---------------------------------------------------------------------------
+# H1 — kid-spray: bounded dict + global fetch throttle
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_kid_spray_bounded_dict_and_global_fetch_throttle(monkeypatch):
+    """H1: _UNKNOWN_KID_LAST stays bounded AND global throttle limits fetch count.
+
+    Two sub-scenarios:
+    1. Burst: 200 distinct kids at one instant → global throttle allows at most 1 fetch.
+    2. Sustained: manually reset global throttle between each kid (simulating time passing)
+       → dict stays at or below _MAX_UNKNOWN_KID_ENTRIES despite 200 fetches.
+    """
+    fetch_count = 0
+
+    async def _fake_fetch() -> dict:
+        nonlocal fetch_count
+        fetch_count += 1
+        return {"keys": []}  # no valid keys — all kids remain unknown
+
+    monkeypatch.setattr(_mod, "_fetch_jwks", _fake_fetch)
+
+    # --- Part 1: rapid burst -----------------------------------------------
+    # Fresh cache so we enter the unknown-kid branch, global throttle at 0.0 (allows first fetch).
+    _mod._UNKNOWN_KID_LAST.clear()
+    _mod._LAST_UNKNOWN_FETCH = 0.0
+    _mod._JWKS.update(keys=[], fetched=time.time())
+
+    for i in range(200):
+        with pytest.raises(InvalidTokenError):
+            await _mod._get_key(f"burst-kid-{i}")
+
+    assert fetch_count <= 1, (
+        f"global throttle failed on burst: {fetch_count} fetches for 200-kid spray"
+    )
+
+    # --- Part 2: sustained spray (simulate time passing via manual reset) ---
+    # Reset to allow each kid its own fetch; verify the dict stays bounded.
+    fetch_count = 0
+    _mod._UNKNOWN_KID_LAST.clear()
+    _mod._LAST_UNKNOWN_FETCH = 0.0
+    _mod._JWKS.update(keys=[], fetched=time.time())
+
+    for i in range(200):
+        # Simulate global cooldown elapsed by manually resetting _LAST_UNKNOWN_FETCH
+        _mod._LAST_UNKNOWN_FETCH = 0.0
+        with pytest.raises(InvalidTokenError):
+            await _mod._get_key(f"sustained-kid-{i}")
+
+    assert len(_mod._UNKNOWN_KID_LAST) <= _mod._MAX_UNKNOWN_KID_ENTRIES, (
+        f"kid dict unbounded: {len(_mod._UNKNOWN_KID_LAST)} entries after 200 fetches"
+    )
+    assert fetch_count == 200, f"expected exactly 200 fetches in sustained scenario, got {fetch_count}"

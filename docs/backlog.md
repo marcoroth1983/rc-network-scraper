@@ -64,6 +64,12 @@
 
   **Recommendation as of 2026-04-18**: Do PRICE-01 (similarity ranking) first — gets 80% of user value at 10% of the effort. Treat PRICE-02 Phase 0 as a separate, future exploration that needs explicit go-ahead. Do not commit to full PRICE-02 vision up-front.
 
+## PLAN-036 Cockpit Auth — deferred review items (cycle 1)
+
+- **PLAN036-L1: self-guard `operator.google_id` null-guard** — `if operator.google_id and target.google_id == operator.google_id` — in practice `sub` is required in the JWT schema and `google_id` is NOT NULL in the DB, so the guard never fires. No practical risk; backlog only. _Aus PLAN_036 Review Cycle 1, 2026-07-18._
+
+- **PLAN036-L3/S-config: `_JWKS_TTL` / `_KID_COOLDOWN` / `_MAX_JWKS_BYTES` env-configurable** — Currently hardcoded constants in `cockpit_auth.py`. YAGNI for a dormant single-replica backend; would only matter when tuning JWKS rotation cadence or hardening against unusual key-spray patterns at scale. _Aus PLAN_036 Review Cycle 1, 2026-07-18._
+
 ## Deployment / Infra (entdeckt bei PLAN-035 Release v2.9.1, 2026-07-17)
 
 - **DEPLOY-01: Deploy-Workflow liefert False-Green — `no such service: admin` bricht den Pull ab.** Der `release: published`-Workflow SSHt auf den VPS und ruft `docker compose -f docker-compose.prod.yml pull nginx backend admin` gegen die **dort vorhandene** Compose-Datei — er **synct die Datei nicht**. Die VPS-`/opt/rcn-scout/docker-compose.prod.yml` ist noch v2.7.1-Stand (nur db/backend/nginx, **kein `admin`-Service**), daher bricht `pull` mit `no such service: admin` ab → nginx/backend werden **nicht** gezogen → `up -d` recreatet nichts → der `/health`-Check trifft die alte Seite → Job „grün", obwohl **nichts deployed** wurde. **Fix nötig:** (a) neue `docker-compose.prod.yml` beim Deploy auf den VPS kopieren (z. B. via scp im Workflow oder Repo-Checkout auf dem VPS), (b) `up -d --force-recreate` erzwingen, (c) Health-Gate schärfen, damit ein unveränderter Alt-Stand nicht als Erfolg zählt (z. B. Version-/Build-Header prüfen statt nur 200). Bis dahin schlägt **jedes** künftige Release still fehl. _v2.9.1 wurde am 2026-07-17 manuell via `pull nginx backend` + `up -d --force-recreate nginx backend` auf dem VPS nachgezogen (Option A)._

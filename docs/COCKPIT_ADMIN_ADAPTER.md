@@ -78,12 +78,13 @@ rcn-scraper's self-guards compare `target_user_id == current_admin.id` (its own 
 ```python
 @dataclass
 class CockpitOperator:
-    google_id: str             # assertion `sub` — the immutable identity join key
-    email: str                 # display / audit only
-    role: str                  # "admin" (from the assertion), already checked
-    matched_user: User | None  # users row iff google_id matches, else None
+    google_id: str          # assertion `sub` — the immutable identity join key
+    email: str              # display / audit only
+    jti: str | None         # set on the cockpit path (for replay); None on the cookie/break-glass path
+    token_exp: float | None # token expiry used to bound the jti seen-cache TTL; None on cookie path
+    role: str = "admin"     # "admin" from the assertion (already verified)
 ```
-Route handlers: (a) enforce the **last-admin invariant** (above) always; (b) apply the self-guard only when `matched_user is not None` (`target_user_id == matched_user.id`). `google_id` + `email` + `jti` logged on every mutating call. This is a **new** dependency; `require_admin` (returns `User`, cookie path) stays as break-glass until the final cutover (§8).
+**Implementation note (PLAN_036 reconcile):** `matched_user: User | None` from the original contract was replaced by a direct immutable `google_id` comparison in route handlers — the route looks up `users WHERE google_id = operator.google_id` on demand (avoids a DB hit on read-only routes). `jti` and `token_exp` were added for the per-route replay-prevention cache (§8 #4). Route handlers: (a) enforce the **last-admin invariant** always; (b) apply the self-guard by comparing `target.google_id == operator.google_id`. `google_id` + `email` + `jti` logged on every mutating call. The break-glass cookie path (`require_any_admin`) stays alongside until the cockpit facet is verified live (§8 #12).
 
 ## 5. Network topology
 

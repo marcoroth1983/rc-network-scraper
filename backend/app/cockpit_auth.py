@@ -3,16 +3,16 @@
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 from jwt import InvalidTokenError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -31,20 +31,24 @@ class CockpitOperator:
     email: str              # display / audit only
     jti: str | None         # set on the cockpit path (for replay); None on the cookie path
     token_exp: float | None # for the jti cache TTL
+    role: str = "admin"     # "admin" from the assertion (already verified); satisfies contract §4
 
 
 # ---------------------------------------------------------------------------
 # Hardened async JWKS fetcher (contract §8 #6)
-# ASYNC httpx (never block the event loop — cycle-2 fix), 64 KB size cap,
-# per-unknown-kid cooldown, asyncio.Lock.
+# ASYNC httpx (never block the event loop), 64 KB size cap, per-unknown-kid
+# cooldown, global refetch throttle (anti kid-spray), bounded kid dict,
+# asyncio.Lock.
 # ---------------------------------------------------------------------------
 
 _JWKS: dict = {"keys": [], "fetched": 0.0}
-_UNKNOWN_KID_LAST: dict[str, float] = {}
-_LOCK = asyncio.Lock()       # asyncio, NOT threading — this path is async
+_UNKNOWN_KID_LAST: OrderedDict[str, float] = OrderedDict()  # bounded FIFO (see _MAX_UNKNOWN_KID_ENTRIES)
+_MAX_UNKNOWN_KID_ENTRIES = 100          # cap dict size; FIFO-evict oldest entry when full
+_LAST_UNKNOWN_FETCH: float = 0.0        # global throttle — limits fetches regardless of distinct kids
+_LOCK = asyncio.Lock()                  # asyncio, NOT threading — this path is async
 _MAX_JWKS_BYTES = 64 * 1024
-_JWKS_TTL = 300              # cache lifespan (seconds)
-_KID_COOLDOWN = 30           # min seconds between refetches triggered by the same unknown kid
+_JWKS_TTL = 300                         # cache lifespan (seconds)
+_KID_COOLDOWN = 30                      # min seconds between refetches for the same (or any) unknown kid
 
 
 async def _fetch_jwks() -> dict:
@@ -56,19 +60,24 @@ async def _fetch_jwks() -> dict:
         async with httpx.AsyncClient(timeout=5, follow_redirects=False) as c:  # no cross-host redirects
             r = await c.get(url)
             r.raise_for_status()
-            if len(r.content) > _MAX_JWKS_BYTES:                      # response-size cap
+            # Cheap early rejection: check Content-Length before JSON parsing (M2)
+            cl = r.headers.get("content-length")
+            if cl is not None and int(cl) > _MAX_JWKS_BYTES:
+                raise JwksUnreachable("JWKS too large (Content-Length)")
+            if len(r.content) > _MAX_JWKS_BYTES:  # backstop after full buffer
                 raise JwksUnreachable("JWKS too large")
             return r.json()
     except (httpx.HTTPError, ValueError) as e:
         raise JwksUnreachable(str(e))
 
 
-async def _get_key(kid: str):
+async def _get_key(kid: str) -> Any:
     """Resolve a signing key from the cached/fresh JWKS by kid.
 
     Raises InvalidTokenError if the kid remains unknown after allowed refetches.
     Raises JwksUnreachable if the JWKS endpoint cannot be reached (fail-closed).
     """
+    global _LAST_UNKNOWN_FETCH
     now = time.time()
     async with _LOCK:
         fresh = now - _JWKS["fetched"] < _JWKS_TTL
@@ -76,9 +85,15 @@ async def _get_key(kid: str):
         if not have and not fresh:
             _JWKS.update(keys=(await _fetch_jwks()).get("keys", []), fetched=now)
         elif not have and fresh:
-            # Unknown kid on a fresh cache → allow ONE throttled refetch (anti refetch-storm/kid-spray).
-            if now - _UNKNOWN_KID_LAST.get(kid, 0) >= _KID_COOLDOWN:
+            # Unknown kid on a fresh cache: per-kid AND global throttle (anti kid-spray §8 #6).
+            # Both must allow a refetch; a spray of distinct kids cannot trigger back-to-back fetches.
+            if (now - _UNKNOWN_KID_LAST.get(kid, 0) >= _KID_COOLDOWN
+                    and now - _LAST_UNKNOWN_FETCH >= _KID_COOLDOWN):
+                # FIFO-evict oldest entry to keep the dict bounded
+                if len(_UNKNOWN_KID_LAST) >= _MAX_UNKNOWN_KID_ENTRIES:
+                    _UNKNOWN_KID_LAST.popitem(last=False)
                 _UNKNOWN_KID_LAST[kid] = now
+                _LAST_UNKNOWN_FETCH = now
                 _JWKS.update(keys=(await _fetch_jwks()).get("keys", []), fetched=now)
         jwk = next((k for k in _JWKS["keys"] if k.get("kid") == kid), None)
     if jwk is None:
@@ -120,11 +135,11 @@ async def _verify(token: str) -> dict:
 
 # ---------------------------------------------------------------------------
 # Plain helper (NOT a FastAPI dependency)
-# Session passed explicitly so it composes without DI misuse.
+# Session NOT required — token verification needs no DB.
 # ---------------------------------------------------------------------------
 
 
-async def verify_cockpit_bearer(request: Request, db: AsyncSession) -> CockpitOperator:
+async def verify_cockpit_bearer(request: Request) -> CockpitOperator:
     """Verify the Bearer token in the request. JwksUnreachable / InvalidTokenError bubble to caller."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
@@ -140,17 +155,21 @@ async def verify_cockpit_bearer(request: Request, db: AsyncSession) -> CockpitOp
 
 
 # ---------------------------------------------------------------------------
-# FastAPI dependency
+# FastAPI dependency (reserved for future cockpit-only routes)
+# All current routes use require_any_admin (dual-auth) instead.
 # ---------------------------------------------------------------------------
 
 
 async def require_cockpit_admin(
     request: Request,
-    db: AsyncSession = Depends(get_session),
 ) -> CockpitOperator:
-    """FastAPI dependency: verify cockpit RS256 assertion, map errors to HTTP status codes."""
+    """FastAPI dependency: verify cockpit RS256 assertion, map errors to HTTP status codes.
+
+    Reserved for future cockpit-only routes that should not fall back to the cookie
+    break-glass path. All admin routes currently use require_any_admin instead.
+    """
     try:
-        return await verify_cockpit_bearer(request, db)
+        return await verify_cockpit_bearer(request)
     except JwksUnreachable:
         raise HTTPException(503, "cockpit key set unreachable")   # fail-closed, distinct from 401
     except InvalidTokenError:

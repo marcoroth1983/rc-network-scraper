@@ -1,6 +1,8 @@
 """FastAPI dependencies for authentication."""
+import app.db as _app_db  # accessed as _app_db.AsyncSessionLocal for lazy session (picks up test patches)
 import jwt
 from fastapi import Depends, HTTPException, Request
+from jwt import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,7 +71,6 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
 
 async def require_any_admin(
     request: Request,
-    db: AsyncSession = Depends(get_session),
 ) -> CockpitOperator:
     """Accept either a cockpit RS256 Bearer assertion OR the existing cookie session.
 
@@ -77,26 +78,29 @@ async def require_any_admin(
     - Anything else → fall back to cookie break-glass (require_admin behaviour).
 
     Returns a CockpitOperator in both cases; jti=None on the cookie path.
-    Never calls another Depends-function as a plain function — only plain helpers.
+    No DB connection is opened on the cockpit-bearer path.
     """
     has_bearer = request.headers.get("Authorization", "").startswith("Bearer ")
 
     if settings.COCKPIT_AUTH_ENABLED and has_bearer:
         try:
-            return await verify_cockpit_bearer(request, db)
+            return await verify_cockpit_bearer(request)
         except JwksUnreachable:
             raise HTTPException(503, "cockpit key set unreachable")
-        except Exception as exc:
-            # InvalidTokenError and any other JWT failure → 401
-            raise HTTPException(401, "invalid cockpit assertion") from exc
+        except HTTPException:
+            raise  # already a mapped HTTP error (e.g. 401 from missing Bearer)
+        except InvalidTokenError:
+            raise HTTPException(401, "invalid cockpit assertion")
+        # unexpected exceptions (AttributeError, RuntimeError, etc.) surface as 500
 
-    # Cookie break-glass path — call PLAIN helper with the injected db.
-    user = await _load_cookie_user(request, db)
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-    return CockpitOperator(
-        google_id=user.google_id,
-        email=user.email,
-        jti=None,        # cookie path has no jti
-        token_exp=None,
-    )
+    # Cookie break-glass path — DB session opened only here, not on the cockpit-bearer path.
+    async with _app_db.AsyncSessionLocal() as db:
+        user = await _load_cookie_user(request, db)
+        if user.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin role required")
+        return CockpitOperator(
+            google_id=user.google_id,
+            email=user.email,
+            jti=None,        # cookie path has no jti
+            token_exp=None,
+        )
