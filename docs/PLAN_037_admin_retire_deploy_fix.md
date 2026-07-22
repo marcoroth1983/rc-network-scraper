@@ -32,7 +32,7 @@ _Human pre-approved autonomous execution ("ja leg los … mach das autonom", 202
 
 ---
 
-## Task 1: Align repo `docker-compose.prod.yml` to the live VPS state [ ]
+## Task 1: Align repo `docker-compose.prod.yml` to the live VPS state [DONE]
 
 **Files:** Modify `docker-compose.prod.yml`
 
@@ -61,7 +61,7 @@ git commit -m "chore(deploy): align prod compose to live — drop admin service 
 
 ---
 
-## Task 2: Remove the standalone `admin/` app + its CI image [ ]
+## Task 2: Remove the standalone `admin/` app + its CI image [DONE]
 
 **Depends on:** none (independent of Task 1)
 
@@ -82,7 +82,7 @@ git commit -m "chore(admin): remove retired standalone admin console + its CI im
 
 ---
 
-## Task 3: Fix the deploy pipeline (DEPLOY-01) — sync compose, atomic tag, honest health [ ]
+## Task 3: Fix the deploy pipeline (DEPLOY-01) — sync compose, atomic tag, honest health [DONE]
 
 **Depends on:** Task 1, Task 2
 
@@ -140,7 +140,7 @@ git commit -m "fix(ci): DEPLOY-01 — scp compose to VPS, atomic IMAGE_TAG pin, 
 
 ---
 
-## Task 4: Docs — reflect retirement + close backlog items [ ]
+## Task 4: Docs — reflect retirement + close backlog items [DONE]
 
 **Depends on:** none
 
