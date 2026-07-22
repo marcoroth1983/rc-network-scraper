@@ -89,13 +89,13 @@ item via `get_item()` before analysis (future improvement).
 
 ---
 
-## Standalone Admin Console built but frozen — to be replaced by the central d2x-control-plane cockpit
+## Standalone Admin Console retired — admin surface is the d2x-control-plane cockpit
 
-**What:** The standalone Admin Console (`admin/`, subdomain `admin.rcn-scout.d2x-labs.de`, built in PLAN-034) is fully implemented in the repo but is **intentionally NOT deployed to production, and will not be.** Decision 2026-07-17: the admin + analytics function is being centralized into a separate project, **`d2x-control-plane`** — a general admin/analytics cockpit for all d2x apps (Umami analytics already runs there). rc-scanner's admin capability is to become a module of that central cockpit instead of a per-app SPA.
+**What:** The standalone Admin Console (`admin/`, subdomain `admin.rcn-scout.d2x-labs.de`, built in PLAN-034) was never deployed and has been **retired in PLAN-037** (2026-07-23). The `admin/` directory has been removed from the repo. The `admin.rcn-scout.d2x-labs.de` subdomain is not active.
 
-**Why:** Avoids one-admin-console-per-app. Analytics (Umami) is already centralized; the admin side follows. Deploying the standalone console now would cost a Traefik/Let's-Encrypt cert setup plus a second cross-subdomain-cookie login-reset for all users — for a UI that is about to be superseded.
+**Why:** Decision 2026-07-17: admin + analytics is centralized in the **`d2x-control-plane` cockpit** (`admin.d2x-labs.de`), which serves all d2x apps. Deploying the standalone SPA would have been superseded immediately. Avoids one-admin-console-per-app.
 
-**Status & consequences:**
-- The `admin/` Vite/React SPA is **frozen** — no further feature work. A future plan removes it once the control-plane cockpit covers its features.
-- The backend `/api/admin/*` endpoints (`backend/app/api/admin.py`) stay, but their future auth path will differ. The current model — a shared session cookie on `COOKIE_DOMAIN=.rcn-scout.d2x-labs.de` — is an **app-local SSO that does NOT generalize across different app domains**. A central cockpit spanning multiple apps needs a real IdP (Keycloak/Authentik/Auth0) or a per-app service-token/read-API. That auth redesign is a `d2x-control-plane` concern and must be brainstormed there, not here.
-- Production therefore deploys only the public frontend + backend. The `admin` service in `docker-compose.prod.yml` remains **defined-but-undeployed** (see `backlog.md` DEPLOY-01/-02).
+**Current state (post PLAN-037):**
+- The backend `/api/admin/*` endpoints (`backend/app/api/admin.py`) remain and are authenticated via RS256/JWKS JWT (PLAN-036 cockpit dual-auth) over the private `d2x-internal` Docker network.
+- `COCKPIT_AUTH_ENABLED: "true"` and `COCKPIT_JWKS_URL` are set in `docker-compose.prod.yml`; the cookie break-glass path is preserved for future use.
+- Production deploys only `db`, `backend`, and `nginx`.

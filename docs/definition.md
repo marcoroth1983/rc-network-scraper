@@ -23,11 +23,11 @@ The project owner — a single RC model enthusiast looking for used RC equipment
 | Component | Description |
 |-----------|-------------|
 | PWA (`rcn-scout.d2x-labs.de`) | User-facing React app — listing browse, search, favorites, saved searches, web push |
-| Admin Console (`admin.rcn-scout.d2x-labs.de`) | Standalone desktop-first ops dashboard — metrics, LLM cascade management, user approval/delete. Own Vite/React app with dedicated nginx + Traefik subdomain router. Shares the backend (same-origin via `/api/` proxy). **⚠ Built (PLAN-034) but NOT deployed and will not be — decision 2026-07-17: the admin/analytics function moves into the central `d2x-control-plane` cockpit for all d2x apps. The `admin/` SPA is frozen. See `limitations.md`.** |
+| Admin / Analytics | The admin/analytics surface for rcn is the central **d2x-control-plane cockpit** (`admin.d2x-labs.de`). It calls rcn's `/api/admin/*` endpoints via RS256/JWKS JWT auth over the private `d2x-internal` Docker network (PLAN-036). The standalone `admin/` SPA (built in PLAN-034, subdomain `admin.rcn-scout.d2x-labs.de`) was **retired in PLAN-037** — never deployed, superseded before launch. The `admin/` directory has been removed from the repo. |
 | Backend | FastAPI service — scraper, API, Google OAuth, admin endpoints, web push dispatch |
 | Database | PostgreSQL 16 — listings, users, saved searches, favorites, push subscriptions |
 
-> Note: The PWA previously contained `/admin` and `/admin/users` routes. These were removed in PLAN-034 and are now exclusively part of the Admin Console. Any navigation to the old paths in the PWA falls through to the SPA fallback (listings view).
+> Note: The PWA previously contained `/admin` and `/admin/users` routes; these were removed in PLAN-034. The standalone `admin/` SPA (PLAN-034) was never deployed and was retired in PLAN-037. Admin access is via the d2x-control-plane cockpit.
 
 ## Core Features
 
