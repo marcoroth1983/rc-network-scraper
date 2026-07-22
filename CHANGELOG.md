@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.10.0] - 2026-07-23
+
+### Changed
+
+- **Admin/Analytics zentralisiert:** Der Admin-Bereich läuft nicht mehr als eigene rcn-Anwendung, sondern über das zentrale **d2x-control-plane-Cockpit** (`admin.d2x-labs.de`). Das Cockpit spricht rcn's Admin-API server-zu-server über ein privates internes Netz an, abgesichert per kurzlebigem RS256/JWKS-Token (kein geteiltes Passwort, PLAN-036). Die nie ausgelieferte Standalone-Admin-Console (`admin.rcn-scout.d2x-labs.de`) wurde vollständig entfernt (PLAN-037).
+
+### Fixed
+
+- **Deploy-Pipeline zuverlässig:** Releases werden jetzt tatsächlich ausgeliefert. Die Server-Konfiguration wird beim Deploy mitsynchronisiert, Backend- und Frontend-Image werden atomar auf dieselbe Version gepinnt, und ein Deploy gilt nur als erfolgreich, wenn die neuen Images auch wirklich laufen — das frühere „grün, obwohl nichts deployt wurde" ist behoben (PLAN-037).
+
 ## [2.9.1] - 2026-07-17
 
 ### Added
