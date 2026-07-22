@@ -104,7 +104,7 @@ rc-markt-scout/
 - API calls via fetch/axios with React Query for caching
 - Responsive card grid layout (mobile-first)
 - Auth-gated SPA — unauthenticated users hit `/login` (Google SSO redirect); the `useAuth` hook gates all routes
-- Admin functions live exclusively in the standalone Admin Console on `admin.rcn-scout.d2x-labs.de` — the PWA no longer exposes `/admin` or `/admin/users`
+- Admin functions are accessed via the central **d2x-control-plane cockpit** (`admin.d2x-labs.de`) — the PWA does not expose `/admin` or `/admin/users` (removed PLAN-034; standalone SPA retired PLAN-037)
 
 ## Auth & Admin
 
@@ -112,18 +112,7 @@ rc-markt-scout/
 - **Roles:** `member` (read-only browsing + saved searches/favorites/push) and `admin`. `require_admin` guards every `/api/admin/*` endpoint.
 - **Admin endpoints:** `GET /admin/users`, `PATCH /admin/users/{id}/approval`, `DELETE /admin/users/{id}` (DSGVO hard-delete — cascades to saved searches, favorites, push subscriptions, login events; self-deletion blocked), `GET /admin/users/{id}/stats`, `GET /admin/metrics/summary`, `GET /admin/metrics/timeseries`, plus LLM cascade management.
 - **Telemetry:** `login_events` table records one row per successful approved login (backend-only, no external analytics). The "Aktiv (7/30 T)" metric is derived from `users.last_seen_at`, which is updated on every authenticated API call (`/api/auth/me`) — so it approximates users who made API requests in the window, not raw login counts (those come from `login_events`).
-- **Admin Console:** Standalone Vite/React app on its own subdomain (`admin.rcn-scout.d2x-labs.de`), served by a dedicated nginx container. Proxies `/api/` to the shared backend container on the internal Docker network (same-origin — no CORS). The PWA no longer contains `/admin` or `/admin/users` routes (removed in PLAN-034). UI stack: shadcn/ui (Radix + Tailwind) + Recharts + lucide-react. Four views: Übersicht/Metriken (KPI tiles + trend charts), LLM-Kaskade (model status table), Nutzer (approval + delete + stats).
-- **Cookie domain (PLAN-034):** The session cookie is issued with `domain=.rcn-scout.d2x-labs.de` in production (`COOKIE_DOMAIN` env var) so it is valid across both `rcn-scout.d2x-labs.de` (PWA) and `admin.rcn-scout.d2x-labs.de` (console). In dev (empty `COOKIE_DOMAIN`) the cookie remains host-only. Google OAuth redirect_uri is unchanged (`https://rcn-scout.d2x-labs.de/api/auth/google/callback`); the admin app passes `return_to=<admin origin>` to `/api/auth/google`, which stores it in a short-lived `oauth_return` cookie (300 s) and uses it in the callback to redirect the user back to the correct app after login.
-- **Ops prerequisite:** A DNS A-record `admin.rcn-scout.d2x-labs.de → 152.53.238.3` must exist before the Traefik Let's Encrypt cert can issue. Google OAuth credentials require no change.
-- **Adapter boundary:** `admin/src/hooks/useAuth.ts` and `admin/src/api/client.ts` are designed as a thin adapter layer so the same shell can be replicated to the ToDoList project (separate plan).
-
-## Admin Console — Deployment
-
-The `admin` service in `docker-compose.prod.yml` mirrors the `nginx` service pattern:
-- Image: `ghcr.io/marcoroth1983/rc-network-scraper/admin`
-- Traefik router: `rcn-admin`, Host rule `admin.rcn-scout.d2x-labs.de`, entrypoint `websecure`, cert resolver `letsencrypt`, server port 80
-- Networks: `default` (backend reachability) + `web` (Traefik)
-- CI: built alongside backend and nginx images on `release: published`; deploy step pulls `nginx backend admin` before `up -d`
+- **Cockpit auth (PLAN-036/PLAN-037):** The d2x-control-plane cockpit authenticates to `/api/admin/*` via RS256/JWKS JWT (`COCKPIT_AUTH_ENABLED=true`, `COCKPIT_JWKS_URL=https://admin.d2x-labs.de/.well-known/jwks.json`) over the private `d2x-internal` Docker network. The session cookie break-glass path is preserved. `COOKIE_DOMAIN` and `ADMIN_URL` have been removed from the backend env (standalone console retired). Session cookie in dev remains host-only.
 
 ## Test Strategy
 
