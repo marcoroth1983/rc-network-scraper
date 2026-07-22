@@ -53,6 +53,22 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy compose to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST_STAGING }}
+          username: ${{ secrets.VPS_USER_STAGING }}
+          key: ${{ secrets.VPS_SSH_KEY_STAGING }}
+          source: docker-compose.prod.yml
+          target: /opt/rcn-scout/
+
+      - name: Generate short SHA tag
+        id: tag
+        run: echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
@@ -60,9 +76,21 @@ jobs:
           username: ${{ secrets.VPS_USER_STAGING }}
           key: ${{ secrets.VPS_SSH_KEY_STAGING }}
           script: |
+            set -euo pipefail
             cd /opt/rcn-scout
-            docker compose -f docker-compose.prod.yml pull nginx backend admin
-            docker compose -f docker-compose.prod.yml up -d
+            export IMAGE_TAG="${{ steps.tag.outputs.sha }}"
+            # persist tag to .env so a manual `docker compose up` uses the same image (DEPLOY-03 mitigation)
+            grep -q '^IMAGE_TAG=' .env && sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_TAG}/" .env || echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
+            # ensure the internal cockpit network exists (idempotent)
+            docker network inspect d2x-internal >/dev/null 2>&1 || docker network create d2x-internal
+            docker compose -f docker-compose.prod.yml pull nginx backend
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --remove-orphans nginx backend
+            # Honest gate: the running images MUST equal the freshly-pulled tag (catches silent no-op)
+            for svc in nginx backend; do
+              running=$(docker inspect --format '{{.Image}}' "rcn-scout-${svc}-1")
+              pulled=$(docker image inspect --format '{{.Id}}' "ghcr.io/marcoroth1983/rc-network-scraper/${svc}:${IMAGE_TAG}")
+              [ "$running" = "$pulled" ] || { echo "DEPLOY STALE: rcn-scout-${svc}-1 not on ${IMAGE_TAG}"; exit 1; }
+            done
             docker image prune -f
             sleep 10
-            curl --fail --retry 3 --retry-delay 5 --max-time 10 http://localhost/health || (echo "Health check failed!" && exit 1)
+            curl --fail --retry 3 --retry-delay 5 --max-time 10 http://localhost/health
