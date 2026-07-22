@@ -31,13 +31,14 @@ services:
       FRONTEND_URL: https://rcn-scout.d2x-labs.de
       ALLOWED_ORIGINS: https://rcn-scout.d2x-labs.de
       COOKIE_SECURE: "true"
-      COOKIE_DOMAIN: .rcn-scout.d2x-labs.de
-      ADMIN_URL: https://admin.rcn-scout.d2x-labs.de
       SCRAPE_DELAY: "1.0"
       # PLAN-027: Web Push
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:marco.roth1983@googlemail.com}
+      # Cockpit assertion path (PLAN-036 dual-auth; cookie break-glass kept). issuer/audience use in-code defaults.
+      COCKPIT_AUTH_ENABLED: "true"
+      COCKPIT_JWKS_URL: https://admin.d2x-labs.de/.well-known/jwks.json
     networks:
       default: {}
       d2x-internal:
@@ -54,22 +55,6 @@ services:
       - "traefik.http.routers.rcn-scout.entrypoints=websecure"
       - "traefik.http.routers.rcn-scout.tls.certresolver=letsencrypt"
       - "traefik.http.services.rcn-scout.loadbalancer.server.port=80"
-      - "traefik.docker.network=web"
-    networks:
-      - default
-      - web
-
-  admin:
-    image: ghcr.io/marcoroth1983/rc-network-scraper/admin:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    depends_on:
-      - backend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.rcn-admin.rule=Host(`admin.rcn-scout.d2x-labs.de`)"
-      - "traefik.http.routers.rcn-admin.entrypoints=websecure"
-      - "traefik.http.routers.rcn-admin.tls.certresolver=letsencrypt"
-      - "traefik.http.services.rcn-admin.loadbalancer.server.port=80"
       - "traefik.docker.network=web"
     networks:
       - default
