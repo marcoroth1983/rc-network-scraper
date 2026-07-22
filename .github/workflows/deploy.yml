@@ -46,16 +46,6 @@ jobs:
             ghcr.io/marcoroth1983/rc-network-scraper/nginx:latest
             ghcr.io/marcoroth1983/rc-network-scraper/nginx:${{ steps.tag.outputs.sha }}
 
-      - name: Build & push admin image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./admin
-          file: ./admin/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/marcoroth1983/rc-network-scraper/admin:latest
-            ghcr.io/marcoroth1983/rc-network-scraper/admin:${{ steps.tag.outputs.sha }}
-
   deploy:
     runs-on: ubuntu-latest
     needs: build
