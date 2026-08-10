@@ -447,7 +447,7 @@ Expected: `LLM [openai/gpt-5.6-luna] structured-output: OK` lines and **no** `tr
 
 ---
 
-## Task 5: Reset the degraded rows [BLOCKED]
+## Task 5: Reset the degraded rows [DONE]
 
 > **Execution finding, 2026-08-10 — the reset scope in this task is wrong and must not be run as written.**
 >
@@ -461,7 +461,11 @@ Expected: `LLM [openai/gpt-5.6-luna] structured-output: OK` lines and **no** `tr
 > pre-plan trial:
 > `10085, 10345, 10465, 10468, 10576, 10605, 11565, 12005, 12774, 13034, 13404, 13930, 14195, 14362, 14439, 14587`
 >
-> Awaiting Human decision at the BREAK.
+> Human approved the narrowed scope on 2026-08-10. Reset ran against exactly those 16 ids: `UPDATE 16`, 0 remaining.
+>
+> Second execution defect in this task: the `UPDATE` below sets `attributes = NULL`, but the column is
+> `jsonb NOT NULL DEFAULT '{}'::jsonb`. The statement aborts with a not-null violation and changes nothing —
+> it failed safe, but it failed. Use `attributes = DEFAULT` and `llm_analyzed = DEFAULT` instead.
 
 **Depends on:** Task 4
 
@@ -502,7 +506,7 @@ Expected: `0`, or a small number if the 2-minute job analyzed a fresh listing be
 
 ---
 
-## Task 6: Production backfill [ ]
+## Task 6: Production backfill [IN PROGRESS]
 
 **Depends on:** Task 5
 
