@@ -36,6 +36,10 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:marco.roth1983@googlemail.com}
+      # OpenRouter — was missing here, so the analysis job silently skipped since 2026-05-31.
+      # Free cascade (llm_models table) drives the recurring job; BATCH_MODEL is backfill-only.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_BATCH_MODEL: ${OPENROUTER_BATCH_MODEL:-openai/gpt-5.6-luna}
       # Cockpit assertion path (PLAN-036 dual-auth; cookie break-glass kept). issuer/audience use in-code defaults.
       COCKPIT_AUTH_ENABLED: "true"
       COCKPIT_JWKS_URL: https://admin.d2x-labs.de/.well-known/jwks.json
