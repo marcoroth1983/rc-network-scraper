@@ -1,13 +1,12 @@
 """Tests for the detail page parser."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
 import pytest
-from bs4 import BeautifulSoup
-
 from app.scraper.parser import _extract_images, parse_detail
+from bs4 import BeautifulSoup
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
