@@ -4,7 +4,7 @@ import logging
 import re
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app.analysis import model_cascade
 from app.analysis.vocabulary import clamp_model_subtype, clamp_model_type
@@ -88,13 +88,20 @@ class _AttributePair(BaseModel):
     public model. See PLAN-038.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     key: str
     value: str
 
 
 class _ListingAnalysisWire(BaseModel):
-    """Wire schema handed to the LLM. Every field is required and nullable,
-    which is what OpenAI strict mode demands."""
+    """Wire schema handed to the LLM. Every field is nullable.
+
+    Every field is nullable (required is enforced by the OpenAI SDK's strict-mode
+    transform before the API call, not at the Pydantic level).
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     manufacturer: str | None = None
     model_name: str | None = None

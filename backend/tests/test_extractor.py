@@ -110,10 +110,12 @@ class TestAnalyzeListing:
         mock_client = _mock_client_with_parse(mock_parse)
 
         with patch("app.analysis.extractor.settings") as mock_settings, \
-             patch("app.analysis.extractor._make_client", return_value=mock_client):
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_success", new_callable=AsyncMock):
 
             mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.OPENROUTER_MODEL = "openrouter/free"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
 
             result = await analyze_listing(
                 title="Black Horse L-39 Albatros",
@@ -148,10 +150,12 @@ class TestAnalyzeListing:
         mock_client = _mock_client_with_fallback(mock_parse, mock_create)
 
         with patch("app.analysis.extractor.settings") as mock_settings, \
-             patch("app.analysis.extractor._make_client", return_value=mock_client):
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_success", new_callable=AsyncMock):
 
             mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.OPENROUTER_MODEL = "openrouter/free"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
 
             result = await analyze_listing(
                 title="Multiplex EasyStar 3 RTF",
@@ -168,6 +172,47 @@ class TestAnalyzeListing:
         assert result.completeness == "RTF"
         assert result.attributes == {"wingspan_mm": "1000"}
 
+    async def test_wire_shaped_json_fallback_hits_wire_branch(self) -> None:
+        """JSON fallback: wire-shaped pair-list JSON succeeds on the _ListingAnalysisWire branch.
+
+        The existing dict-shaped fallback test exercises the ListingAnalysis branch.
+        This test targets the first try-block (_ListingAnalysisWire.model_validate_json)
+        which would be invisible to regression if only dict-shaped JSON were tested.
+        """
+        json_content = """{
+            "manufacturer": "Multiplex",
+            "model_name": "EasyStar 3",
+            "drive_type": "electric",
+            "model_type": "airplane",
+            "model_subtype": "trainer",
+            "completeness": "RTF",
+            "attributes": [{"key": "wingspan_mm", "value": "1000"}]
+        }"""
+
+        mock_parse = AsyncMock(side_effect=Exception("Structured output not supported"))
+        mock_create = AsyncMock(return_value=_make_completion_response(json_content))
+        mock_client = _mock_client_with_fallback(mock_parse, mock_create)
+
+        with patch("app.analysis.extractor.settings") as mock_settings, \
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_success", new_callable=AsyncMock):
+
+            mock_settings.OPENROUTER_API_KEY = "test-key"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
+
+            result = await analyze_listing(
+                title="Multiplex EasyStar 3 RTF",
+                description="Komplett, flugbereit, Spannweite 1000mm",
+                price="250 €",
+                condition="gebraucht",
+                category="flugmodelle",
+            )
+
+        assert result.manufacturer == "Multiplex"
+        assert result.model_name == "EasyStar 3"
+        assert result.attributes == {"wingspan_mm": "1000"}
+
     async def test_fallback_strips_markdown_code_fence(self) -> None:
         """Fallback JSON parsing must strip markdown code fences."""
         json_with_fence = "```json\n{\"manufacturer\": \"FMS\", \"model_name\": \"F-16\"}\n```"
@@ -177,10 +222,12 @@ class TestAnalyzeListing:
         mock_client = _mock_client_with_fallback(mock_parse, mock_create)
 
         with patch("app.analysis.extractor.settings") as mock_settings, \
-             patch("app.analysis.extractor._make_client", return_value=mock_client):
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_success", new_callable=AsyncMock):
 
             mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.OPENROUTER_MODEL = "openrouter/free"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
 
             result = await analyze_listing(
                 title="FMS F-16",
@@ -202,10 +249,12 @@ class TestAnalyzeListing:
         mock_client = _mock_client_with_fallback(mock_parse, mock_create)
 
         with patch("app.analysis.extractor.settings") as mock_settings, \
-             patch("app.analysis.extractor._make_client", return_value=mock_client):
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_success", new_callable=AsyncMock):
 
             mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.OPENROUTER_MODEL = "openrouter/free"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
 
             result = await analyze_listing(
                 title="Graupner mz-24 Sender",
@@ -225,10 +274,12 @@ class TestAnalyzeListing:
         mock_client = _mock_client_with_fallback(mock_parse, mock_create)
 
         with patch("app.analysis.extractor.settings") as mock_settings, \
-             patch("app.analysis.extractor._make_client", return_value=mock_client):
+             patch("app.analysis.extractor._make_client", return_value=mock_client), \
+             patch("app.analysis.extractor.model_cascade.load_cascade", new_callable=AsyncMock, return_value=["test-model"]), \
+             patch("app.analysis.extractor.model_cascade.record_failure", new_callable=AsyncMock):
 
             mock_settings.OPENROUTER_API_KEY = "test-key"
-            mock_settings.OPENROUTER_MODEL = "openrouter/free"
+            mock_settings.OPENROUTER_FALLBACK_MODEL = ""
 
             result = await analyze_listing(
                 title="Irgendwas",
@@ -317,9 +368,18 @@ class TestListingAnalysisVocabularyClamping:
 
 class TestWireSchema:
     def test_wire_schema_has_no_open_ended_map(self):
-        """OpenAI strict mode rejects free-form dicts — attributes must be an array."""
+        """OpenAI strict mode rejects free-form dicts — attributes must be an array.
+
+        `additionalProperties: false` is emitted by Pydantic because both wire
+        models set model_config = ConfigDict(extra="forbid"). The `required` array
+        covering all properties is added by the OpenAI SDK's strict-mode transform
+        before the API call — it is not enforced at the Pydantic schema level.
+        """
         schema = _ListingAnalysisWire.model_json_schema()
         assert schema["properties"]["attributes"]["type"] == "array"
+        assert schema.get("additionalProperties") is False
+        pair_def = schema["$defs"]["_AttributePair"]
+        assert pair_def.get("additionalProperties") is False
 
     def test_wire_to_analysis_folds_pairs_into_dict(self):
         wire = _ListingAnalysisWire(
