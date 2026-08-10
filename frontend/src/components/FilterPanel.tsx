@@ -358,7 +358,7 @@ export default function FilterPanel({ filter, onChange, activeCategoryLabel, onO
     <>
       {/* Sticky search bar — mobile only */}
       <div
-        className="sticky top-0 z-20 rounded-none px-4 py-3 mb-4 shadow-aurora-card sm:hidden -mx-3"
+        className="sticky top-0 z-30 rounded-none px-4 py-3 mb-4 shadow-aurora-card sm:hidden -mx-3"
         style={{
           background: 'rgba(15, 15, 35, 0.6)',
           backdropFilter: 'blur(20px)',
