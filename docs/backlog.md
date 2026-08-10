@@ -86,3 +86,14 @@ _From PLAN-034 cycle-1 python review (2026-06-18). The standalone admin SPA was 
 
 - **Auth callback error-path tests** — add HTTP-level tests for `auth_google_callback` failure branches (missing code/state, CSRF state mismatch) so a future refactor that drops a `delete_cookie` is caught (review MEDIUM-3). _Still applies to `backend/app/api/auth.py`._
 - **`@pytest.mark.integration` markers** — the `auth_google` HTTP-level tests boot the full ASGI app; mark them integration so unit-only CI runs can skip (review MEDIUM-2). _Still applies._
+
+## Frontend-Tests rot (entdeckt 2026-08-10, PLAN-038)
+
+8 Tests schlagen fehl, unabhängig von PLAN-038 — identisch auf `main` und Plan-Branch (8 failed / 122 passed):
+
+- `ListingDetailModal.test.tsx` (2) — sucht Button mit Namen `/schließen/i`, existiert im Markup nicht mehr
+- `ScrapeLog.test.tsx` (5) — Komponente rendert im Test gar nichts (`<div />`), sucht `/verlauf/i`
+- `DetailPage.test.tsx` (1) — erwartet `lg:grid-cols-12` bei 1280px Viewport
+
+Vermutlich stale Assertions nach einem UI-Umbau. Muss diagnostiziert werden: erst prüfen, ob der Test
+oder die Komponente falsch liegt — nicht die Assertion aufweichen.

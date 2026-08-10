@@ -335,3 +335,113 @@ The test asserts only `schema["properties"]["attributes"]["type"] == "array"`. O
 ### Verdict
 
 APPROVED — the cycle-2 blocker (reset-before-deploy race) is fully resolved by the task reordering. All six cycle-3 findings are non-blocking. Zero new blocking issues introduced by the restructuring. Plan is ready for Human approval.
+
+---
+
+## Code Review — python, cycle 1
+<!-- dglabs.agent.review-python — 2026-08-10 -->
+
+**Files Reviewed:**
+- `backend/app/analysis/extractor.py`
+- `backend/app/scraper/parser.py`
+- `backend/tests/test_extractor.py`
+- `backend/tests/test_parser.py`
+
+**AI-Review:** Codex (gpt-5.6-sol), `--focus correctness --scope diff` — 0 findings.
+
+**Verdict:** MINOR
+
+---
+
+### Antwort auf die Pflichtfragen des Orchestrators
+
+**Ist `_ListingAnalysisWire` wirklich strict-mode-kompatibel?**
+
+Die Fix-Strategie ist korrekt und effektiv — aber die Begründung ist differenzierter als die Fragestellung vermuten lässt.
+
+Das ursprüngliche Problem war *nicht* ein fehlender `required`-Eintrag, sondern ein **inkompatibles Typ-Konstrukt**: `dict[str, str]` erzeugt in Pydantic v2 ein schema `{"type": "object", "additionalProperties": {"type": "string"}}`, also ein Open-Ended-Map. OpenAI strict mode lehnt solche Schemas kategorisch ab, unabhängig davon, ob das Feld in `required` steht. Der Fehlertext im Plan ("Extra required key 'attributes' supplied") bedeutet: das Feld war zwar in `required`, hatte aber einen inkompatiblen Typ.
+
+Der neue Typ `list[_AttributePair]` erzeugt ein schema `{"type": "array", "items": {"type": "object", "properties": {...}, "required": ["key", "value"], "additionalProperties": false}}`. Das ist strict-mode-kompatibel — arrays of typed objects sind explizit supported.
+
+Die Pydantic-Felder mit Defaults (`= None`, `= Field(default_factory=list)`) landen tatsächlich **nicht** in `required` bei `model_json_schema()`. Das ist aber unerheblich, weil der OpenAI Python SDK (`beta.chat.completions.parse()`) das Schema vor dem API-Call transformiert: er fügt automatisch `required` mit allen Properties und `additionalProperties: false` auf jeder Objekt-Ebene ein. Dieses Verhalten ist Teil des SDK-Vertrags für Pydantic-Modelle im structured-output-Pfad. Der Fix ist wirkungsvoll.
+
+**Test-Diff Audit — falsche Implementierung die trotzdem grün lässt?**
+
+- `test_valid_structured_response_returns_correct_analysis`: Eine Implementierung ohne `to_analysis()`-Aufruf würde `AttributeError` auslösen (caught vom outer except, aber Rückgabe `None, error`, dann leeres `ListingAnalysis` — Assertion `result.manufacturer == "Black Horse"` schlägt fehl). Eine Implementierung die `to_analysis()` aufruft aber die Pair-Faltung weglässt, würde an `assert result.attributes == {"wingspan_mm": "1700", "weight_g": "3500"}` scheitern. **Keine falsche Implementierung gefunden, die diesen Test grün lässt.**
+- `test_model_override_is_passed_to_client`: Prüft nur `call_kwargs.get("model") == "google/gemini-2.5-flash-lite"`. Eine falsche Implementierung, die `ListingAnalysis` statt `_ListingAnalysisWire` als mock zurückgibt, würde `AttributeError` auslösen und via other-tests auffallen — dieser Test allein würde es nicht fangen. Das ist eine Schwäche dieses einzelnen Tests, aber kein Problem des gesamten Test-Sets. **Für diesen Test isoliert: Eine Implementierung, die `response_format=ListingAnalysis` mit model=override korrekt sendet, aber dann `parsed` direkt zurückgibt (kein `.to_analysis()`), würde diesen Test grün lassen.** Andere Tests (`test_valid_structured_response_returns_correct_analysis`) würden das fangen. Im Verbund ist das akzeptabel.
+- `test_extract_images_skips_malformed_src_without_raising`: Beide Images in `bbWrapper`. Jede Implementierung ohne Guard würde `ValueError` auslösen (Test schlägt fehl). Jede Implementierung, die alle URLs unterdrückt, liefert leere Liste (assertion `== ["https://...good.jpg"]` schlägt fehl). **Keine falsche Implementierung gefunden.**
+- `test_malformed_src_really_raises_without_the_guard`: Self-certifying. **Keine falsche Implementierung möglich.**
+- Neue `TestWireSchema`-Tests: `test_wire_to_analysis_folds_pairs_into_dict` und `test_wire_to_analysis_applies_vocabulary_clamp` — korrekte Assertions, kein offensichtlicher false-positive Pfad.
+
+---
+
+### 🔴 CRITICAL
+
+Keine.
+
+---
+
+### 🟠 HIGH
+
+Keine.
+
+---
+
+### 🟡 MEDIUM
+
+**1. Wire-shaped JSON-Fallback-Branch ungetestet**
+- **Was:** Der `try`-Block in `_try_analyze` (extractor.py, Zeile 220) ruft `_ListingAnalysisWire.model_validate_json(content).to_analysis()` auf. Dieser Branch hat keinen dedizierten Test.
+- **Wo:** `backend/app/analysis/extractor.py:219-222`, `backend/tests/test_extractor.py:134`
+- **Warum:** `test_malformed_structured_response_falls_back_to_json_parsing` übergibt dict-shaped JSON (`"attributes": {"wingspan_mm": "1000"}`), das bei `_ListingAnalysisWire.model_validate_json()` als `ValidationError` schlägt (list[_AttributePair] erwartet, dict erhalten) und direkt zum `ListingAnalysis`-Fallback springt. Der erste `try`-Branch wird nie ausgeführt. Eine Regression dort — z.B. wenn `_ListingAnalysisWire.model_validate_json()` eine Ausnahme außer `ValidationError` wirft — würde den test unsichtbar umgehen.
+- **Empfehlung:** Einen Test hinzufügen, der wire-shaped JSON (`"attributes": [{"key": "wingspan_mm", "value": "1700"}]`) in den Fallback-Pfad gibt und prüft, dass `result.attributes == {"wingspan_mm": "1700"}`.
+
+**2. `model_cascade.load_cascade()` nicht gemockt in Cascade-Tests**
+- **Was:** Tests die `analyze_listing()` ohne `model=`-Parameter aufrufen (alle außer `test_model_override_is_passed_to_client`) rufen implizit `await model_cascade.load_cascade()` auf. Die Cascade ist nicht gemockt.
+- **Wo:** `backend/tests/test_extractor.py:112-132`, `:150-169`, `:179-194`, `:204-219`, `:227-243`
+- **Warum:** Im Test-Environment liefert `load_cascade()` vermutlich eine leere Liste (keine DB). Damit springt `analyze_listing` direkt zum Paid-Fallback. `mock_settings.OPENROUTER_FALLBACK_MODEL` ist ein MagicMock (truthy), `_try_analyze()` wird damit aufgerufen, und `mock_parse` liefert die erwartete Antwort. Die Tests bestehen per Zufall durch den Fallback-Pfad, nicht durch den Cascade-Pfad. Änderungen an `model_cascade`-Verhalten (z.B. Exception statt leere Liste) würden diese Tests zum Absturz bringen, ohne dass es klar ist warum.
+- **Empfehlung:** `model_cascade.load_cascade` in diesen Tests explizit mocken: `patch("app.analysis.extractor.model_cascade.load_cascade", return_value=[])` oder analog mit einem Modellnamen, um den intendieren Pfad zu testen.
+
+**3. `test_wire_schema_has_no_open_ended_map` prüft nicht die strict-mode-vollständigkeit**
+- **Was:** Der Test prüft nur `schema["properties"]["attributes"]["type"] == "array"`, nicht ob alle Properties in `required` stehen und `additionalProperties: false` gesetzt ist.
+- **Wo:** `backend/tests/test_extractor.py:319-321`
+- **Warum:** Der rohe Pydantic-Output von `_ListingAnalysisWire.model_json_schema()` enthält kein `required` (alle Felder haben Defaults) und kein `additionalProperties: false`. Derjenige, der den Test liest und `model_json_schema()` inspiziert, bekommt ein Schema, das dem Docstring widerspricht. Der SDK transformiert das Schema korrekt vor dem API-Call — aber der Test als Dokumentation ist irreführend. Dieses Finding war Plan-Review NB5 (cycle 3) und wurde nicht adressiert.
+- **Empfehlung:** `model_config = ConfigDict(extra="forbid")` zu `_AttributePair` und `_ListingAnalysisWire` hinzufügen. Das erzeugt `additionalProperties: false` im rohen Schema. Für `required`-Vollständigkeit: entweder alle Felder als `required` ohne Default deklarieren und `Optional[...]` explizit nutzen, oder den Test als SDK-Level-Dokumentation kommentieren ("Schema wird vom SDK um required und additionalProperties ergänzt").
+
+---
+
+### 🟢 LOW
+
+**1. `test_extract_images_without_page_url_returns_raw_src` — Guard für dieses Fixture vacuous**
+- **Was:** Der Guard `if not page_url: return src` in `_safe_urljoin` wird vom Test nicht bewiesen.
+- **Wo:** `backend/tests/test_parser.py:169-172`, `backend/app/scraper/parser.py:196`
+- **Warum:** Für das Fixture `src="/attachments/x.jpg"` liefert sowohl `return src` als auch `urljoin("", "/attachments/x.jpg")` denselbe Ausgabe. Der Guard ist korrekte Defensive-Programming (vermeidet urljoin-Call mit leerem Base), aber der Test weist seine Notwendigkeit nicht nach.
+- **Empfehlung:** Fixture mit einem src verwenden, bei dem `urljoin("", src)` einen anderen Wert liefert als `src` direkt — z.B. ein src ohne führenden Slash. Low-Impact, Nit-Level.
+
+**2. `_ListingAnalysisWire`-Docstring beschreibt SDK-Verhalten als Pydantic-Verhalten**
+- **Was:** Docstring sagt "Every field is required and nullable, which is what OpenAI strict mode demands". Das ist nur auf SDK-Ebene korrekt, nicht auf `model_json_schema()`-Ebene.
+- **Wo:** `backend/app/analysis/extractor.py:96-98`
+- **Warum:** Im rohen Pydantic-Schema sind Felder mit Defaults nicht in `required`. Der Docstring beschreibt das intendierte API-Verhalten korrekt, ist aber technisch ungenau bzgl. des Python-Objektmodells. Missverständlich für den nächsten Entwickler, der `model_json_schema()` zur Diagnose verwendet.
+- **Empfehlung:** Ergänzen: "Every field is nullable (required is enforced by the OpenAI SDK's strict-mode transform, not at the Pydantic level)."
+
+---
+
+### 💡 SUGGESTION
+
+**1. `model_config = ConfigDict(extra="forbid")` für Wire-Modelle**
+Belt-and-suspenders: macht das rohe Pydantic-Schema selbst strict-mode-kompatibel (additionalProperties: false). Erfordert Import `from pydantic import ConfigDict`. Kein Package-Approval nötig (Pydantic v2 bereits Dependency).
+
+**2. Dedizierten Test für wire-shaped JSON-Fallback**
+Pair-list JSON direkt in den Fallback-Pfad geben (mock_parse raises, mock_create liefert wire-shaped JSON). Prüft den ersten Try-Branch in der Dual-Parse-Logik. Direkte Umsetzung von MEDIUM Finding 1.
+
+**3. `model_cascade.load_cascade` explizit mocken**
+`patch("app.analysis.extractor.model_cascade.load_cascade", AsyncMock(return_value=["test-model"]))` in Tests, die den Cascade-Pfad testen sollen. Macht den intendieren Pfad explizit und entfernt die Abhängigkeit vom MagicMock-Truthy-Zufall.
+
+---
+
+### Sonstiges — wonach nicht gefragt wurde
+
+- **Smilie-Filter-Reihenfolge in Loop 2 verbessert:** Der neue Code prüft `"smilie" in src.lower()` vor dem `_safe_urljoin`-Aufruf. Das ist eine korrekte und sinnvolle Verbesserung gegenüber dem alten Code (der erst urljoin aufgerufen hat, dann gefiltert). Kein Problem, Lob verdient.
+- **Deduplication in `_extract_images` (Loop 2):** `resolved not in urls` ist ein linearer Scan. Bei typischen Listings (< 50 Bilder) irrelevant. Kein Befund.
+- **Vocabulary-Clamping läuft auf beiden Fallback-Pfaden:** `ListingAnalysis.model_validate_json()` (direkter Fallback) triggert ebenfalls `clamp_to_vocabulary` via `model_validator(mode="after")`. Konsistenz sichergestellt. ✓
+- **`_AttributePair.key`-Filter filtert nicht leere Values:** `{p.key: p.value for p in self.attributes if p.key}` — ein Pair mit leerem Value (`key="wingspan_mm", value=""`) wird durchgelassen. Möglicherweise gewollt (empty string als gültiger Wert), aber es könnte zu Noise in downstream-Konsumenten führen (z.B. `json.dumps(analysis.attributes)` in backfill.py liefert `{"wingspan_mm": ""}` in die DB). Kein Befund, da Designentscheidung, aber erwähnenswert.
+- **Ruff-Auto-Fix Commit (609a731):** `timezone`-Import aus `test_parser.py` korrekt entfernt — war tatsächlich ungenutzt nach Entfernung der `timezone`-Abhängigkeit in den Tests. ✓

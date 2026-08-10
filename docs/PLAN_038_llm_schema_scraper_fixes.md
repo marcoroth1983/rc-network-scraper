@@ -69,7 +69,7 @@ The `except Exception` at `extractor.py:155` swallows the 400 and falls through 
 
 ---
 
-## Task 1: Strict-mode-compatible LLM schema [ ]
+## Task 1: Strict-mode-compatible LLM schema [DONE]
 
 **Files:**
 - Modify: `backend/app/analysis/extractor.py:69-71` (prompt), `:81-99` (models), `:138-152` (parse call)
@@ -242,7 +242,7 @@ git commit -m "fix(analysis): strict-mode-compatible LLM schema for attributes (
 
 ---
 
-## Task 2: Harden image URL resolution [ ]
+## Task 2: Harden image URL resolution [DONE]
 
 **Files:**
 - Modify: `backend/app/scraper/parser.py:188-205`
@@ -364,7 +364,7 @@ git commit -m "fix(scraper): malformed image src no longer aborts the phase-1 ru
 
 ---
 
-## Task 3: Sticky header above listing cards [ ]
+## Task 3: Sticky header above listing cards [DONE]
 
 **Files:**
 - Modify: `frontend/src/components/FilterPanel.tsx:361`
@@ -388,7 +388,7 @@ git commit -m "fix(ui): sticky search header above listing card star button (PLA
 
 ---
 
-## Task 4: Deploy Tasks 1–3 to production [ ]
+## Task 4: Deploy Tasks 1–3 to production [IN PROGRESS]
 
 **Depends on:** Task 1, Task 2, Task 3
 
@@ -543,6 +543,8 @@ ssh -i ~/.ssh/id_netcup_mro deploy@152.53.238.3 \
 Expected: non-zero counts for `airplane`, `helicopter` and `glider` rather than a single all-NULL row.
 
 ---
+
+_Code review closed 2026-08-10 (python, cycle 1): MINOR — 0 critical, 0 high, 3 medium (all fixed), 2 low + 3 suggestions to backlog. See REVIEW_038._
 
 ## Verification
 
