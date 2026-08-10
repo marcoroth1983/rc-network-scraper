@@ -185,6 +185,23 @@ def _extract_description(post: Tag, pairs: dict[str, str]) -> str:
     return text
 
 
+def _safe_urljoin(page_url: str, src: str) -> str | None:
+    """Resolve a possibly-malformed image src against the page URL.
+
+    A src containing an unmatched '[' makes urlsplit raise
+    "Invalid IPv6 URL". That used to abort the entire Phase-1 run
+    (observed on listing 12131203). One bad image must cost one image,
+    not the whole crawl. See PLAN-038.
+    """
+    if not page_url:
+        return src
+    try:
+        return urljoin(page_url, src)
+    except ValueError:
+        logger.warning("Skipping malformed image src: %r", src)
+        return None
+
+
 def _extract_images(post: Tag, page_url: str = "") -> list[str]:
     """Collect absolute image URLs from attachment blocks within the post."""
     urls: list[str] = []
@@ -192,14 +209,19 @@ def _extract_images(post: Tag, page_url: str = "") -> list[str]:
     # XenForo attachment thumbnails / full images
     for img in post.select(".attachment img[src], .attachmentList img[src]"):
         src: str = img.get("src", "").strip()
-        if src:
-            urls.append(urljoin(page_url, src) if page_url else src)
+        if not src:
+            continue
+        resolved = _safe_urljoin(page_url, src)
+        if resolved:
+            urls.append(resolved)
 
     # Also pick up inline images inside bbWrapper that are not smilies
     for img in post.select(".bbWrapper img[src]"):
         src = img.get("src", "").strip()
-        resolved = urljoin(page_url, src) if page_url else src
-        if src and resolved not in urls and "smilie" not in src.lower():
+        if not src or "smilie" in src.lower():
+            continue
+        resolved = _safe_urljoin(page_url, src)
+        if resolved and resolved not in urls:
             urls.append(resolved)
 
     return urls

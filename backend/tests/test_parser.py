@@ -2,8 +2,12 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urljoin
 
-from app.scraper.parser import parse_detail
+import pytest
+from bs4 import BeautifulSoup
+
+from app.scraper.parser import _extract_images, parse_detail
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -135,3 +139,35 @@ class TestSoldDetection:
         """is_sold is False for a normal active listing."""
         result = parse_detail(_load("detail_complete.html"))
         assert result["is_sold"] is False
+
+
+# --- Image URL hardening ---
+
+class TestExtractImagesSafeUrljoin:
+    def test_extract_images_skips_malformed_src_without_raising(self) -> None:
+        """A protocol-relative src with an unmatched '[' hits the IPv6 branch of
+        urlsplit. Before PLAN-038 this aborted the whole phase-1 run."""
+        html = (
+            '<div class="bbWrapper">'
+            '<img src="//[V] OMP broken.jpg">'
+            '<img src="/attachments/good.jpg">'
+            "</div>"
+        )
+        post = BeautifulSoup(html, "html.parser")
+        urls = _extract_images(post, page_url="https://rc-network.de/threads/1/")
+        assert urls == ["https://rc-network.de/attachments/good.jpg"]
+
+    def test_malformed_src_really_raises_without_the_guard(self) -> None:
+        """Guards the fixture itself: if this stops raising, the test above is vacuous."""
+        with pytest.raises(ValueError):
+            urljoin("https://rc-network.de/threads/1/", "//[V] OMP broken.jpg")
+
+    def test_extract_images_still_skips_smilies(self) -> None:
+        html = '<div class="bbWrapper"><img src="/img/smilies/happy.png"></div>'
+        post = BeautifulSoup(html, "html.parser")
+        assert _extract_images(post, page_url="https://rc-network.de/t/1/") == []
+
+    def test_extract_images_without_page_url_returns_raw_src(self) -> None:
+        html = '<div class="attachment"><img src="/attachments/x.jpg"></div>'
+        post = BeautifulSoup(html, "html.parser")
+        assert _extract_images(post) == ["/attachments/x.jpg"]
