@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # Force module-level import so patch targets resolve correctly.
-from app.analysis.extractor import ListingAnalysis, analyze_listing
+from app.analysis.extractor import (
+    ListingAnalysis,
+    _AttributePair,
+    _ListingAnalysisWire,
+    analyze_listing,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -88,14 +93,17 @@ class TestAnalyzeListing:
 
     async def test_valid_structured_response_returns_correct_analysis(self) -> None:
         """Structured output path: parsed response is returned as ListingAnalysis."""
-        expected = ListingAnalysis(
+        expected = _ListingAnalysisWire(
             manufacturer="Black Horse",
             model_name="L-39 Albatros",
             drive_type="electric",
             model_type="airplane",
             model_subtype="jet",
             completeness="ARF",
-            attributes={"wingspan_mm": "1700", "weight_g": "3500"},
+            attributes=[
+                _AttributePair(key="wingspan_mm", value="1700"),
+                _AttributePair(key="weight_g", value="3500"),
+            ],
         )
 
         mock_parse = AsyncMock(return_value=_make_parse_response(expected))
@@ -236,7 +244,7 @@ class TestAnalyzeListing:
 
     async def test_model_override_is_passed_to_client(self) -> None:
         """Caller can override the model; the overridden model must be used in the API call."""
-        expected = ListingAnalysis(manufacturer="Robbe", model_name="Fokker DR.1")
+        expected = _ListingAnalysisWire(manufacturer="Robbe", model_name="Fokker DR.1")
         mock_parse = AsyncMock(return_value=_make_parse_response(expected))
         mock_client = _mock_client_with_parse(mock_parse)
 
@@ -303,3 +311,33 @@ class TestListingAnalysisVocabularyClamping:
     def test_drive_type_case_normalized(self):
         a = ListingAnalysis(drive_type="Electric")
         assert a.drive_type == "electric"
+
+
+# --- Wire schema ---
+
+class TestWireSchema:
+    def test_wire_schema_has_no_open_ended_map(self):
+        """OpenAI strict mode rejects free-form dicts — attributes must be an array."""
+        schema = _ListingAnalysisWire.model_json_schema()
+        assert schema["properties"]["attributes"]["type"] == "array"
+
+    def test_wire_to_analysis_folds_pairs_into_dict(self):
+        wire = _ListingAnalysisWire(
+            model_type="airplane",
+            attributes=[
+                _AttributePair(key="wingspan_mm", value="2800"),
+                _AttributePair(key="weight_g", value="4200"),
+            ],
+        )
+        result = wire.to_analysis()
+        assert result.attributes == {"wingspan_mm": "2800", "weight_g": "4200"}
+        assert result.model_type == "airplane"
+
+    def test_wire_to_analysis_drops_empty_keys(self):
+        wire = _ListingAnalysisWire(attributes=[_AttributePair(key="", value="x")])
+        assert wire.to_analysis().attributes == {}
+
+    def test_wire_to_analysis_applies_vocabulary_clamp(self):
+        """to_analysis() must route through ListingAnalysis so clamping still runs."""
+        wire = _ListingAnalysisWire(model_type="Flugzeug")
+        assert wire.to_analysis().model_type is None

@@ -4,7 +4,7 @@ import logging
 import re
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.analysis import model_cascade
 from app.analysis.vocabulary import clamp_model_subtype, clamp_model_type
@@ -66,9 +66,11 @@ completeness — EXAKT einen dieser Werte oder null:
 price_euros: Geforderter Preis in Euro als Zahl (nur Zahl, kein Symbol). null wenn kein Preis erkennbar.
 shipping_available: true wenn Versand angeboten wird, false wenn explizit kein Versand ("nur Abholung", "kein Versand"), null wenn unklar.
 
-Für "attributes": extrahiere alle weiteren technischen Daten als key-value Paare
-(z.B. wingspan_mm, weight_g, battery, motor, scale, channels, servos_included).
-Keys immer englisch, snake_case. Werte als Strings.
+Für "attributes": extrahiere alle weiteren technischen Daten als Liste von
+Objekten mit den Feldern "key" und "value"
+(z.B. {"key": "wingspan_mm", "value": "2800"}).
+Keys immer englisch, snake_case. Values immer als Strings.
+Keine weiteren Daten → leere Liste.
 """
 
 _MAX_DESCRIPTION_CHARS = 2000
@@ -76,6 +78,46 @@ _REQUEST_TIMEOUT = 15.0
 
 
 _DRIVE_TYPES = {"electric", "nitro", "gas", "turbine"}
+
+
+class _AttributePair(BaseModel):
+    """One extra technical attribute.
+
+    OpenAI strict structured outputs reject open-ended maps, so `attributes`
+    travels over the wire as a list of pairs and is folded into a dict on the
+    public model. See PLAN-038.
+    """
+
+    key: str
+    value: str
+
+
+class _ListingAnalysisWire(BaseModel):
+    """Wire schema handed to the LLM. Every field is required and nullable,
+    which is what OpenAI strict mode demands."""
+
+    manufacturer: str | None = None
+    model_name: str | None = None
+    drive_type: str | None = None
+    model_type: str | None = None
+    model_subtype: str | None = None
+    completeness: str | None = None
+    price_euros: float | None = None
+    shipping_available: bool | None = None
+    attributes: list[_AttributePair] = Field(default_factory=list)
+
+    def to_analysis(self) -> "ListingAnalysis":
+        return ListingAnalysis(
+            manufacturer=self.manufacturer,
+            model_name=self.model_name,
+            drive_type=self.drive_type,
+            model_type=self.model_type,
+            model_subtype=self.model_subtype,
+            completeness=self.completeness,
+            price_euros=self.price_euros,
+            shipping_available=self.shipping_available,
+            attributes={p.key: p.value for p in self.attributes if p.key},
+        )
 
 
 class ListingAnalysis(BaseModel):
@@ -143,13 +185,13 @@ async def _try_analyze(client: AsyncOpenAI, model: str, user_message: str) -> tu
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": user_message},
             ],
-            response_format=ListingAnalysis,
+            response_format=_ListingAnalysisWire,
             temperature=0,
         )
         parsed = response.choices[0].message.parsed
         if parsed is not None:
             logger.info("LLM [%s] structured-output: OK", model)
-            return parsed, None
+            return parsed.to_analysis(), None
         last_error = "structured-output returned None"
         logger.warning("LLM [%s] %s — trying JSON fallback", model, last_error)
     except Exception as exc:
@@ -174,7 +216,10 @@ async def _try_analyze(client: AsyncOpenAI, model: str, user_message: str) -> tu
         content = content.strip()
         content = re.sub(r"^```[a-z]*\n?", "", content, flags=re.MULTILINE)
         content = re.sub(r"```$", "", content.strip()).strip()
-        result = ListingAnalysis.model_validate_json(content)
+        try:
+            result = _ListingAnalysisWire.model_validate_json(content).to_analysis()
+        except ValidationError:
+            result = ListingAnalysis.model_validate_json(content)
         logger.info("LLM [%s] json-fallback: OK", model)
         return result, None
     except Exception as exc:
