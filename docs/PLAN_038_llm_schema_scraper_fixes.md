@@ -388,7 +388,7 @@ git commit -m "fix(ui): sticky search header above listing card star button (PLA
 
 ---
 
-## Task 4: Deploy Tasks 1–3 to production [IN PROGRESS]
+## Task 4: Deploy Tasks 1–3 to production [DONE]
 
 **Depends on:** Task 1, Task 2, Task 3
 
@@ -447,7 +447,21 @@ Expected: `LLM [openai/gpt-5.6-luna] structured-output: OK` lines and **no** `tr
 
 ---
 
-## Task 5: Reset the degraded rows [ ]
+## Task 5: Reset the degraded rows [BLOCKED]
+
+> **Execution finding, 2026-08-10 — the reset scope in this task is wrong and must not be run as written.**
+>
+> The plan assumed every `llm_analyzed = true` active row came from the degraded JSON-fallback path. Verified
+> after the deploy: the recurring job's free cascade logs `structured-output: OK` (e.g.
+> `LLM [google/gemma-4-26b-a4b-it:free] structured-output: OK`). The HTTP 400 was specific to OpenAI-family
+> models, so it only ever hit the backfill path, never the 2-minute job.
+>
+> Since the compose fix landed, the recurring job has analyzed itself up to 533 active rows at full quality.
+> The `WHERE` clause below would nullify all of them to re-fix 16. Narrow the reset to the 16 ids from the
+> pre-plan trial:
+> `10085, 10345, 10465, 10468, 10576, 10605, 11565, 12005, 12774, 13034, 13404, 13930, 14195, 14362, 14439, 14587`
+>
+> Awaiting Human decision at the BREAK.
 
 **Depends on:** Task 4
 
