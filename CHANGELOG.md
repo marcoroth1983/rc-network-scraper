@@ -5,7 +5,7 @@
 ### Fixed
 
 - **Filter nach Modelltyp funktioniert wieder:** Seit Ende Mai wurden neue Anzeigen nicht mehr automatisch analysiert, wodurch Hubschrauber, Flugzeuge und Segler keinem Typ mehr zugeordnet waren und die Typ-Filter leer blieben. Die Analyse läuft wieder, und die betroffenen Anzeigen werden nachträglich eingeordnet (PLAN-038).
-- **Deutlich bessere Erkennung von Hersteller und Modellname:** Die Datenübergabe an die KI war fehlerhaft, sodass nur ein abgespeckter Ersatzweg griff. Hersteller wie ESM, CARF oder KAVAN wurden dadurch übersehen, obwohl sie im Titel standen (PLAN-038).
+- **Nachträgliche Einordnung großer Anzeigenmengen funktioniert wieder:** Der Weg, mit dem viele Anzeigen auf einmal nachanalysiert werden, war durch einen Formatfehler in der Datenübergabe blockiert und wich auf ein schwächeres Ersatzverfahren aus. Das betraf nur diesen Sammel-Weg, nicht die laufende Analyse neuer Anzeigen (PLAN-038).
 - **Abgebrochene Suchläufe:** Eine einzelne Anzeige mit fehlerhafter Bildadresse konnte den kompletten Durchlauf stoppen, sodass ganze Kategorien nicht mehr aktualisiert wurden. Fehlerhafte Bilder werden jetzt übersprungen (PLAN-038).
 - **Merkliste-Stern überlagerte den Filter-Button:** In der mobilen Ansicht lag der Stern einer Anzeige über der Suchleiste (PLAN-038).
 
